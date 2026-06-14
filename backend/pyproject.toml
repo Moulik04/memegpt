@@ -42,6 +42,9 @@ dev = [
     "mypy>=1.10.0",
 ]
 
+[tool.setuptools.packages.find]
+include = ["routers*", "nlp*", "vector_db*", "image_processing*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
