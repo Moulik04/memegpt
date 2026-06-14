@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.env
+.env.local
+.env.*.local
+
+# ChromaDB persistent store
+backend/data/
+
+# Generated meme output (runtime artifacts)
+backend/static/generated/*.png
+backend/static/generated/*.jpg
+
+# Fonts (add your own — not committed)
+backend/fonts/*.ttf
+backend/fonts/*.otf
+
+# Next.js
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+frontend/.env*.local
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
