@@ -141,6 +141,15 @@ def query_similar_memes(query: str, n_results: int = 3) -> list[dict[str, Any]]:
     ]
 
 
+def list_template_ids() -> list[str]:
+    """Return all template IDs currently stored in ChromaDB."""
+    col = _get_collection()
+    if col.count() == 0:
+        return []
+    result = col.get(include=[])
+    return list(result["ids"])
+
+
 def get_template_record(template_id: str) -> dict[str, Any] | None:
     """Fetch the full metadata record for a single template by ID."""
     col = _get_collection()
