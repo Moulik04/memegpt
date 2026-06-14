@@ -1,12 +1,12 @@
 from functools import lru_cache
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Required — must be set in .env or environment
-    anthropic_api_key: str
+    # Ollama local inference server
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "llama3.1:8b"
 
     # Server
     host: str = "0.0.0.0"
@@ -21,16 +21,6 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
-
-    @field_validator("anthropic_api_key")
-    @classmethod
-    def key_must_not_be_placeholder(cls, v: str) -> str:
-        if not v or v.startswith("sk-ant-YOUR"):
-            raise ValueError(
-                "ANTHROPIC_API_KEY is not set. Copy backend/.env.example to backend/.env "
-                "and fill in your key from https://console.anthropic.com/"
-            )
-        return v
 
 
 @lru_cache

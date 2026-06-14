@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Anthropic](https://img.shields.io/badge/Claude-Sonnet_4.6-D97706?style=flat-square)](https://anthropic.com)
+[![Ollama](https://img.shields.io/badge/Ollama-Llama_3.1-74AA9C?style=flat-square)](https://ollama.com)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-0.5-FF6B35?style=flat-square)](https://www.trychroma.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
 
@@ -72,7 +72,7 @@ User message
 | Layer | Technology | Why |
 |---|---|---|
 | API framework | FastAPI + Uvicorn | Async-first, auto-generates OpenAPI docs, Pydantic-native |
-| LLM | Anthropic Claude (`claude-sonnet-4-6`) | Structured JSON output, low hallucination rate on schema-constrained prompts |
+| LLM | Ollama + Llama 3.1 8B (local) | Runs entirely on-device — zero API cost, no rate limits, works offline |
 | Vector store | ChromaDB | Zero-infrastructure, cosine-similarity, persistent on-disk storage |
 | Image processing | Pillow (PIL) | Full control over pixel-level text placement and stroke rendering |
 | Schema validation | Pydantic v2 | End-to-end type safety from API boundary to compositor inputs |
@@ -129,26 +129,35 @@ memegpt/
 
 - Python 3.11+
 - Node.js 18+
-- An [Anthropic API key](https://console.anthropic.com/)
+- [Ollama](https://ollama.com) — free, runs locally, no account needed
 
-### Backend
+### 1. Start Ollama (one-time setup)
+
+```bash
+brew install ollama
+ollama pull llama3.1:8b   # ~4.7 GB download, done once
+ollama serve               # starts the local inference server
+```
+
+### 2. Backend
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# Add meme template images to backend/templates/
-# e.g. drake.jpg, distracted_boyfriend.jpg
-
 uvicorn main:app --reload
 ```
 
 Swagger UI available at `http://localhost:8000/docs`.
 
-### Frontend
+### 3. Seed templates (one-time)
+
+```bash
+cd ..
+python scripts/seed_templates.py   # downloads 20 meme images, seeds ChromaDB
+```
+
+### 4. Frontend
 
 ```bash
 cd frontend

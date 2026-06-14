@@ -23,9 +23,6 @@ dependencies = [
     # Vector DB
     "chromadb>=0.5.0",
 
-    # LLM
-    "anthropic>=0.28.0",
-
     # File handling / utilities
     "python-multipart>=0.0.9",
     "aiofiles>=23.2.1",
