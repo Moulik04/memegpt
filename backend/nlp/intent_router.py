@@ -1,15 +1,12 @@
 """
 LLM intent-routing layer — powered by a local Ollama model (zero cost).
 
-Improvements over v1:
-  - Few-shot RAG: semantically similar examples retrieved from ChromaDB
-    are injected into the system prompt so the model learns by example
-  - JSON normalization handles the three most common LLM format deviations
-    (wrapped by template_id key, field name aliases, etc.)
-  - Automatic retry with a strict minimal prompt + lower temperature on
-    first-attempt parse failure
-  - Hard fallback: always returns a valid IntentResponse even if Ollama
-    misbehaves twice
+Features:
+  - Few-shot RAG: semantically similar examples retrieved from ChromaDB injected into prompt
+  - avoid_templates: conversation memory prevents template repetition within a session
+  - JSON normalization: handles 3 common LLM output format deviations
+  - Retry with strict prompt + lower temperature on parse failure
+  - Hard fallback: always returns a valid IntentResponse — never raises to the caller
 """
 
 from __future__ import annotations
@@ -34,63 +31,102 @@ _FALLBACK_TEMPLATES = [
     "batman_slapping_robin",
 ]
 
+USE_WHEN: dict[str, str] = {
+    # --- Core templates (explicitly configured layouts) ---
+    "drake":                   "Rejecting one option and strongly preferring another — comparison or upgrade",
+    "distracted_boyfriend":    "Someone ignoring what they have to chase something new/tempting",
+    "grus_plan":               "A plan that has an obvious flaw revealed on the last step",
+    "woman_yelling_at_cat":    "Two-sided argument: someone raging vs calm unbothered response",
+    "expanding_brain":         "Escalating takes from basic/dumb to absurdly galaxy-brained",
+    "two_buttons":             "Agonizing between two equally tempting or equally bad choices",
+    "always_has_been":         "Revealing a dark or ironic truth that was always the case",
+    "batman_slapping_robin":   "Interrupting someone mid-sentence to correct them sharply",
+    "buff_doge_vs_cheems":     "Strong idealized past vs weak sad present — then vs now",
+    "surprised_pikachu":       "Shocked by the obvious, predictable consequences of your own actions",
+    "left_exit_12":            "Abandoning the sensible planned path to swerve toward something tempting",
+    "change_my_mind":          "Stating a bold controversial opinion at a table and daring anyone to argue",
+    "anakin_padme":            "Assuming a positive outcome that clearly isn't happening — silent confirmation",
+    "doge":                    "Wow, much, very, many — comically enthusiastic amazement or ironic enthusiasm",
+    "galaxy_brain":            "Increasingly absurd logic chain that arrives at a wild conclusion",
+    # --- Standard top/bottom single-panel templates ---
+    "this_is_fine":            "Pretending everything is okay while sitting in total chaos and disaster",
+    "success_kid":             "Celebrating a small, unexpected, or petty win with a fist pump",
+    "one_does_not_simply":     "Pointing out that something people think is easy is actually very hard",
+    "mocking_spongebob":       "Mockingly repeating what someone said in alternating caps to show it's dumb",
+    "hide_the_pain_harold":    "Smiling through obvious discomfort while pretending to be completely fine",
+    "futurama_fry":            "Squinting with suspicion — not sure if X is real or just another stupid thing",
+    "the_most_interesting_man": "A refined statement about something you simply never do — for grandiose declarations",
+    "y_u_no":                  "Demanding to know why someone doesn't just do the obvious thing already",
+    "ancient_aliens":          "Blaming aliens or a conspiracy for something with a perfectly ordinary explanation",
+    "first_world_problems":    "Dramatically suffering over a trivial first-world inconvenience while crying",
+    "bad_luck_brian":          "A person whose every attempt backfires spectacularly — worst case scenario every time",
+    "good_guy_greg":           "Someone being unexpectedly considerate and wholesome when they don't have to be",
+    "scumbag_steve":           "Someone acting obnoxious, selfish, or socially unaware in a painfully familiar way",
+    "grumpy_cat":              "Categorical absolute refusal or negativity — 'No.' to literally everything",
+    "philosoraptor":           "A deep philosophical question that sounds absurd but is surprisingly hard to answer",
+    "bernie_sanders":          "Bernie sitting stoically with mittens — for cozy, unbothered, or deadpan observations",
+    "stonks":                  "Making a terrible decision that somehow looks profitable on paper — absurd business logic",
+    "crying_cat":              "Genuine despair or sadness, possibly over something trivial",
+    "rollsafe":                "Using clever but flawed logic to avoid a problem — 'can't X if you never Y'",
+    "disaster_girl":           "Watching chaos unfold with a satisfied smirk — enjoying someone else's downfall",
+    "monkey_puppet":           "Awkwardly side-eyeing and looking away when something uncomfortable is said",
+    "arthur_fist":             "Clenching fist in barely-contained rage — about to completely lose it",
+    "kermit_tea":              "Passive-aggressively observing something about others while claiming it's none of your business",
+    "oprah":                   "Giving the same thing to absolutely everyone — wild generosity or unfair equal distribution",
+    "jack_sparrow":            "Being genuinely perplexed by something that technically makes sense but really shouldn't",
+    "giga_chad":               "Making an extremely confident take and refusing to elaborate, justify, or apologize",
+    "crying_laughing":         "Something is so absurd that you're genuinely unsure whether to laugh or cry",
+    "notice_me_senpai":        "Desperately wanting attention from someone who completely doesn't notice you",
+    "my_brain_is_full":        "So overwhelmed with information that you can't absorb any more",
+    "all_the_things":          "Enthusiastically deciding to do literally all the things at once",
+    "confession_bear":         "Admitting something embarrassing, shameful, or guilty in a deadpan format",
+    "third_world_skeptical":   "Raising an eyebrow at a claim that sounds too convenient or good to be true",
+    "socially_awkward_penguin": "Being completely paralyzed by social anxiety in a perfectly normal situation",
+    "bad_pun_dog":             "A dog grinning smugly after making an absolutely terrible pun — for wordplay",
+    "sean_bean_lotr":          "Brace yourself — something is coming; or pointing out something inevitable",
+    "10_guy":                  "An oblivious person making a surprisingly deep or dumb observation while clearly out of it",
+    "college_liberal":         "An idealistic take on a social issue that sounds good on paper but misses reality",
+    "overly_attached_girlfriend": "When someone is way too clingy, possessive, or intense in a relationship",
+    "first_day_on_internet":   "Someone discovering an obviously old internet meme and sharing it like it's new",
+    "grandma_finds_internet":  "An older person encountering technology or internet culture and being baffled",
+    "harold_hide_pain":        "Smiling through obvious pain — same vibe as hide_the_pain_harold",
+    "meme_man":                "Stonks-adjacent — making an extremely logical or completely unhinged observation",
+    "chad":                    "Ultra-confident stance on something that would normally be controversial or nerdy",
+    "virgin_vs_chad":          "Contrasting the insecure weak approach with the ultra-confident chad approach",
+    "trade_offer":             "I receive X. You receive Y — for lopsided or ironic deal proposals",
+    "they_are_the_same_picture": "Pointing out that two things people treat as different are actually identical",
+    "wait_that_s_illegal":     "Realizing something you've been doing is technically not allowed",
+    "i_was_told":              "Expecting one thing and getting something completely different",
+    "uno_reverse":             "Turning someone's argument or action right back on them",
+    "megamind":                "No one said you couldn't do the thing — technically correct loophole logic",
+    "is_this_a_pigeon":        "Confidently misidentifying something obvious — labeling the wrong thing incorrectly",
+    "ight_imma_head_out":      "Spongebob getting up to leave — when something awkward or bad happens and you just go",
+    "hide_the_pain_harold":    "Smiling through obvious pain or discomfort while pretending everything is fine",
+}
 
-# ---------------------------------------------------------------------------
-# Template catalog builder
-# ---------------------------------------------------------------------------
 
 def _build_template_catalog(template_ids: list[str]) -> dict:
-    USE_WHEN: dict[str, str] = {
-        "drake":                  "Rejecting one option, strongly preferring another",
-        "distracted_boyfriend":   "Someone abandoning what they have for something new/tempting",
-        "grus_plan":              "A plan that backfires on the last step due to an overlooked flaw",
-        "woman_yelling_at_cat":   "Two-sided argument: someone angrily insisting vs calm unbothered response",
-        "expanding_brain":        "Escalating takes from dumb to absurdly galaxy-brained",
-        "two_buttons":            "Struggling to choose between two equally tempting or bad options",
-        "this_is_fine":           "Pretending everything is okay when it's clearly not",
-        "change_my_mind":         "Stating a controversial opinion and daring anyone to disagree",
-        "success_kid":            "Celebrating a small, unexpected, or petty win",
-        "one_does_not_simply":    "Pointing out that something is much harder than it looks",
-        "doge":                   "Expressing amazement or sarcastic enthusiasm with 'wow' / 'such' phrases",
-        "surprised_pikachu":      "Shocked by obvious, predictable consequences of your own actions",
-        "mocking_spongebob":      "Mockingly repeating what someone said in alternating caps sarcasm",
-        "hide_the_pain_harold":   "Smiling through obvious pain or pretending to be fine",
-        "buff_doge_vs_cheems":    "Strong/idealized version vs weak/sad version — then vs now",
-        "batman_slapping_robin":  "Interrupting and correcting someone mid-sentence",
-        "always_has_been":        "Revealing a dark or ironic truth that was always the case",
-        "left_exit_12":           "Swerving away from the sensible path for something tempting",
-        "galaxy_brain":           "Convoluted reasoning that arrives at a wild conclusion",
-        "anakin_padme":           "Assuming a positive outcome that clearly isn't happening",
-    }
-
     catalog: dict[str, dict] = {}
     for tid in template_ids:
         config = get_config(tid)
         boxes = config.box_descriptions or DEFAULT_BOX_DESCRIPTIONS
         catalog[tid] = {
-            "use_when": USE_WHEN.get(tid, "General purpose meme"),
+            "use_when": USE_WHEN.get(tid, "General purpose meme with top and bottom text captions"),
             "text_boxes": boxes,
         }
     return catalog
 
 
-# ---------------------------------------------------------------------------
-# JSON normalization — handle LLM format deviations without crashing
-# ---------------------------------------------------------------------------
-
 def _normalize_llm_response(data: dict, known_ids: set[str]) -> dict:
     """
-    Handles the three most common ways Ollama deviates from the expected format:
-
+    Handle common LLM JSON format deviations:
     1. Already correct: {"template_id": "...", "texts": {...}}
-    2. Wrapped by template_id key: {"drake": {"texts": {...}, "reasoning": "..."}}
+    2. Wrapped by template_id: {"drake": {"texts": {...}, "reasoning": "..."}}
     3. Field name aliases: {"id": "...", "captions": {...}}
     """
-    # Case 1: already correct
     if "template_id" in data and "texts" in data:
         return data
 
-    # Case 2: the template_id was used as the outer key
     for key, value in data.items():
         if isinstance(value, dict) and "texts" in value:
             return {
@@ -99,7 +135,6 @@ def _normalize_llm_response(data: dict, known_ids: set[str]) -> dict:
                 "reasoning": value.get("reasoning", ""),
             }
 
-    # Case 3: field name aliases
     normalized: dict = {}
     for alias in ("template_id", "id", "meme_id", "template", "meme"):
         if alias in data:
@@ -113,12 +148,20 @@ def _normalize_llm_response(data: dict, known_ids: set[str]) -> dict:
         normalized["reasoning"] = data.get("reasoning", data.get("reason", ""))
         return normalized
 
-    return data  # return as-is and let pydantic give the real error message
+    return data
 
 
-# ---------------------------------------------------------------------------
-# Prompt templates
-# ---------------------------------------------------------------------------
+def _format_few_shot(examples: list[dict]) -> str:
+    if not examples:
+        return ""
+    lines = ["Here are examples of how similar messages were handled:\n"]
+    for ex in examples:
+        lines.append(
+            f'  User: "{ex["user_message"]}"\n'
+            f'  → template_id: "{ex["template_id"]}", texts: {json.dumps(ex["texts"])}\n'
+        )
+    return "\n".join(lines) + "\n\n"
+
 
 _SYSTEM_TEMPLATE = """\
 You are MemeGPT. Your ONLY job is to pick the perfect meme template for a user message \
@@ -129,7 +172,7 @@ Think step by step (internally):
 2. Which template's structure best mirrors that emotional arc?
 3. What exact text makes this funny and contextually on-point?
 
-{few_shot_block}Available templates and their text boxes:
+{few_shot_block}{avoid_block}Available templates and their text boxes:
 {template_catalog}
 
 You MUST respond with ONLY a valid JSON object — no explanation, no markdown, nothing else:
@@ -153,19 +196,14 @@ Rules:
 _RETRY_TEMPLATE = """\
 You are a JSON API. The user said: "{user_message}"
 
-Return ONLY this exact JSON, nothing else (no markdown, no explanation):
+Return ONLY this exact JSON, nothing else:
 {{"template_id": "PICK_ONE", "texts": {{"BOX_LABEL": "CAPTION"}}, "reasoning": "WHY"}}
 
 Available template_ids: {template_ids}
 
-Pick the most fitting template. Fill in the text boxes with funny, on-point captions.
-Output raw JSON only.\
+Output raw JSON only — no markdown, no explanation.\
 """
 
-
-# ---------------------------------------------------------------------------
-# Ollama call helper
-# ---------------------------------------------------------------------------
 
 async def _call_ollama(
     client: httpx.AsyncClient,
@@ -200,54 +238,44 @@ def _strip_markdown(raw: str) -> str:
     return raw.strip()
 
 
-def _format_few_shot(examples: list[dict]) -> str:
-    if not examples:
-        return ""
-    lines = ["Here are examples of how similar messages were handled:\n"]
-    for ex in examples:
-        texts_str = json.dumps(ex["texts"])
-        lines.append(
-            f'  User: "{ex["user_message"]}"\n'
-            f'  → template_id: "{ex["template_id"]}", texts: {texts_str}\n'
-        )
-    return "\n".join(lines) + "\n\n"
-
-
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-async def parse_intent(user_message: str) -> IntentResponse:
+async def parse_intent(
+    user_message: str,
+    avoid_templates: list[str] | None = None,
+) -> IntentResponse:
     """
-    Send `user_message` to the local Ollama model and parse the structured
-    response into an IntentResponse with per-box texts.
+    Route a user message to the best meme template + captions.
 
-    Retries once with a minimal prompt if the first attempt fails to parse.
-    Always returns a valid IntentResponse — falls back to a hardcoded drake
-    meme if both attempts fail.
+    avoid_templates: list of recently used template IDs in this conversation —
+    injected into the prompt to prevent repetition.
     """
     settings = get_settings()
     template_ids = list_template_ids() or _FALLBACK_TEMPLATES
     known_id_set = set(template_ids)
     catalog = _build_template_catalog(template_ids)
 
-    # Inject semantically similar examples as few-shot context
     examples = get_similar_examples(user_message, n_results=3)
     few_shot_block = _format_few_shot(examples)
+
+    avoid_block = ""
+    if avoid_templates:
+        avoid_block = (
+            f"IMPORTANT — DO NOT repeat these recently used templates: "
+            f"{', '.join(avoid_templates)}. Pick something different and fresh.\n\n"
+        )
 
     system_prompt = _SYSTEM_TEMPLATE.format(
         template_catalog=json.dumps(catalog, indent=2),
         few_shot_block=few_shot_block,
+        avoid_block=avoid_block,
     )
 
     async with httpx.AsyncClient() as client:
-        # Attempt 1 — rich system prompt with few-shot examples
+        # Attempt 1 — rich prompt with few-shot + avoid block
         raw = await _call_ollama(client, settings, [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ])
         raw = _strip_markdown(raw)
-
         try:
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
@@ -255,7 +283,7 @@ async def parse_intent(user_message: str) -> IntentResponse:
         except (json.JSONDecodeError, ValidationError, ValueError, KeyError):
             pass
 
-        # Attempt 2 — minimal strict prompt, lower temperature for more reliable JSON
+        # Attempt 2 — minimal strict prompt at low temperature
         retry_prompt = _RETRY_TEMPLATE.format(
             user_message=user_message,
             template_ids=", ".join(template_ids[:14]),
@@ -264,7 +292,6 @@ async def parse_intent(user_message: str) -> IntentResponse:
             {"role": "user", "content": retry_prompt},
         ], temperature=0.2)
         raw = _strip_markdown(raw)
-
         try:
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
@@ -272,7 +299,7 @@ async def parse_intent(user_message: str) -> IntentResponse:
         except (json.JSONDecodeError, ValidationError, ValueError, KeyError):
             pass
 
-    # Hard fallback — always returns something rather than 500ing
+    # Hard fallback — always returns something rather than 500-ing
     return IntentResponse(
         template_id="hide_the_pain_harold",
         texts={

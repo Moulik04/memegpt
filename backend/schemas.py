@@ -113,3 +113,20 @@ class ExplainResponse(BaseModel):
     tags: list[str]
     usage_count: int
     recent_uses: list[dict[str, Any]]
+
+
+# ---------------------------------------------------------------------------
+# Feedback layer
+# ---------------------------------------------------------------------------
+
+class FeedbackRequest(BaseModel):
+    template_id: str
+    rating: Literal["up", "down"]
+    texts: dict[str, str] = {}
+    conversation_id: Optional[str] = None
+    user_message: Optional[str] = None  # used to create positive few-shot example on 👍
+
+
+class FeedbackResponse(BaseModel):
+    status: str
+    rating: Literal["up", "down"]

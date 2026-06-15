@@ -63,13 +63,12 @@ DEFAULT_BOX_DESCRIPTIONS = {
 }
 
 # ---------------------------------------------------------------------------
-# Per-template configs
+# Per-template configs — multi-panel or non-standard layouts
 # ---------------------------------------------------------------------------
 TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
 
-    # Drake Hotline Bling
+    # ── Drake Hotline Bling ──────────────────────────────────────────────────
     # 2×2 grid: left column = Drake's face, right column = text
-    # Top row = rejection, Bottom row = approval
     "drake": TemplateConfig(
         template_id="drake",
         text_boxes=[
@@ -78,12 +77,12 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         ],
         box_descriptions={
             "rejected_option": "The thing being rejected/disliked (top panel)",
-            "approved_option": "The thing being preferred/approved (bottom panel — this is the punchline)",
+            "approved_option": "The thing being preferred/approved (bottom panel — the punchline)",
         },
     ),
 
-    # Distracted Boyfriend
-    # Landscape: other woman (left, red dress), boyfriend (center), girlfriend (right)
+    # ── Distracted Boyfriend ────────────────────────────────────────────────
+    # Landscape: other woman (left), boyfriend (center), girlfriend (right)
     "distracted_boyfriend": TemplateConfig(
         template_id="distracted_boyfriend",
         text_boxes=[
@@ -92,13 +91,14 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             TextBoxConfig("girlfriend",  x_pct=68, y_pct=2, w_pct=30, h_pct=16, font_size_pct=4.5, uppercase=False),
         ],
         box_descriptions={
-            "other_woman": "The tempting new thing the person is distracted by (left, in red dress)",
-            "boyfriend":   "The person/subject doing the ignoring — often 'me' or the user (center)",
+            "other_woman": "The tempting new thing the person is distracted by (left, red dress)",
+            "boyfriend":   "The person doing the ignoring — often 'me' or the user (center)",
             "girlfriend":  "The thing being neglected/abandoned (right)",
         },
     ),
 
-    # Gru's Plan — 2×2 panels; text overlays top portion of each quadrant
+    # ── Gru's Plan ──────────────────────────────────────────────────────────
+    # 2×2 panels; text overlays top portion of each quadrant
     "grus_plan": TemplateConfig(
         template_id="grus_plan",
         text_boxes=[
@@ -111,11 +111,11 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             "step_1": "First step of the plan (top-left panel)",
             "step_2": "Second step (top-right panel)",
             "step_3": "Third step — this is where it goes wrong (bottom-left panel)",
-            "step_4": "Fourth step — same as step 2 but Gru is horrified (bottom-right panel). Should mirror or repeat step 2 to reveal the flaw.",
+            "step_4": "Fourth step — same as step 2 but Gru is horrified (bottom-right). Mirror step 2 to reveal the flaw.",
         },
     ),
 
-    # Woman Yelling at Cat — two panels side by side
+    # ── Woman Yelling at Cat ─────────────────────────────────────────────────
     "woman_yelling_at_cat": TemplateConfig(
         template_id="woman_yelling_at_cat",
         text_boxes=[
@@ -123,12 +123,13 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             TextBoxConfig("confused_cat",  x_pct=52, y_pct=65, w_pct=46, h_pct=32, font_size_pct=5),
         ],
         box_descriptions={
-            "yelling_woman": "What the person/group is angrily insisting or demanding (left panel)",
+            "yelling_woman": "What the person is angrily insisting/demanding (left panel)",
             "confused_cat":  "The calm, unbothered response or reality (right panel — the cat)",
         },
     ),
 
-    # Expanding Brain — 4 rows; text in right half of each row
+    # ── Expanding Brain ──────────────────────────────────────────────────────
+    # 4 rows; text in right half of each row
     "expanding_brain": TemplateConfig(
         template_id="expanding_brain",
         text_boxes=[
@@ -145,7 +146,25 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         },
     ),
 
-    # Two Buttons — text labels on the two buttons and nervous person
+    # ── Galaxy Brain ─────────────────────────────────────────────────────────
+    # Same 4-row layout as Expanding Brain (text on right, brain image on left)
+    "galaxy_brain": TemplateConfig(
+        template_id="galaxy_brain",
+        text_boxes=[
+            TextBoxConfig("logic_1", x_pct=50, y_pct=2,  w_pct=48, h_pct=21, font_size_pct=4.5),
+            TextBoxConfig("logic_2", x_pct=50, y_pct=26, w_pct=48, h_pct=21, font_size_pct=4.5),
+            TextBoxConfig("logic_3", x_pct=50, y_pct=51, w_pct=48, h_pct=21, font_size_pct=4.5),
+            TextBoxConfig("logic_4", x_pct=50, y_pct=76, w_pct=48, h_pct=21, font_size_pct=4.5),
+        ],
+        box_descriptions={
+            "logic_1": "The starting premise (reasonable)",
+            "logic_2": "The reasoning gets a bit stretched",
+            "logic_3": "Now it's getting absurd",
+            "logic_4": "The wild galaxy-brained conclusion everyone arrives at",
+        },
+    ),
+
+    # ── Two Buttons ──────────────────────────────────────────────────────────
     "two_buttons": TemplateConfig(
         template_id="two_buttons",
         text_boxes=[
@@ -158,20 +177,20 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         },
     ),
 
-    # Always Has Been
+    # ── Always Has Been ──────────────────────────────────────────────────────
     "always_has_been": TemplateConfig(
         template_id="always_has_been",
         text_boxes=[
-            TextBoxConfig("realization", x_pct=3,  y_pct=5,  w_pct=55, h_pct=30, font_size_pct=5.5),
+            TextBoxConfig("realization",   x_pct=3,  y_pct=5,  w_pct=55, h_pct=30, font_size_pct=5.5),
             TextBoxConfig("always_has_been", x_pct=48, y_pct=58, w_pct=50, h_pct=35, font_size_pct=5),
         ],
         box_descriptions={
-            "realization": "The surprising realization — 'Wait, [X] was always [Y]?'",
+            "realization":    "The surprising realization — 'Wait, [X] was always [Y]?'",
             "always_has_been": "The dark confirmation — 'Always has been.' (with gun pointed)",
         },
     ),
 
-    # Batman Slapping Robin
+    # ── Batman Slapping Robin ────────────────────────────────────────────────
     "batman_slapping_robin": TemplateConfig(
         template_id="batman_slapping_robin",
         text_boxes=[
@@ -179,25 +198,25 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             TextBoxConfig("batman_slap", x_pct=50, y_pct=48, w_pct=47, h_pct=45, font_size_pct=5.5),
         ],
         box_descriptions={
-            "robin_says":  "What Robin (the person being corrected) says — the wrong/naive take",
-            "batman_slap": "Batman's correction — what shuts down the wrong take",
+            "robin_says":  "What Robin (the wrong one) says — the naive or incorrect take",
+            "batman_slap": "Batman's correction — what shuts the wrong take down",
         },
     ),
 
-    # Buff Doge vs Cheems
+    # ── Buff Doge vs Cheems ──────────────────────────────────────────────────
     "buff_doge_vs_cheems": TemplateConfig(
         template_id="buff_doge_vs_cheems",
         text_boxes=[
-            TextBoxConfig("buff_doge",  x_pct=2,  y_pct=2, w_pct=44, h_pct=25, font_size_pct=5),
-            TextBoxConfig("cheems",     x_pct=54, y_pct=2, w_pct=44, h_pct=25, font_size_pct=5),
+            TextBoxConfig("buff_doge", x_pct=2,  y_pct=2, w_pct=44, h_pct=25, font_size_pct=5),
+            TextBoxConfig("cheems",    x_pct=54, y_pct=2, w_pct=44, h_pct=25, font_size_pct=5),
         ],
         box_descriptions={
-            "buff_doge":  "The strong/idealized past or better version (left)",
-            "cheems":     "The weak/sad present or lesser version (right)",
+            "buff_doge": "The strong/idealized past or better version (left)",
+            "cheems":    "The weak/sad present or lesser version (right)",
         },
     ),
 
-    # Surprised Pikachu — simple bottom caption
+    # ── Surprised Pikachu ────────────────────────────────────────────────────
     "surprised_pikachu": TemplateConfig(
         template_id="surprised_pikachu",
         text_boxes=[
@@ -207,6 +226,72 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         box_descriptions={
             "setup":    "The action taken that led to an obvious consequence",
             "reaction": "The shocked reaction — Pikachu's face IS the punchline",
+        },
+    ),
+
+    # ── Left Exit 12 Off Ramp ────────────────────────────────────────────────
+    # Highway scene: car swerving to take exit
+    "left_exit_12": TemplateConfig(
+        template_id="left_exit_12",
+        text_boxes=[
+            TextBoxConfig("car",         x_pct=62, y_pct=5,  w_pct=36, h_pct=22, font_size_pct=4.5),
+            TextBoxConfig("straight",    x_pct=62, y_pct=48, w_pct=36, h_pct=22, font_size_pct=4.5),
+            TextBoxConfig("exit",        x_pct=5,  y_pct=65, w_pct=45, h_pct=28, font_size_pct=4.5),
+        ],
+        box_descriptions={
+            "car":      "Who or what is swerving/making the choice (the driver)",
+            "straight": "The sensible planned path being abandoned (the highway going straight)",
+            "exit":     "The tempting thing being swerved toward (the exit ramp)",
+        },
+    ),
+
+    # ── Change My Mind ───────────────────────────────────────────────────────
+    # Man at table with a sign/board — text goes on the sign
+    "change_my_mind": TemplateConfig(
+        template_id="change_my_mind",
+        text_boxes=[
+            TextBoxConfig("opinion", x_pct=24, y_pct=52, w_pct=52, h_pct=40, font_size_pct=5, uppercase=False),
+        ],
+        box_descriptions={
+            "opinion": "The bold or controversial opinion written on the table sign — just state the opinion, don't add 'change my mind'",
+        },
+    ),
+
+    # ── Anakin Padmé (4-panel Star Wars) ────────────────────────────────────
+    # 2×2: top-left=Anakin statement, top-right=Padme assumption, bottom-left=Anakin silent, bottom-right=Padme worried
+    "anakin_padme": TemplateConfig(
+        template_id="anakin_padme",
+        text_boxes=[
+            TextBoxConfig("anakin_says",   x_pct=3,  y_pct=3,  w_pct=44, h_pct=16, font_size_pct=3.8, uppercase=False),
+            TextBoxConfig("padme_assumes", x_pct=53, y_pct=3,  w_pct=44, h_pct=16, font_size_pct=3.8, uppercase=False),
+            TextBoxConfig("anakin_silent", x_pct=3,  y_pct=53, w_pct=44, h_pct=16, font_size_pct=3.8, uppercase=False),
+            TextBoxConfig("padme_nervous", x_pct=53, y_pct=53, w_pct=44, h_pct=16, font_size_pct=3.8, uppercase=False),
+        ],
+        box_descriptions={
+            "anakin_says":   "What Anakin declares or announces (top-left — sets up the scenario)",
+            "padme_assumes": "What Padme hopefully assumes will follow — 'So we'll do X, right?' (top-right)",
+            "anakin_silent": "Anakin says nothing — leave this blank or use '...' (bottom-left)",
+            "padme_nervous": "Padme's nervous repeat — 'right?' (bottom-right, the punchline)",
+        },
+    ),
+
+    # ── Doge ─────────────────────────────────────────────────────────────────
+    # Scattered Comic-Sans style text around a Shiba Inu — 5 position zones
+    "doge": TemplateConfig(
+        template_id="doge",
+        text_boxes=[
+            TextBoxConfig("wow",    x_pct=2,  y_pct=2,  w_pct=38, h_pct=14, font_size_pct=6, font_color="#FF69B4", uppercase=False),
+            TextBoxConfig("such",   x_pct=60, y_pct=5,  w_pct=38, h_pct=14, font_size_pct=6, font_color="#FFD700", uppercase=False),
+            TextBoxConfig("very",   x_pct=2,  y_pct=40, w_pct=35, h_pct=14, font_size_pct=6, font_color="#00BFFF", uppercase=False),
+            TextBoxConfig("much",   x_pct=63, y_pct=38, w_pct=35, h_pct=14, font_size_pct=6, font_color="#7CFC00", uppercase=False),
+            TextBoxConfig("many",   x_pct=15, y_pct=72, w_pct=70, h_pct=18, font_size_pct=6, font_color="#FF6347", uppercase=False),
+        ],
+        box_descriptions={
+            "wow":  "Top-left — 'wow' phrase (e.g. 'wow such code')",
+            "such": "Top-right — 'such' phrase (e.g. 'such amaze')",
+            "very": "Middle-left — 'very' phrase (e.g. 'very confused')",
+            "much": "Middle-right — 'much' phrase (e.g. 'much wow')",
+            "many": "Bottom-center — final phrase (e.g. 'many meme, very format')",
         },
     ),
 }
@@ -221,5 +306,3 @@ def get_config(template_id: str) -> TemplateConfig:
         text_boxes=DEFAULT_BOXES,
         box_descriptions=DEFAULT_BOX_DESCRIPTIONS,
     )
-
-

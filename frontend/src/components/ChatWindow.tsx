@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { sendChat } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { postFeedback, sendChatStream } from "@/lib/api";
+import { FeedbackButtons } from "./FeedbackButtons";
 import { MessageBubble } from "./MessageBubble";
+import { ThinkingBubble } from "./ThinkingBubble";
 import type { ChatMessage } from "@/types";
+
+interface ThinkingState {
+  message: string;
+}
 
 export function ChatWindow() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [thinking, setThinking] = useState<ThinkingState | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
 
@@ -16,7 +23,29 @@ export function ChatWindow() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, thinking]);
+
+  const handleFeedback = useCallback(
+    async (messageIndex: number, rating: "up" | "down") => {
+      const msg = messages[messageIndex];
+      if (!msg || msg.role !== "assistant") return;
+      // Look back for the user message that triggered this meme
+      const userMsg = messages
+        .slice(0, messageIndex)
+        .reverse()
+        .find((m) => m.role === "user");
+      await postFeedback({
+        conversation_id: conversationId,
+        template_id: msg.template_id || "",
+        texts: {},
+        rating,
+        user_message: userMsg?.content,
+      }).catch(() => {
+        // Non-critical — fail silently
+      });
+    },
+    [messages, conversationId]
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,15 +62,30 @@ export function ChatWindow() {
     setInput("");
     setLoading(true);
     setError(null);
+    setThinking({ message: "Reading your vibe..." });
 
     try {
-      const res = await sendChat(text, conversationId);
-      setConversationId(res.conversation_id);
-      setMessages((prev) => [...prev, res.message]);
+      await sendChatStream(text, conversationId, (event) => {
+        if (event.type === "thinking") {
+          setThinking({ message: event.message });
+        } else if (event.type === "done") {
+          setThinking(null);
+          setConversationId(event.conversation_id);
+          const botMsg: ChatMessage = {
+            ...event.message,
+            template_id: event.template_used,
+          };
+          setMessages((prev) => [...prev, botMsg]);
+        } else if (event.type === "error") {
+          setError(event.message);
+          setThinking(null);
+        }
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
+      setThinking(null);
     }
   }
 
@@ -55,15 +99,19 @@ export function ChatWindow() {
           </p>
         )}
         {messages.map((msg, i) => (
-          <MessageBubble key={i} message={msg} />
+          <MessageBubble
+            key={i}
+            message={msg}
+            onFeedback={
+              msg.role === "assistant" && msg.meme_url
+                ? (rating) => handleFeedback(i, rating)
+                : undefined
+            }
+          />
         ))}
-        {loading && (
-          <div className="flex justify-start mb-3">
-            <div className="bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-400 animate-pulse">
-              Generating meme...
-            </div>
-          </div>
-        )}
+
+        {thinking && <ThinkingBubble message={thinking.message} />}
+
         {error && (
           <p className="text-center text-red-400 text-xs mt-2">{error}</p>
         )}

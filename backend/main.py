@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
-from routers import chat, explain, generate
+from routers import chat, explain, feedback, generate
 from vector_db.chroma_client import init_chroma
 from vector_db.examples_store import _get_collection as _init_examples
 
@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="MemeGPT API",
     description="A chatbot that communicates via memes — powered by LLM intent routing, ChromaDB RAG, and Pillow image composition.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -40,6 +40,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
 app.include_router(explain.router, prefix="/explain", tags=["explain"])
 app.include_router(generate.router, prefix="/generate", tags=["generate"])
+app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])
 
 
 @app.get("/health", tags=["meta"])

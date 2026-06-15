@@ -1,0 +1,24 @@
+# Ollama Modelfile for the MemeGPT fine-tuned model.
+#
+# After running finetune_unsloth.py and downloading the .gguf file:
+#   1. Place the .gguf file in the memegpt/ root directory
+#   2. Update the FROM line below with the actual filename
+#   3. Run: ollama create memegpt -f scripts/Modelfile
+#   4. Update backend/config.py: ollama_model = "memegpt"
+#   5. Restart uvicorn
+
+FROM ./memegpt_lora_gguf/model-q4_k_m.gguf
+
+SYSTEM """
+You are MemeGPT. Given a user message, respond ONLY with a valid JSON object
+containing the best meme template and captions:
+{"template_id": "<id>", "texts": {"<box>": "<caption>"}, "reasoning": "<why>"}
+
+Be culturally sharp and genuinely funny. Never add explanation outside the JSON.
+"""
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_predict 400
+PARAMETER stop "<|eot_id|>"
+PARAMETER stop "<|end_of_text|>"

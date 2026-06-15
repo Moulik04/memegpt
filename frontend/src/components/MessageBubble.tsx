@@ -1,13 +1,15 @@
 "use client";
 
 import { MemeDisplay } from "./MemeDisplay";
+import { FeedbackButtons } from "./FeedbackButtons";
 import type { ChatMessage } from "@/types";
 
 interface Props {
   message: ChatMessage;
+  onFeedback?: (rating: "up" | "down") => void;
 }
 
-export function MessageBubble({ message }: Props) {
+export function MessageBubble({ message, onFeedback }: Props) {
   const isUser = message.role === "user";
 
   return (
@@ -21,7 +23,10 @@ export function MessageBubble({ message }: Props) {
       >
         {message.content && !message.meme_url && <p>{message.content}</p>}
         {message.meme_url && (
-          <MemeDisplay url={message.meme_url} alt={message.content} />
+          <>
+            <MemeDisplay url={message.meme_url} alt={message.content} />
+            {onFeedback && <FeedbackButtons onFeedback={onFeedback} />}
+          </>
         )}
       </div>
     </div>
