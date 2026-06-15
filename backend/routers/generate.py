@@ -12,17 +12,13 @@ async def generate(request: MemeGenerationRequest) -> MemeGenerationResponse:
     """
     On-demand meme generation endpoint.
 
-    Accepts a template_id and a dict of label→text pairs, renders
-    the image via Pillow, and returns a hosted URL.
+    Accepts a template_id and a dict of label→text pairs matching
+    the template's TextBoxConfig labels (e.g. {"rejected_option": "...", "approved_option": "..."}).
     """
-    top_text = request.texts.get("top_text", "")
-    bottom_text = request.texts.get("bottom_text", "")
-
     try:
         meme_url = await compose_meme(
             template_id=request.template_id,
-            top_text=top_text,
-            bottom_text=bottom_text,
+            texts=request.texts,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -40,15 +36,11 @@ async def generate_file(
     top: str = "",
     bottom: str = "",
 ) -> FileResponse:
-    """
-    Convenience GET endpoint — returns the raw image file directly.
-    Useful for quick browser previews during development.
-    """
+    """Convenience GET — renders with top/bottom text and returns the raw image file."""
     try:
         meme_path = await compose_meme(
             template_id=template_id,
-            top_text=top,
-            bottom_text=bottom,
+            texts={"top_text": top, "bottom_text": bottom},
             return_path=True,
         )
     except FileNotFoundError as exc:

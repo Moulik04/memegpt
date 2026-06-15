@@ -19,7 +19,7 @@ export function MessageBubble({ message }: Props) {
             : "bg-gray-800 text-gray-100 rounded-bl-sm"
           }`}
       >
-        {message.content && <p>{message.content}</p>}
+        {message.content && !message.meme_url && <p>{message.content}</p>}
         {message.meme_url && (
           <MemeDisplay url={message.meme_url} alt={message.content} />
         )}

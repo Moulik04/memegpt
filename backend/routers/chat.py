@@ -14,38 +14,34 @@ async def chat(request: ChatRequest) -> ChatResponse:
     Main conversational endpoint.
 
     Flow:
-      1. NLP layer parses the user message into a structured IntentResponse.
-      2. ChromaDB is queried to surface contextually similar past memes.
-      3. Pillow compositor renders the meme and returns a static URL.
+      1. NLP layer parses the user message into a structured IntentResponse
+         with per-template text box labels (e.g. rejected_option, approved_option).
+      2. ChromaDB is queried for contextually similar past memes (RAG context).
+      3. Pillow compositor renders the meme using the template's layout config.
       4. Usage is logged back to ChromaDB for future retrieval.
     """
-    # Step 1 — intent routing
     intent = await parse_intent(request.message)
 
-    # Step 2 — optional: surface similar past memes for context (not blocking)
     _context = query_similar_memes(request.message, n_results=3)
 
-    # Step 3 — generate image
     try:
         meme_url = await compose_meme(
             template_id=intent.template_id,
-            top_text=intent.top_text,
-            bottom_text=intent.bottom_text,
+            texts=intent.texts,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    # Step 4 — log usage
     log_usage(
         template_id=intent.template_id,
-        top_text=intent.top_text,
-        bottom_text=intent.bottom_text,
+        top_text=next(iter(intent.texts.values()), ""),
+        bottom_text=list(intent.texts.values())[-1] if len(intent.texts) > 1 else "",
         conversation_id=request.conversation_id or "",
     )
 
     reply = ChatMessage(
         role="assistant",
-        content=f"{intent.top_text} / {intent.bottom_text}",
+        content="",       # frontend shows only the meme image
         meme_url=meme_url,
     )
 

@@ -78,8 +78,7 @@ class IntentResponse(BaseModel):
     """Structured output produced by the LLM intent-routing step."""
 
     template_id: str
-    top_text: str
-    bottom_text: str
+    texts: dict[str, str]   # text_box_label → caption, e.g. {"rejected_option": "..."}
     reasoning: Optional[str] = None
 
 
