@@ -13,8 +13,14 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
-    # CORS — comma-separated origins allowed for browser access
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # CORS — all common local dev ports; set CORS_ORIGINS in .env for production
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ]
 
     model_config = SettingsConfigDict(
         env_file=".env",
