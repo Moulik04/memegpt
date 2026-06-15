@@ -17,7 +17,7 @@ from image_processing.compositor import compose_meme
 from memory.conversation_store import add_turn, get_recent_templates
 from nlp.intent_router import parse_intent
 from schemas import ChatMessage, ChatRequest, ChatResponse
-from vector_db.chroma_client import log_usage, query_similar_memes
+from vector_db.chroma_client import log_usage
 
 router = APIRouter()
 
@@ -52,9 +52,6 @@ async def chat(request: ChatRequest):
             yield _sse({"type": "error", "message": str(exc)})
             return
 
-        # RAG context (informational — logged but not yet used in prompt)
-        query_similar_memes(request.message, n_results=3)
-
         friendly_name = intent.template_id.replace("_", " ")
         yield _sse({
             "type": "thinking",
@@ -88,7 +85,7 @@ async def chat(request: ChatRequest):
             template_used=intent.template_id,
         )
 
-        yield _sse({"type": "done", **response.model_dump()})
+        yield _sse({"type": "done", **response.model_dump(mode="json")})
 
     return StreamingResponse(
         event_stream(),

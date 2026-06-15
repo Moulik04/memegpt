@@ -82,13 +82,14 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
     ),
 
     # ── Distracted Boyfriend ────────────────────────────────────────────────
-    # Landscape: other woman (left), boyfriend (center), girlfriend (right)
+    # Landscape: other_woman walks in from left, boyfriend center turns to look,
+    # girlfriend right looks upset. Labels placed near each person's body.
     "distracted_boyfriend": TemplateConfig(
         template_id="distracted_boyfriend",
         text_boxes=[
-            TextBoxConfig("other_woman", x_pct=2,  y_pct=2, w_pct=28, h_pct=16, font_size_pct=4.5, uppercase=False),
-            TextBoxConfig("boyfriend",   x_pct=32, y_pct=2, w_pct=34, h_pct=16, font_size_pct=4.5, uppercase=False),
-            TextBoxConfig("girlfriend",  x_pct=68, y_pct=2, w_pct=30, h_pct=16, font_size_pct=4.5, uppercase=False),
+            TextBoxConfig("other_woman", x_pct=2,  y_pct=65, w_pct=30, h_pct=28, font_size_pct=5),
+            TextBoxConfig("boyfriend",   x_pct=30, y_pct=4,  w_pct=38, h_pct=20, font_size_pct=5),
+            TextBoxConfig("girlfriend",  x_pct=62, y_pct=4,  w_pct=36, h_pct=20, font_size_pct=5),
         ],
         box_descriptions={
             "other_woman": "The tempting new thing the person is distracted by (left, red dress)",
@@ -272,6 +273,56 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             "padme_assumes": "What Padme hopefully assumes will follow — 'So we'll do X, right?' (top-right)",
             "anakin_silent": "Anakin says nothing — leave this blank or use '...' (bottom-left)",
             "padme_nervous": "Padme's nervous repeat — 'right?' (bottom-right, the punchline)",
+        },
+    ),
+
+    # ── This Is Fine ─────────────────────────────────────────────────────────
+    # 2-panel landscape: left = dog sitting in fire, right = dog close-up
+    # Setup text → top of LEFT half; reaction text → bottom of RIGHT half
+    "this_is_fine": TemplateConfig(
+        template_id="this_is_fine",
+        text_boxes=[
+            TextBoxConfig("situation", x_pct=2,  y_pct=3,  w_pct=46, h_pct=30, font_size_pct=6),
+            TextBoxConfig("reaction",  x_pct=52, y_pct=65, w_pct=46, h_pct=28, font_size_pct=6),
+        ],
+        box_descriptions={
+            "situation": "The chaotic situation being denied or ignored (top of left panel)",
+            "reaction":  "The forced 'this is fine' response — the punchline (bottom of right panel)",
+        },
+    ),
+
+    # ── Hide the Pain Harold ─────────────────────────────────────────────────
+    # 2-panel portrait stacked: top = Harold neutral, bottom = Harold pained smile
+    # Text goes BELOW Harold's face in each panel (chest/body area), not over his head
+    "hide_the_pain_harold": TemplateConfig(
+        template_id="hide_the_pain_harold",
+        text_boxes=[
+            TextBoxConfig("public_face",  x_pct=5, y_pct=33, w_pct=90, h_pct=13, font_size_pct=5.5),
+            TextBoxConfig("inner_reality", x_pct=5, y_pct=80, w_pct=90, h_pct=16, font_size_pct=5.5),
+        ],
+        box_descriptions={
+            "public_face":   "What Harold is outwardly presenting or pretending — the false front (lower part of top panel)",
+            "inner_reality": "The painful truth he's hiding behind that smile (lower part of bottom panel)",
+        },
+    ),
+
+    # ── Boardroom Meeting Suggestion ─────────────────────────────────────────
+    # 3-panel vertical: presenter pitches idea → 3 employees all suggest same thing → boss throws them out
+    "boardroom_meeting_suggestion": TemplateConfig(
+        template_id="boardroom_meeting_suggestion",
+        text_boxes=[
+            TextBoxConfig("suggestion",  x_pct=12, y_pct=1,  w_pct=41, h_pct=14, font_size_pct=4,   uppercase=False),
+            TextBoxConfig("person_1",    x_pct=4,  y_pct=33, w_pct=22, h_pct=10, font_size_pct=3.5, uppercase=False),
+            TextBoxConfig("person_2",    x_pct=28, y_pct=32, w_pct=24, h_pct=9,  font_size_pct=3.5, uppercase=False),
+            TextBoxConfig("person_3",    x_pct=53, y_pct=31, w_pct=43, h_pct=14, font_size_pct=3.5, uppercase=False),
+            TextBoxConfig("reaction",    x_pct=5,  y_pct=83, w_pct=90, h_pct=13, font_size_pct=4.5),
+        ],
+        box_descriptions={
+            "suggestion": "The idea being pitched by the presenter (panel 1 speech bubble)",
+            "person_1":   "Left employee's take — a slight variation of the same idea (panel 2, left bubble)",
+            "person_2":   "Center employee's take (panel 2, center bubble)",
+            "person_3":   "Right employee's take — often the dumbest or most obvious (panel 2, right bubble)",
+            "reaction":   "What the boss does in response — usually throws them out (panel 3 caption)",
         },
     ),
 

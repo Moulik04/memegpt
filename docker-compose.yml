@@ -1,0 +1,126 @@
+# MemeGPT — Docker Compose
+# Isolated bridge network: memegpt-net
+# All services resolve each other by service name (e.g. http://vector-db:8000)
+#
+# First-run after `docker compose up -d`:
+#   docker exec memegpt-ollama ollama pull llama3.1:8b
+#
+# GPU (NVIDIA) — uncomment the `deploy` block under `ollama`.
+# Apple Metal — not accessible from Docker; Ollama runs in CPU mode on Mac.
+# Bridges-2    — convert with: singularity build memegpt.sif docker-compose.yml
+
+services:
+
+  # ── 1. Local LLM (Ollama) ───────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: memegpt-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./volumes/ollama:/root/.ollama
+    networks:
+      - memegpt-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    # NVIDIA GPU — uncomment when running on Linux + NVIDIA Container Toolkit:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ── 2. Vector DB (ChromaDB — 100% free, open-source) ───────────────────────
+  vector-db:
+    image: chromadb/chroma:latest
+    container_name: memegpt-chromadb
+    ports:
+      - "8001:8000"   # host:8001 → container:8000 (avoids clash with backend:8000)
+    volumes:
+      - ./volumes/vector_db:/data   # ChromaDB 1.x stores data at /data by default
+    environment:
+      ANONYMIZED_TELEMETRY: "FALSE"
+      ALLOW_RESET: "FALSE"
+    networks:
+      - memegpt-net
+    restart: unless-stopped
+    healthcheck:
+      # bash /dev/tcp trick — no curl/wget/nc in this image, but bash is present
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000' 2>/dev/null && exit 0 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── 3. FastAPI Backend ───────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .                    # project root so scripts/ is accessible
+      dockerfile: backend/Dockerfile
+    container_name: memegpt-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Use native Ollama on the Mac host (Metal GPU) instead of Docker Ollama (CPU-only)
+      OLLAMA_HOST: https://departure-handyman-impaired.ngrok-free.dev/
+      CHROMA_HOST: vector-db
+      CHROMA_PORT: "8000"
+    volumes:
+      - ./volumes/backend_static:/app/static/generated  # persists generated meme PNGs
+      - ./data/context:/app/data/context:ro             # Kaggle TSV + memes.json (read-only)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets backend reach native Ollama on Mac host
+    depends_on:
+      vector-db:
+        condition: service_healthy
+    networks:
+      - memegpt-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── 4. Next.js Frontend ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked in at build time — browser fetches memes directly from published port
+        NEXT_PUBLIC_API_BASE: http://localhost:8000
+    container_name: memegpt-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side Next.js → backend (Docker internal DNS)
+      BACKEND_URL: http://backend:8000
+      NODE_ENV: production
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - memegpt-net
+    restart: unless-stopped
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  memegpt-net:
+    driver: bridge
+    name: memegpt-net
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+# All bind-mounted to ./volumes/* so data survives `docker compose down`.
+# `docker compose down -v` would remove named volumes — we avoid named volumes
+# precisely so Ctrl+C / `down` never destroys embeddings or model weights.

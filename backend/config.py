@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
 
+    # ChromaDB — empty string = embedded PersistentClient (local dev)
+    #            set to service name (e.g. "vector-db") → HttpClient (Docker)
+    chroma_host: str = ""
+    chroma_port: int = 8000
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000

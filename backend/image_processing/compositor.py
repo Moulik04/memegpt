@@ -35,10 +35,15 @@ _FONT_CANDIDATES = [
 ]
 
 _SYSTEM_FONT_PATHS = [
+    # macOS
     "/System/Library/Fonts/Supplemental/Impact.ttf",
     "/Library/Fonts/Impact.ttf",
-    "/usr/share/fonts/truetype/msttcorefonts/Impact.ttf",
+    # Linux / Docker — Anton is Impact-style, downloaded in Dockerfile
+    "/usr/share/fonts/truetype/Anton-Regular.ttf",
+    # Linux fallback — installed via fonts-liberation apt package
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/msttcorefonts/Impact.ttf",
 ]
 
 
@@ -72,7 +77,7 @@ def _draw_text_in_box(
 
     font_size = box_cfg.font_size_px(img_h)
     font = _resolve_font(font_size)
-    stroke_width = max(1, font_size // 18)
+    stroke_width = max(2, font_size // 12)
 
     x, y, w, h = pixel_box["x"], pixel_box["y"], pixel_box["width"], pixel_box["height"]
 
@@ -86,7 +91,7 @@ def _draw_text_in_box(
             break
         font_size -= 2
         font = _resolve_font(font_size)
-        stroke_width = max(1, font_size // 18)
+        stroke_width = max(2, font_size // 12)
 
     avg_char_px = font.getlength("A")
     chars_per_line = max(1, int(w / avg_char_px))

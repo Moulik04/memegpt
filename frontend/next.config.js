@@ -2,12 +2,10 @@
 const nextConfig = {
   images: {
     remotePatterns: [
-      {
-        protocol: "http",
-        hostname: "localhost",
-        port: "8000",
-        pathname: "/static/**",
-      },
+      // Local dev
+      { protocol: "http", hostname: "localhost", port: "8000", pathname: "/static/**" },
+      // Docker — Next.js server fetches images via internal DNS when optimizing
+      { protocol: "http", hostname: "backend", port: "8000", pathname: "/static/**" },
     ],
   },
   async rewrites() {

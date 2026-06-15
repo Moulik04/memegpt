@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from config import get_settings
 from image_processing.template_configs import DEFAULT_BOX_DESCRIPTIONS, get_config
 from schemas import IntentResponse
-from vector_db.chroma_client import list_template_ids
+from vector_db.chroma_client import list_template_ids, query_similar_memes
 from vector_db.examples_store import get_similar_examples
 
 _FALLBACK_TEMPLATES = [
@@ -29,6 +29,15 @@ _FALLBACK_TEMPLATES = [
     "doge", "woman_yelling_at_cat", "surprised_pikachu", "grus_plan",
     "mocking_spongebob", "hide_the_pain_harold", "buff_doge_vs_cheems",
     "batman_slapping_robin",
+]
+
+# Always included in every prompt regardless of RAG results
+_CORE_TEMPLATE_IDS = [
+    "drake", "distracted_boyfriend", "grus_plan", "woman_yelling_at_cat",
+    "expanding_brain", "two_buttons", "surprised_pikachu",
+    "hide_the_pain_harold", "this_is_fine", "mocking_spongebob",
+    "change_my_mind", "batman_slapping_robin",
+    "buff_doge_vs_cheems", "boardroom_meeting_suggestion",
 ]
 
 USE_WHEN: dict[str, str] = {
@@ -41,7 +50,7 @@ USE_WHEN: dict[str, str] = {
     "two_buttons":             "Agonizing between two equally tempting or equally bad choices",
     "always_has_been":         "Revealing a dark or ironic truth that was always the case",
     "batman_slapping_robin":   "Interrupting someone mid-sentence to correct them sharply",
-    "buff_doge_vs_cheems":     "Strong idealized past vs weak sad present — then vs now",
+    "buff_doge_vs_cheems":     "Comparing two states of the same person/thing — past vs present, rested vs exhausted, 2am energy vs 9am regret, before vs after, idealized vs reality",
     "surprised_pikachu":       "Shocked by the obvious, predictable consequences of your own actions",
     "left_exit_12":            "Abandoning the sensible planned path to swerve toward something tempting",
     "change_my_mind":          "Stating a bold controversial opinion at a table and daring anyone to argue",
@@ -49,11 +58,12 @@ USE_WHEN: dict[str, str] = {
     "doge":                    "Wow, much, very, many — comically enthusiastic amazement or ironic enthusiasm",
     "galaxy_brain":            "Increasingly absurd logic chain that arrives at a wild conclusion",
     # --- Standard top/bottom single-panel templates ---
-    "this_is_fine":            "Pretending everything is okay while sitting in total chaos and disaster",
+    "this_is_fine":            "Denial mode — sitting in literal chaos or disaster and refusing to acknowledge it; NOT for happy discoveries or good news",
+    "boardroom_meeting_suggestion": "An idea gets suggested and everyone piles on with the same bad take — boss throws them all out; use for repeated bad suggestions, groupthink, or ideas that always get shot down",
     "success_kid":             "Celebrating a small, unexpected, or petty win with a fist pump",
     "one_does_not_simply":     "Pointing out that something people think is easy is actually very hard",
     "mocking_spongebob":       "Mockingly repeating what someone said in alternating caps to show it's dumb",
-    "hide_the_pain_harold":    "Smiling through obvious discomfort while pretending to be completely fine",
+    "hide_the_pain_harold":    "Smiling through obvious pain while projecting a fine public face — inner suffering vs outer performance; great for pretending to understand something you don't",
     "futurama_fry":            "Squinting with suspicion — not sure if X is real or just another stupid thing",
     "the_most_interesting_man": "A refined statement about something you simply never do — for grandiose declarations",
     "y_u_no":                  "Demanding to know why someone doesn't just do the obvious thing already",
@@ -101,18 +111,21 @@ USE_WHEN: dict[str, str] = {
     "megamind":                "No one said you couldn't do the thing — technically correct loophole logic",
     "is_this_a_pigeon":        "Confidently misidentifying something obvious — labeling the wrong thing incorrectly",
     "ight_imma_head_out":      "Spongebob getting up to leave — when something awkward or bad happens and you just go",
-    "hide_the_pain_harold":    "Smiling through obvious pain or discomfort while pretending everything is fine",
 }
 
 
 def _build_template_catalog(template_ids: list[str]) -> dict:
+    """
+    Compact format — w = when to use, b = list of box label names.
+    Omitting full box descriptions saves ~50% tokens vs the verbose format.
+    """
     catalog: dict[str, dict] = {}
     for tid in template_ids:
         config = get_config(tid)
         boxes = config.box_descriptions or DEFAULT_BOX_DESCRIPTIONS
         catalog[tid] = {
-            "use_when": USE_WHEN.get(tid, "General purpose meme with top and bottom text captions"),
-            "text_boxes": boxes,
+            "w": USE_WHEN.get(tid, "general meme with top and bottom text"),
+            "b": list(boxes.keys()),
         }
     return catalog
 
@@ -164,33 +177,22 @@ def _format_few_shot(examples: list[dict]) -> str:
 
 
 _SYSTEM_TEMPLATE = """\
-You are MemeGPT. Your ONLY job is to pick the perfect meme template for a user message \
-and write the captions that go in each text box.
+You are MemeGPT. Pick the best meme template and write captions for the user's message.
 
-Think step by step (internally):
-1. What is the user really expressing — frustration, irony, excitement, comparison?
-2. Which template's structure best mirrors that emotional arc?
-3. What exact text makes this funny and contextually on-point?
+Catalog format: each key is a template_id. "w" = when to use it. "b" = box label names \
+(use these exact labels in your "texts" output).
 
-{few_shot_block}{avoid_block}Available templates and their text boxes:
+{few_shot_block}{avoid_block}Templates:
 {template_catalog}
 
-You MUST respond with ONLY a valid JSON object — no explanation, no markdown, nothing else:
+Respond with ONLY valid JSON — no markdown, no explanation:
 {{
-  "template_id": "<one of the template IDs above>",
-  "texts": {{
-    "<box_label>": "<caption for that box>",
-    "<box_label>": "<caption for that box>"
-  }},
-  "reasoning": "<one sentence: why this template and these captions>"
+  "template_id": "<id from catalog>",
+  "texts": {{"<box_label>": "<caption>"}},
+  "reasoning": "<one sentence why>"
 }}
 
-Rules:
-- Only use template IDs and box labels exactly as listed above.
-- Keep each caption under 80 characters.
-- Be genuinely funny and culturally sharp — not generic.
-- Omit a box entirely if it should be blank.
-- Output ONLY the JSON object.\
+Rules: use only template_ids and box labels listed above; captions under 80 chars; be funny.\
 """
 
 _RETRY_TEMPLATE = """\
@@ -216,13 +218,16 @@ async def _call_ollama(
         "messages": messages,
         "stream": False,
         "format": "json",
-        "options": {"temperature": temperature, "num_predict": 400},
+        "options": {"temperature": temperature, "num_predict": 150},
     }
     try:
+        base = settings.ollama_host.rstrip("/")
         response = await client.post(
-            f"{settings.ollama_host}/api/chat",
+            f"{base}/api/chat",
             json=payload,
-            timeout=90.0,
+            headers={"ngrok-skip-browser-warning": "true"},
+            follow_redirects=True,
+            timeout=120.0,
         )
         response.raise_for_status()
     except httpx.ConnectError:
@@ -249,9 +254,20 @@ async def parse_intent(
     injected into the prompt to prevent repetition.
     """
     settings = get_settings()
-    template_ids = list_template_ids() or _FALLBACK_TEMPLATES
-    known_id_set = set(template_ids)
-    catalog = _build_template_catalog(template_ids)
+
+    # All known IDs (used for validation only — NOT sent wholesale to the LLM)
+    all_ids = list_template_ids() or _FALLBACK_TEMPLATES
+    known_id_set = set(all_ids)
+
+    # RAG pre-filter: find the 8 most semantically relevant templates for this message
+    rag_results = query_similar_memes(user_message, n_results=8)
+    rag_ids = [r["id"] for r in rag_results if r.get("id") in known_id_set]
+
+    # Final catalog: RAG results first, then core templates, deduplicated, max 20
+    # This keeps the prompt well under 4096 tokens regardless of collection size
+    prompt_ids = list(dict.fromkeys(rag_ids + _CORE_TEMPLATE_IDS))[:20]
+    template_ids = prompt_ids  # used in retry prompt below
+    catalog = _build_template_catalog(prompt_ids)
 
     examples = get_similar_examples(user_message, n_results=3)
     few_shot_block = _format_few_shot(examples)

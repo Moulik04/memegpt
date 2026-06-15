@@ -16,6 +16,8 @@ from typing import Any
 import chromadb
 from chromadb import Collection
 
+from config import get_settings
+
 _DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chroma"
 _EXAMPLES_COLLECTION = "meme_examples"
 
@@ -27,8 +29,17 @@ def _get_collection() -> Collection:
     global _client, _collection
     if _collection is not None:
         return _collection
-    _DB_PATH.mkdir(parents=True, exist_ok=True)
-    _client = chromadb.PersistentClient(path=str(_DB_PATH))
+    settings = get_settings()
+    if settings.chroma_host:
+        # Docker / remote mode — connect to ChromaDB server container
+        _client = chromadb.HttpClient(
+            host=settings.chroma_host,
+            port=settings.chroma_port,
+        )
+    else:
+        # Local dev mode — embedded persistent store
+        _DB_PATH.mkdir(parents=True, exist_ok=True)
+        _client = chromadb.PersistentClient(path=str(_DB_PATH))
     _collection = _client.get_or_create_collection(
         name=_EXAMPLES_COLLECTION,
         metadata={"hnsw:space": "cosine"},

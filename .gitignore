@@ -39,3 +39,18 @@ frontend/.env*.local
 .vscode/
 .idea/
 *.swp
+
+# Docker volumes (runtime — model weights, ChromaDB, generated PNGs)
+volumes/
+
+# Claude Code memory (local dev assistant state)
+.claude/
+
+# Large Kaggle dataset files (download separately, not committed)
+data/
+memes.json
+memes_data.tsv
+memes_reference_data.tsv
+
+# sed backup files
+*.bak

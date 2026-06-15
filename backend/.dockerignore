@@ -1,0 +1,13 @@
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/**/*.pyc
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/data/chroma
+backend/static/generated
+backend/.env
+frontend/
+volumes/
+.git/
