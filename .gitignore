@@ -14,8 +14,9 @@ env/
 .env.local
 .env.*.local
 
-# ChromaDB persistent store
+# ChromaDB persistent store (runtime, not committed)
 backend/data/
+!backend/data/curated_examples.jsonl
 
 # Generated meme output (runtime artifacts)
 backend/static/generated/*.png

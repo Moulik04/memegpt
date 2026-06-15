@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from config import get_settings
 from routers import chat, explain, generate
 from vector_db.chroma_client import init_chroma
+from vector_db.examples_store import _get_collection as _init_examples
 
 settings = get_settings()
 
@@ -15,6 +16,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_chroma()
+    _init_examples()  # pre-warm examples store so first request isn't slow
     yield
 
 
