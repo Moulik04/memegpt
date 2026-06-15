@@ -2,23 +2,36 @@
 
 # MemeGPT
 
-### A meme-first AI chatbot with RAG-powered retrieval, LLM intent routing, and on-demand image composition
+### A meme-first AI chatbot — LLM intent routing, RAG retrieval, and real-time image composition. 100% free, runs entirely on your machine.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Ollama](https://img.shields.io/badge/Ollama-Llama_3.1-74AA9C?style=flat-square)](https://ollama.com)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-0.5-FF6B35?style=flat-square)](https://www.trychroma.com/)
+[![Ollama](https://img.shields.io/badge/Ollama-Llama_3.1_8B-74AA9C?style=flat-square)](https://ollama.com)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-1.x-FF6B35?style=flat-square)](https://www.trychroma.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
 
 </div>
 
 ---
 
-MemeGPT converts any natural-language message into a contextually appropriate meme. A user types a message; the system routes it through an LLM structured-output pipeline to pick a template and generate captions, renders those captions onto the image using a bounding-box compositor, and returns the result in a real-time chat interface.
+MemeGPT converts any natural-language message into a contextually appropriate meme. Type a message; the system routes it through a local LLM structured-output pipeline, picks the best template from 100 options via semantic search, renders captions using a pixel-accurate bounding-box compositor, and streams the result back to a dark-themed chat interface in real time.
 
-The stack was designed to be modular: swap the LLM provider, the vector store, or the frontend independently without touching the others.
+Everything runs locally — no OpenAI key, no cloud bill.
+
+---
+
+## Demo
+
+| Prompt | Template chosen |
+|---|---|
+| `"when the intern pushes directly to main"` | Gru's Plan (4-panel) |
+| `"me trying to explain to my parents what I do for work"` | Distracted Boyfriend |
+| `"should I go to the gym or just watch Netflix"` | Two Buttons |
+| `"when I say I'll start the assignment early but it's due tomorrow"` | This Is Fine |
+| `"me pretending I read the terms and conditions"` | Hide the Pain Harold |
 
 ---
 
@@ -28,42 +41,46 @@ The stack was designed to be modular: swap the LLM provider, the vector store, o
 User message
     │
     ▼
-┌─────────────────────────────────────────────────────┐
-│  POST /chat/   (FastAPI)                            │
-│                                                     │
-│  ┌─────────────────────┐                            │
-│  │  NLP Intent Router  │  Claude API (JSON mode)    │
-│  │  nlp/intent_router  │  → template_id             │
-│  │                     │  → top_text, bottom_text   │
-│  └──────────┬──────────┘                            │
-│             │                                       │
-│  ┌──────────▼──────────┐                            │
-│  │   Vector Search     │  ChromaDB (cosine sim.)    │
-│  │   vector_db/chroma  │  semantic meme retrieval   │
-│  └──────────┬──────────┘                            │
-│             │                                       │
-│  ┌──────────▼──────────┐                            │
-│  │  Pillow Compositor  │  Impact/Arial font         │
-│  │  image_processing/  │  stroke text, wrap, bbox   │
-│  └──────────┬──────────┘                            │
-│             │  /static/generated/<id>.png           │
-└─────────────┼───────────────────────────────────────┘
-              │
-              ▼
-    Next.js 14 Chat UI
-    (conversation state, meme display, SSE-ready)
+┌────────────────────────────────────────────────────────────┐
+│  POST /chat/   (FastAPI + SSE streaming)                   │
+│                                                            │
+│  ┌─────────────────────────┐                              │
+│  │  NLP Intent Router      │  Ollama — Llama 3.1 8B       │
+│  │  nlp/intent_router.py   │  local structured JSON out   │
+│  │                         │  → template_id + captions    │
+│  └────────────┬────────────┘                              │
+│               │                                            │
+│  ┌────────────▼────────────┐                              │
+│  │  RAG Template Search    │  ChromaDB cosine similarity  │
+│  │  vector_db/             │  semantic meme retrieval     │
+│  │  chroma_client.py       │  + few-shot example store    │
+│  └────────────┬────────────┘                              │
+│               │                                            │
+│  ┌────────────▼────────────┐                              │
+│  │  Pillow Compositor      │  Anton / Impact font         │
+│  │  image_processing/      │  per-template bounding boxes │
+│  │  compositor.py          │  8-directional stroke text   │
+│  └────────────┬────────────┘                              │
+│               │  /static/generated/<uuid>.png             │
+└───────────────┼────────────────────────────────────────────┘
+                │
+                ▼
+      Next.js 14 Chat UI  (SSE: thinking → rendering → done)
 ```
 
 ---
 
 ## Features
 
-- **Structured LLM routing** — Claude returns a typed JSON object (`template_id`, `top_text`, `bottom_text`) validated by Pydantic v2 before any image is touched. No prompt-parsing heuristics.
-- **RAG-style meme retrieval** — ChromaDB stores template metadata as natural-language documents and surfaces semantically similar past memes on every turn using cosine-similarity search with `sentence-transformers` embeddings.
-- **Bounding-box text compositor** — Pillow compositor resolves Impact → Arial → system fallback font, wraps text to fit strictly within configurable pixel bounding boxes, and draws 8-directional stroke for the classic meme look.
-- **Multi-panel template support** — `MemeTemplate` stores an array of `TextBox` objects with arbitrary pixel coordinates, supporting any layout (top/bottom, side-by-side panels, multi-zone).
-- **Conversation tracking** — each `/chat/` call logs `top_text`, `bottom_text`, and a `conversation_id` back to ChromaDB metadata so the `/explain/` endpoint can surface usage history.
-- **Next.js 14 App Router frontend** — dark-themed chat UI with live conversation state, smooth meme reveal animation, and a `/api/*` rewrite proxy so no backend URL is ever hardcoded in component code.
+- **Zero-cost local LLM** — Ollama runs Llama 3.1 8B entirely on-device. No API key, no rate limits, works offline. GPU-accelerated on Apple Silicon (Metal) and NVIDIA (CUDA).
+- **Structured JSON output** — the model returns a typed JSON object (`template_id`, `texts`, `reasoning`) validated by Pydantic v2 before any image is touched. No regex heuristics. Retry logic handles malformed responses.
+- **RAG template retrieval** — ChromaDB indexes 100 templates as natural-language documents. Every request does a cosine-similarity search to find semantically relevant candidates, then merges with a core set — keeping the prompt under 1,300 tokens (fits in Ollama's 4096-token context).
+- **Per-template text layout** — `template_configs.py` defines named bounding boxes (in % coordinates) per template ID. The compositor converts to pixels at runtime and auto-shrinks font to fit. Supports arbitrary multi-panel layouts: Drake 2-panel, Gru 4-panel, Boardroom 5-bubble, Distracted Boyfriend 3-label, and more.
+- **Classic meme typography** — Anton font (free Impact equivalent, OFL license) with 8-directional stroke pass. Falls back to LiberationSans-Bold → Pillow default.
+- **SSE streaming** — `/chat/` yields `thinking → rendering → done` events so the UI updates live as each stage completes.
+- **Few-shot RAG examples** — a second ChromaDB collection stores curated (prompt → meme) examples. Semantically similar examples are injected into the system prompt to guide the LLM toward better template choices.
+- **Docker Compose stack** — one command brings up backend, frontend, and ChromaDB with persistent named volumes and health checks. Native Ollama on Mac routed via `host.docker.internal` for Metal GPU access.
+- **Thumbs up/down feedback** — each generated meme has a feedback endpoint that logs ratings back to ChromaDB for future fine-tuning.
 
 ---
 
@@ -72,12 +89,13 @@ User message
 | Layer | Technology | Why |
 |---|---|---|
 | API framework | FastAPI + Uvicorn | Async-first, auto-generates OpenAPI docs, Pydantic-native |
-| LLM | Ollama + Llama 3.1 8B (local) | Runs entirely on-device — zero API cost, no rate limits, works offline |
-| Vector store | ChromaDB | Zero-infrastructure, cosine-similarity, persistent on-disk storage |
-| Image processing | Pillow (PIL) | Full control over pixel-level text placement and stroke rendering |
+| LLM inference | Ollama + Llama 3.1 8B | Runs entirely on-device — zero cost, no rate limits, offline-capable |
+| Vector store | ChromaDB 1.x | Zero-infrastructure, cosine similarity, persistent on-disk |
+| Image processing | Pillow (PIL) | Full pixel-level control over text layout and stroke rendering |
 | Schema validation | Pydantic v2 | End-to-end type safety from API boundary to compositor inputs |
-| Frontend | Next.js 14 (App Router) + TypeScript | Server-component ready, built-in image optimization, `rewrites()` proxy |
+| Frontend | Next.js 14 + TypeScript | App Router, built-in image optimization, `rewrites()` API proxy |
 | Styling | Tailwind CSS v3 | Utility-first, no CSS files to maintain |
+| Containerisation | Docker Compose | One-command full-stack startup with health checks and volumes |
 
 ---
 
@@ -85,89 +103,101 @@ User message
 
 ```
 memegpt/
+├── docker-compose.yml              Full stack: backend + frontend + ChromaDB
+├── .env.example                    Copy to .env — set OLLAMA_MODEL
+│
 ├── backend/
-│   ├── main.py                   FastAPI app — mounts routers, CORS, static files
-│   ├── schemas.py                All Pydantic models (MemeTemplate, TextBox, ChatMessage …)
-│   ├── pyproject.toml            Dependencies + Ruff/mypy config
+│   ├── Dockerfile
+│   ├── main.py                     FastAPI app — routers, CORS, static files, lifespan
+│   ├── schemas.py                  Pydantic v2 models (MemeTemplate, TextBox, ChatMessage…)
+│   ├── config.py                   Settings via pydantic-settings (.env / env vars)
+│   ├── pyproject.toml              Dependencies + Ruff / mypy config
 │   │
 │   ├── routers/
-│   │   ├── chat.py               POST /chat/     — full RAG + compose pipeline
-│   │   ├── explain.py            POST /explain/  — template metadata & history
-│   │   └── generate.py           POST /generate/ — on-demand generation
+│   │   ├── chat.py                 POST /chat/     — SSE streaming pipeline
+│   │   ├── explain.py              POST /explain/  — template metadata & history
+│   │   ├── generate.py             POST /generate/ — direct meme generation
+│   │   └── feedback.py             POST /feedback/ — thumbs up/down logging
 │   │
 │   ├── image_processing/
-│   │   └── compositor.py         Pillow text compositor (font, wrap, stroke, bbox)
+│   │   ├── compositor.py           Pillow compositor (font, wrap, bbox, stroke)
+│   │   └── template_configs.py     Per-template bounding box definitions (100 templates)
 │   │
 │   ├── vector_db/
-│   │   └── chroma_client.py      ChromaDB singleton (upsert, query, log_usage)
+│   │   ├── chroma_client.py        ChromaDB singleton — dual-mode (local + HTTP)
+│   │   └── examples_store.py       Few-shot example store (separate collection)
 │   │
 │   ├── nlp/
-│   │   └── intent_router.py      Claude → JSON → IntentResponse
+│   │   └── intent_router.py        Ollama → JSON → IntentResponse (RAG + retry logic)
 │   │
-│   ├── templates/                Base meme images (add your own .jpg/.png here)
-│   └── fonts/                    Drop Impact.ttf or Arial.ttf here
+│   ├── templates/                  100 base meme images (.jpg / .png)
+│   └── fonts/                      Drop Impact.ttf here to override Anton
 │
 ├── frontend/
+│   ├── Dockerfile
 │   └── src/
-│       ├── app/                  Next.js App Router (layout, page, globals.css)
+│       ├── app/                    Next.js App Router (layout, page, globals.css)
 │       ├── components/
-│       │   ├── ChatWindow.tsx    Stateful chat container + send logic
-│       │   ├── MessageBubble.tsx Per-message bubble with meme display
-│       │   └── MemeDisplay.tsx   next/image wrapper for rendered memes
-│       ├── lib/api.ts            Typed fetch helpers (sendChat, generateMeme, explainMeme)
-│       └── types/index.ts        TypeScript interfaces mirroring backend schemas
+│       │   ├── ChatWindow.tsx      Stateful chat container, SSE consumer, send logic
+│       │   ├── MessageBubble.tsx   Per-message bubble (user right, meme left)
+│       │   └── MemeDisplay.tsx     next/image wrapper for rendered memes
+│       ├── lib/api.ts              Typed fetch helpers (sendChat, generateMeme…)
+│       └── types/index.ts          TypeScript interfaces mirroring backend schemas
 │
 └── scripts/
-    └── dummy_template_test.py    Standalone Pillow PoC — no services required
+    ├── seed_templates.py           Seeds all 100 templates into ChromaDB on first run
+    ├── colab_ollama_server.ipynb   Run Ollama on Colab T4 GPU via ngrok HTTP tunnel
+    ├── bridges2_ollama_service.sh  SLURM job for Ollama on PSC Bridges-2 V100-32GB
+    ├── use_remote_ollama.sh        Switch OLLAMA_HOST and restart backend in one command
+    ├── finetune_unsloth.py         LoRA fine-tuning with Unsloth (auto-detects T4 / V100)
+    ├── prepare_finetune_dataset.py Converts Imgflip 100k CSV → ChatML JSONL
+    └── dummy_template_test.py      Standalone Pillow PoC — no services required
 ```
 
 ---
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- [Ollama](https://ollama.com) — free, runs locally, no account needed
-
-### 1. Start Ollama (one-time setup)
+### Option A — Docker (recommended)
 
 ```bash
-brew install ollama
-ollama pull llama3.1:8b   # ~4.7 GB download, done once
-ollama serve               # starts the local inference server
+git clone https://github.com/Moulik04/memegpt.git && cd memegpt
+cp .env.example .env
+
+# Start native Ollama first (gets Metal / CUDA GPU access)
+brew install ollama          # macOS; see ollama.com for Linux / Windows
+ollama pull llama3.1:8b     # ~4.7 GB, one-time download
+ollama serve                 # keep this terminal open
+
+# Bring up the full stack
+docker compose up -d --build
+
+# Seed templates into ChromaDB (first run only, ~30 seconds)
+docker exec memegpt-backend python scripts/seed_templates.py
 ```
 
-### 2. Backend
+- **Chat UI:** `http://localhost:3000`
+- **API docs:** `http://localhost:8000/docs`
+- **ChromaDB:** `http://localhost:8001`
+
+### Option B — Native (development)
 
 ```bash
+# Backend
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-uvicorn main:app --reload
+uvicorn main:app --reload          # http://localhost:8000
+
+# Seed (separate terminal, venv active)
+python ../scripts/seed_templates.py
+
+# Frontend
+cd ../frontend
+npm install && npm run dev         # http://localhost:3000
 ```
 
-Swagger UI available at `http://localhost:8000/docs`.
-
-### 3. Seed templates (one-time)
-
-```bash
-cd ..
-python scripts/seed_templates.py   # downloads 20 meme images, seeds ChromaDB
-```
-
-### 4. Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Chat UI at `http://localhost:3000`.
-
-### Verify the compositor standalone (no API key needed)
+### Verify the compositor (no Ollama needed)
 
 ```bash
 pip install Pillow
@@ -177,51 +207,60 @@ python scripts/dummy_template_test.py
 
 ---
 
+## Remote GPU Inference
+
+The backend reads `OLLAMA_HOST` at startup — point it to any Ollama instance.
+
+**Google Colab T4 (free):**
+Open `scripts/colab_ollama_server.ipynb` → Runtime → T4 GPU → run all cells → copy the printed URL → run locally:
+```bash
+./scripts/use_remote_ollama.sh https://xxxx.ngrok-free.app
+```
+
+**PSC Bridges-2 V100-32GB:**
+```bash
+sbatch scripts/bridges2_ollama_service.sh
+# Follow the SSH tunnel command printed in the job log, then:
+./scripts/use_remote_ollama.sh http://localhost:11434
+```
+
+---
+
 ## API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/chat/` | Send a message, receive a meme (full pipeline) |
-| `POST` | `/generate/` | Generate a meme directly from `template_id` + texts |
-| `GET` | `/generate/file/{template_id}` | Returns raw image — useful for browser previews |
-| `POST` | `/explain/` | Fetch metadata, tags, and usage history for a template |
-| `GET` | `/health` | Service liveness check |
+| `POST` | `/chat/` | Send a message, receive a meme — SSE stream |
+| `POST` | `/generate/` | Generate a meme from `template_id` + `texts` directly |
+| `GET` | `/generate/file/{template_id}` | Returns raw template image |
+| `POST` | `/explain/` | Template metadata, tags, and usage history |
+| `POST` | `/feedback/` | Log thumbs up / down for a generated meme |
+| `GET` | `/health` | Liveness check |
 
-### `POST /chat/` — example
+### `POST /chat/` — SSE stream
 
-**Request**
-```json
-{
-  "message": "My PR got 47 review comments",
-  "conversation_id": "abc-123"
-}
 ```
-
-**Response**
-```json
-{
-  "conversation_id": "abc-123",
-  "message": {
-    "role": "assistant",
-    "content": "ME TRYING TO EXPLAIN MY CODE / THE REVIEWER",
-    "meme_url": "/static/generated/distracted_boyfriend_3f2a1b9c.png",
-    "timestamp": "2026-06-14T21:00:00Z"
-  },
-  "template_used": "distracted_boyfriend"
-}
+data: {"type": "thinking", "stage": "analyzing",  "message": "Reading your vibe..."}
+data: {"type": "thinking", "stage": "rendering",  "template_id": "drake", "message": "Crafting the perfect drake meme..."}
+data: {"type": "done",     "conversation_id": "…", "message": {"meme_url": "/static/generated/drake_3f2a.png", …}, "template_used": "drake"}
 ```
 
 ---
 
 ## Roadmap
 
-- [ ] Seed script for bulk-loading templates into ChromaDB on startup
+- [x] SSE streaming (`thinking → rendering → done`)
+- [x] Docker Compose full-stack deployment
+- [x] Per-template bounding-box text layout (100 templates)
+- [x] RAG pre-filtering to stay within 4096-token Ollama context
+- [x] Few-shot example store for improved template selection
+- [x] Remote GPU support (Colab T4 + Bridges-2 V100)
+- [x] Thumbs up / down feedback endpoint
 - [ ] `POST /templates/upload` — user-uploaded base images with auto-tagging
-- [ ] SSE streaming so reasoning text appears before the image renders
-- [ ] Conversation history passed back to Claude for multi-turn context
-- [ ] Docker Compose with backend + frontend services
-- [ ] Rate limiting via `slowapi`
+- [ ] Conversation history passed back to LLM for multi-turn meme chains
+- [ ] Fine-tuned model on Imgflip 100k dataset (scripts ready, training pending)
 - [ ] Pytest suite with golden-image diff tests for the compositor
+- [ ] Rate limiting via `slowapi`
 
 ---
 
