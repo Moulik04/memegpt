@@ -1,16 +1,23 @@
 services:
   - type: web
     name: memegpt-backend
-    env: docker
-    dockerfilePath: ./backend/Dockerfile   # Dockerfile lives in backend/, not root
-    dockerContext: .                        # build context = project root (Dockerfile does COPY backend/)
+    env: python
+    rootDir: backend
+    # Download Anton font (Impact-style) into backend/fonts/ during build
+    buildCommand: >-
+      pip install -e ".[dev]" &&
+      mkdir -p static/generated fonts &&
+      curl -fsSL -o fonts/Anton-Regular.ttf
+      "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf"
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: LLM_PROVIDER
         value: groq
       - key: GROQ_API_KEY
-        sync: false          # set this manually in Render dashboard → Environment
+        sync: false          # add this manually in Render dashboard → Environment
       - key: GROQ_MODEL
         value: llama-3.1-8b-instant
       - key: CORS_ALLOW_ALL_ORIGINS
         value: "true"
+      - key: PYTHON_VERSION
+        value: "3.11.9"

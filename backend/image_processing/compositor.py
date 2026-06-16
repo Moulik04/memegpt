@@ -30,6 +30,7 @@ OUTPUT_DIR = BACKEND_ROOT / "static" / "generated"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 _FONT_CANDIDATES = [
+    "Anton-Regular.ttf",          # downloaded in Render build / drop in backend/fonts/
     "Impact.ttf", "impact.ttf",
     "Arial Bold.ttf", "Arial.ttf", "arial.ttf",
 ]
