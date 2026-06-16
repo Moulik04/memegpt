@@ -83,5 +83,6 @@ export async function explainMeme(
 }
 
 export function memeImageUrl(relativeUrl: string): string {
-  return `http://localhost:8000${relativeUrl}`;
+  const base = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+  return `${base}${relativeUrl}`;
 }
