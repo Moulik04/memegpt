@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: memegpt-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -e ".[dev]"
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false          # set this manually in Render dashboard
+      - key: GROQ_MODEL
+        value: llama-3.1-8b-instant
+      - key: CORS_ALLOW_ALL_ORIGINS
+        value: "true"
+      - key: PYTHON_VERSION
+        value: "3.11.0"

@@ -4,9 +4,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Ollama local inference server
+    # LLM provider: "ollama" (local) | "groq" (cloud, free tier)
+    llm_provider: str = "ollama"
+
+    # Ollama — local inference (default for dev)
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "llama3.1:8b"
+
+    # Groq — cloud inference, free tier (https://console.groq.com)
+    groq_api_key: str = ""
+    groq_model: str = "llama-3.1-8b-instant"
 
     # ChromaDB — empty string = embedded PersistentClient (local dev)
     #            set to service name (e.g. "vector-db") → HttpClient (Docker)
@@ -18,7 +25,8 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
 
-    # CORS — all common local dev ports; set CORS_ORIGINS in .env for production
+    # CORS — set CORS_ALLOW_ALL_ORIGINS=true in production (Render/Railway)
+    cors_allow_all_origins: bool = False
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:3001",

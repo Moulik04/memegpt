@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
@@ -7,16 +8,38 @@ from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
 from routers import chat, explain, feedback, generate
-from vector_db.chroma_client import init_chroma
+from vector_db.chroma_client import init_chroma, list_template_ids, upsert_template
 from vector_db.examples_store import _get_collection as _init_examples
 
 settings = get_settings()
+
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
+def _auto_seed_if_empty() -> None:
+    """Seed templates from disk on first startup — runs in <5s for 100 templates."""
+    existing = set(list_template_ids())
+    if existing:
+        return
+    print("ChromaDB is empty — auto-seeding templates from disk...")
+    count = 0
+    for img in _TEMPLATES_DIR.iterdir():
+        if img.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+            continue
+        tid = img.stem
+        if tid in existing:
+            continue
+        name = tid.replace("_", " ").title()
+        upsert_template(tid, name=name, tags=[tid], description=f"Meme template: {name}")
+        count += 1
+    print(f"Seeded {count} templates into ChromaDB.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_chroma()
     _init_examples()  # pre-warm examples store so first request isn't slow
+    _auto_seed_if_empty()
     yield
 
 
@@ -29,8 +52,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if settings.cors_allow_all_origins else settings.cors_origins,
+    allow_credentials=not settings.cors_allow_all_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -237,6 +237,44 @@ async def _call_ollama(
     return response.json()["message"]["content"].strip()
 
 
+async def _call_groq(
+    client: httpx.AsyncClient,
+    settings,
+    messages: list[dict],
+    temperature: float = 0.75,
+) -> str:
+    """Groq cloud inference — free tier, ~400 t/s, no GPU required."""
+    response = await client.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        json={
+            "model": settings.groq_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 200,
+            "response_format": {"type": "json_object"},
+        },
+        headers={
+            "Authorization": f"Bearer {settings.groq_api_key}",
+            "Content-Type": "application/json",
+        },
+        timeout=30.0,
+    )
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"].strip()
+
+
+async def _call_llm(
+    client: httpx.AsyncClient,
+    settings,
+    messages: list[dict],
+    temperature: float = 0.75,
+) -> str:
+    """Route to Groq (cloud) or Ollama (local) based on LLM_PROVIDER config."""
+    if settings.llm_provider == "groq" and settings.groq_api_key:
+        return await _call_groq(client, settings, messages, temperature)
+    return await _call_ollama(client, settings, messages, temperature)
+
+
 def _strip_markdown(raw: str) -> str:
     raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
     raw = re.sub(r"\s*```$", "", raw, flags=re.MULTILINE)
@@ -287,7 +325,7 @@ async def parse_intent(
 
     async with httpx.AsyncClient() as client:
         # Attempt 1 — rich prompt with few-shot + avoid block
-        raw = await _call_ollama(client, settings, [
+        raw = await _call_llm(client, settings, [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ])
@@ -304,7 +342,7 @@ async def parse_intent(
             user_message=user_message,
             template_ids=", ".join(template_ids[:14]),
         )
-        raw = await _call_ollama(client, settings, [
+        raw = await _call_llm(client, settings, [
             {"role": "user", "content": retry_prompt},
         ], temperature=0.2)
         raw = _strip_markdown(raw)
