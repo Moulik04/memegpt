@@ -103,10 +103,10 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
     "grus_plan": TemplateConfig(
         template_id="grus_plan",
         text_boxes=[
-            TextBoxConfig("step_1", x_pct=2,  y_pct=2,  w_pct=46, h_pct=20, font_size_pct=4),
-            TextBoxConfig("step_2", x_pct=52, y_pct=2,  w_pct=46, h_pct=20, font_size_pct=4),
-            TextBoxConfig("step_3", x_pct=2,  y_pct=52, w_pct=46, h_pct=20, font_size_pct=4),
-            TextBoxConfig("step_4", x_pct=52, y_pct=52, w_pct=46, h_pct=20, font_size_pct=4),
+            TextBoxConfig("step_1", x_pct=2,  y_pct=3,  w_pct=46, h_pct=30, font_size_pct=5),
+            TextBoxConfig("step_2", x_pct=52, y_pct=3,  w_pct=46, h_pct=30, font_size_pct=5),
+            TextBoxConfig("step_3", x_pct=2,  y_pct=53, w_pct=46, h_pct=30, font_size_pct=5),
+            TextBoxConfig("step_4", x_pct=52, y_pct=53, w_pct=46, h_pct=30, font_size_pct=5),
         ],
         box_descriptions={
             "step_1": "First step of the plan (top-left panel)",
@@ -130,14 +130,14 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
     ),
 
     # ── Expanding Brain ──────────────────────────────────────────────────────
-    # 4 rows; text in right half of each row
+    # 4 rows; LEFT half = white text area, RIGHT half = brain image
     "expanding_brain": TemplateConfig(
         template_id="expanding_brain",
         text_boxes=[
-            TextBoxConfig("level_1", x_pct=50, y_pct=2,  w_pct=48, h_pct=21, font_size_pct=4.5),
-            TextBoxConfig("level_2", x_pct=50, y_pct=26, w_pct=48, h_pct=21, font_size_pct=4.5),
-            TextBoxConfig("level_3", x_pct=50, y_pct=51, w_pct=48, h_pct=21, font_size_pct=4.5),
-            TextBoxConfig("level_4", x_pct=50, y_pct=76, w_pct=48, h_pct=21, font_size_pct=4.5),
+            TextBoxConfig("level_1", x_pct=2, y_pct=2,  w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
+            TextBoxConfig("level_2", x_pct=2, y_pct=26, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
+            TextBoxConfig("level_3", x_pct=2, y_pct=51, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
+            TextBoxConfig("level_4", x_pct=2, y_pct=76, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
         ],
         box_descriptions={
             "level_1": "The basic/dumb take (small brain)",
@@ -148,14 +148,14 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
     ),
 
     # ── Galaxy Brain ─────────────────────────────────────────────────────────
-    # Same 4-row layout as Expanding Brain (text on right, brain image on left)
+    # Same 4-row layout as Expanding Brain (LEFT half = white text, RIGHT = brain)
     "galaxy_brain": TemplateConfig(
         template_id="galaxy_brain",
         text_boxes=[
-            TextBoxConfig("logic_1", x_pct=50, y_pct=2,  w_pct=48, h_pct=21, font_size_pct=4.5),
-            TextBoxConfig("logic_2", x_pct=50, y_pct=26, w_pct=48, h_pct=21, font_size_pct=4.5),
-            TextBoxConfig("logic_3", x_pct=50, y_pct=51, w_pct=48, h_pct=21, font_size_pct=4.5),
-            TextBoxConfig("logic_4", x_pct=50, y_pct=76, w_pct=48, h_pct=21, font_size_pct=4.5),
+            TextBoxConfig("logic_1", x_pct=2, y_pct=2,  w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
+            TextBoxConfig("logic_2", x_pct=2, y_pct=26, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
+            TextBoxConfig("logic_3", x_pct=2, y_pct=51, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
+            TextBoxConfig("logic_4", x_pct=2, y_pct=76, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
         ],
         box_descriptions={
             "logic_1": "The starting premise (reasonable)",
@@ -247,11 +247,11 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
     ),
 
     # ── Change My Mind ───────────────────────────────────────────────────────
-    # Man at table with a sign/board — text goes on the sign
+    # Man at table with a sign/board — text goes in the blank whitespace ABOVE "CHANGE MY MIND"
     "change_my_mind": TemplateConfig(
         template_id="change_my_mind",
         text_boxes=[
-            TextBoxConfig("opinion", x_pct=24, y_pct=52, w_pct=52, h_pct=40, font_size_pct=5, uppercase=False),
+            TextBoxConfig("opinion", x_pct=24, y_pct=52, w_pct=52, h_pct=26, font_size_pct=5, uppercase=False),
         ],
         box_descriptions={
             "opinion": "The bold or controversial opinion written on the table sign — just state the opinion, don't add 'change my mind'",
@@ -278,16 +278,14 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
 
     # ── This Is Fine ─────────────────────────────────────────────────────────
     # 2-panel landscape: left = dog sitting in fire, right = dog close-up
-    # Setup text → top of LEFT half; reaction text → bottom of RIGHT half
+    # "THIS IS FINE" is already baked into the image — only add situation context
     "this_is_fine": TemplateConfig(
         template_id="this_is_fine",
         text_boxes=[
-            TextBoxConfig("situation", x_pct=2,  y_pct=3,  w_pct=46, h_pct=30, font_size_pct=6),
-            TextBoxConfig("reaction",  x_pct=52, y_pct=65, w_pct=46, h_pct=28, font_size_pct=6),
+            TextBoxConfig("situation", x_pct=2, y_pct=3, w_pct=46, h_pct=30, font_size_pct=6),
         ],
         box_descriptions={
-            "situation": "The chaotic situation being denied or ignored (top of left panel)",
-            "reaction":  "The forced 'this is fine' response — the punchline (bottom of right panel)",
+            "situation": "The chaotic situation being ignored — describes what's on fire (top of left panel). Do NOT add 'this is fine' text; it is already in the image.",
         },
     ),
 

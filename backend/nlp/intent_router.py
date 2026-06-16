@@ -58,7 +58,7 @@ USE_WHEN: dict[str, str] = {
     "doge":                    "Wow, much, very, many — comically enthusiastic amazement or ironic enthusiasm",
     "galaxy_brain":            "Increasingly absurd logic chain that arrives at a wild conclusion",
     # --- Standard top/bottom single-panel templates ---
-    "this_is_fine":            "Denial mode — sitting in literal chaos or disaster and refusing to acknowledge it; NOT for happy discoveries or good news",
+    "this_is_fine":            "Denial mode — sitting in literal chaos or disaster and refusing to acknowledge it; only fill 'situation' box describing the chaos — 'this is fine' is already printed in the image; NOT for happy discoveries or good news",
     "boardroom_meeting_suggestion": "An idea gets suggested and everyone piles on with the same bad take — boss throws them all out; use for repeated bad suggestions, groupthink, or ideas that always get shot down",
     "success_kid":             "Celebrating a small, unexpected, or petty win with a fist pump",
     "one_does_not_simply":     "Pointing out that something people think is easy is actually very hard",
@@ -333,7 +333,10 @@ async def parse_intent(
         try:
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
-            return IntentResponse(**data)
+            result = IntentResponse(**data)
+            if result.template_id not in known_id_set:
+                raise ValueError(f"Hallucinated template_id: {result.template_id}")
+            return result
         except (json.JSONDecodeError, ValidationError, ValueError, KeyError):
             pass
 
@@ -349,7 +352,10 @@ async def parse_intent(
         try:
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
-            return IntentResponse(**data)
+            result = IntentResponse(**data)
+            if result.template_id not in known_id_set:
+                raise ValueError(f"Hallucinated template_id: {result.template_id}")
+            return result
         except (json.JSONDecodeError, ValidationError, ValueError, KeyError):
             pass
 
