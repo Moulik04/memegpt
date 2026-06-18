@@ -2,13 +2,15 @@
 
 # MemeGPT
 
-### A meme-first AI chatbot — LLM intent routing, RAG retrieval, and real-time image composition. 100% free, runs entirely on your machine.
+### A meme-first AI chatbot — LLM intent routing, RAG retrieval, and real-time image composition. Runs free, locally or in the cloud.
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-memegpt--six.vercel.app-7C3AED?style=flat-square)](https://memegpt-six.vercel.app)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-Llama_3.1_8B-74AA9C?style=flat-square)](https://ollama.com)
+[![Groq](https://img.shields.io/badge/Groq-Cloud_LLM-F55036?style=flat-square)](https://groq.com)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.x-FF6B35?style=flat-square)](https://www.trychroma.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
@@ -17,9 +19,11 @@
 
 ---
 
-MemeGPT converts any natural-language message into a contextually appropriate meme. Type a message; the system routes it through a local LLM structured-output pipeline, picks the best template from 100 options via semantic search, renders captions using a pixel-accurate bounding-box compositor, and streams the result back to a dark-themed chat interface in real time.
+MemeGPT converts any natural-language message into a contextually appropriate meme. Type a message; the system routes it through an LLM structured-output pipeline, picks the best template from 100 options via semantic search, renders captions using a pixel-accurate bounding-box compositor, and streams the result back to a dark-themed chat interface in real time.
 
-Everything runs locally — no OpenAI key, no cloud bill.
+**[Try it live →](https://memegpt-six.vercel.app)**
+
+Two LLM backends, swappable via `LLM_PROVIDER`: **Ollama** (Llama 3.1 8B, 100% local, zero cost, no API key) for development, or **Groq** (free-tier cloud inference, ~400 tok/s) for production deployment where a GPU isn't available.
 
 ---
 
@@ -89,7 +93,7 @@ User message
 | Layer | Technology | Why |
 |---|---|---|
 | API framework | FastAPI + Uvicorn | Async-first, auto-generates OpenAPI docs, Pydantic-native |
-| LLM inference | Ollama + Llama 3.1 8B | Runs entirely on-device — zero cost, no rate limits, offline-capable |
+| LLM inference | Ollama (local) / Groq (cloud) | Ollama for free, offline, on-device dev; Groq for free-tier cloud inference in production |
 | Vector store | ChromaDB 1.x | Zero-infrastructure, cosine similarity, persistent on-disk |
 | Image processing | Pillow (PIL) | Full pixel-level control over text layout and stroke rendering |
 | Schema validation | Pydantic v2 | End-to-end type safety from API boundary to compositor inputs |
@@ -256,6 +260,7 @@ data: {"type": "done",     "conversation_id": "…", "message": {"meme_url": "/s
 - [x] Few-shot example store for improved template selection
 - [x] Remote GPU support (Colab T4 + Bridges-2 V100)
 - [x] Thumbs up / down feedback endpoint
+- [x] Groq cloud LLM backend + production deployment (Render backend, Vercel frontend)
 - [ ] `POST /templates/upload` — user-uploaded base images with auto-tagging
 - [ ] Conversation history passed back to LLM for multi-turn meme chains
 - [ ] Fine-tuned model on Imgflip 100k dataset (scripts ready, training pending)
