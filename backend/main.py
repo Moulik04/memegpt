@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
 from routers import chat, explain, feedback, generate
-from vector_db.chroma_client import init_chroma, list_template_ids, upsert_template
+from vector_db.chroma_client import init_chroma, list_template_ids, upsert_templates_batch
 from vector_db.examples_store import _get_collection as _init_examples
 
 settings = get_settings()
@@ -17,12 +17,12 @@ _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 def _auto_seed_if_empty() -> None:
-    """Seed templates from disk on first startup — runs in <5s for 100 templates."""
+    """Seed templates from disk on first startup — one batched upsert call for all templates."""
     existing = set(list_template_ids())
     if existing:
         return
     print("ChromaDB is empty — auto-seeding templates from disk...")
-    count = 0
+    records = []
     for img in _TEMPLATES_DIR.iterdir():
         if img.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
             continue
@@ -30,9 +30,14 @@ def _auto_seed_if_empty() -> None:
         if tid in existing:
             continue
         name = tid.replace("_", " ").title()
-        upsert_template(tid, name=name, tags=[tid], description=f"Meme template: {name}")
-        count += 1
-    print(f"Seeded {count} templates into ChromaDB.")
+        records.append({
+            "template_id": tid,
+            "name": name,
+            "tags": [tid],
+            "description": f"Meme template: {name}",
+        })
+    upsert_templates_batch(records)
+    print(f"Seeded {len(records)} templates into ChromaDB.")
 
 
 @asynccontextmanager

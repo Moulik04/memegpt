@@ -85,6 +85,38 @@ def upsert_template(
     )
 
 
+def upsert_templates_batch(records: list[dict[str, Any]]) -> None:
+    """
+    Insert or update many templates in a single ChromaDB call.
+
+    One batched embedding-model invocation instead of one per template —
+    on a slow/throttled CPU (e.g. Render free tier) this is the difference
+    between seconds and minutes for 100 templates.
+
+    Each record: {"template_id": ..., "name": ..., "tags": [...], "description": ...}
+    """
+    if not records:
+        return
+    col = _get_collection()
+    col.upsert(
+        ids=[r["template_id"] for r in records],
+        documents=[
+            f"{r['name']}. {r.get('description', '')}. Tags: {', '.join(r.get('tags', []))}."
+            for r in records
+        ],
+        metadatas=[
+            {
+                "name": r["name"],
+                "tags": json.dumps(r.get("tags", [])),
+                "description": r.get("description", ""),
+                "usage_count": 0,
+                "recent_uses": json.dumps([]),
+            }
+            for r in records
+        ],
+    )
+
+
 def log_usage(
     template_id: str,
     top_text: str,
