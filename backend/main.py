@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -17,11 +18,17 @@ _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 def _auto_seed_if_empty() -> None:
-    """Seed templates from disk on first startup — one batched upsert call for all templates."""
+    """
+    Seed templates from disk if ChromaDB is empty — one batched upsert call.
+
+    Runs in a background thread (see lifespan below) so it never blocks app
+    startup: intent_router falls back to a hardcoded template list while
+    this is still running, so /chat/ works immediately even mid-seed.
+    """
     existing = set(list_template_ids())
     if existing:
         return
-    print("ChromaDB is empty — auto-seeding templates from disk...")
+    print("ChromaDB is empty — auto-seeding templates from disk...", flush=True)
     records = []
     for img in _TEMPLATES_DIR.iterdir():
         if img.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
@@ -37,14 +44,16 @@ def _auto_seed_if_empty() -> None:
             "description": f"Meme template: {name}",
         })
     upsert_templates_batch(records)
-    print(f"Seeded {len(records)} templates into ChromaDB.")
+    print(f"Seeded {len(records)} templates into ChromaDB.", flush=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_chroma()
     _init_examples()  # pre-warm examples store so first request isn't slow
-    _auto_seed_if_empty()
+    # Run in a background thread — don't block startup on the embedding
+    # model's first-use cost (slow on Render free tier's throttled CPU).
+    asyncio.create_task(asyncio.to_thread(_auto_seed_if_empty))
     yield
 
 
