@@ -17,13 +17,21 @@ settings = get_settings()
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
+_SEED_CHUNK_SIZE = 20  # caps peak memory during embedding — Render free tier is 512MB
+
+
 def _auto_seed_if_empty() -> None:
     """
-    Seed templates from disk if ChromaDB is empty — one batched upsert call.
+    Seed templates from disk if ChromaDB is empty — chunked batched upserts.
 
     Runs in a background thread (see lifespan below) so it never blocks app
     startup: intent_router falls back to a hardcoded template list while
     this is still running, so /chat/ works immediately even mid-seed.
+
+    Embedding all 100 templates in a single batch spiked memory past Render's
+    free-tier 512MB limit and triggered an OOM restart. Chunking into groups
+    of _SEED_CHUNK_SIZE keeps peak memory low while still being far faster
+    than one upsert call per template.
     """
     existing = set(list_template_ids())
     if existing:
@@ -43,7 +51,8 @@ def _auto_seed_if_empty() -> None:
             "tags": [tid],
             "description": f"Meme template: {name}",
         })
-    upsert_templates_batch(records)
+    for i in range(0, len(records), _SEED_CHUNK_SIZE):
+        upsert_templates_batch(records[i : i + _SEED_CHUNK_SIZE])
     print(f"Seeded {len(records)} templates into ChromaDB.", flush=True)
 
 
