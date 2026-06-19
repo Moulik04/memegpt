@@ -3,15 +3,12 @@ services:
     name: memegpt-backend
     env: python
     rootDir: backend
-    # Download Anton font + pre-warm the ChromaDB embedding model during build,
-    # so cold runtime starts don't re-download the ~80MB ONNX model every time
-    # the free-tier instance spins down and a new one boots.
+    # Download Anton font (Impact-style) into backend/fonts/ during build
     buildCommand: >-
       pip install -e ".[dev]" &&
       mkdir -p static/generated fonts &&
       curl -fsSL -o fonts/Anton-Regular.ttf
-      "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf" &&
-      python -c "import chromadb; c = chromadb.PersistentClient(path='/tmp/warmup').get_or_create_collection('warmup', metadata={'hnsw:space': 'cosine'}); c.add(ids=['x'], documents=['warmup'])"
+      "https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf"
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: LLM_PROVIDER
