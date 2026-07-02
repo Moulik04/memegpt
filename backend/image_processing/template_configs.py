@@ -324,6 +324,21 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         },
     ),
 
+    # ── Drunk Friend Caught on Camera ────────────────────────────────────────
+    # Portrait phone video with large black bars top and bottom — face in middle.
+    # Text goes in the black bars where it's always legible.
+    "drunk_friend_caught": TemplateConfig(
+        template_id="drunk_friend_caught",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=4, y_pct=4,  w_pct=92, h_pct=26, font_size_pct=7),
+            TextBoxConfig("bottom_text", x_pct=4, y_pct=82, w_pct=92, h_pct=14, font_size_pct=6),
+        ],
+        box_descriptions={
+            "top_text":    "The setup — what situation or feeling led to this moment",
+            "bottom_text": "The punchline — his dazed reaction or what he's thinking",
+        },
+    ),
+
     # ── Doge ─────────────────────────────────────────────────────────────────
     # Scattered Comic-Sans style text around a Shiba Inu — 5 position zones
     "doge": TemplateConfig(

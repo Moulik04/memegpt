@@ -28,7 +28,7 @@ _FALLBACK_TEMPLATES = [
     "expanding_brain", "two_buttons", "success_kid", "one_does_not_simply",
     "doge", "woman_yelling_at_cat", "surprised_pikachu", "grus_plan",
     "mocking_spongebob", "hide_the_pain_harold", "buff_doge_vs_cheems",
-    "batman_slapping_robin",
+    "batman_slapping_robin", "drunk_friend_caught",
 ]
 
 # Always included in every prompt regardless of RAG results
@@ -111,6 +111,7 @@ USE_WHEN: dict[str, str] = {
     "megamind":                "No one said you couldn't do the thing — technically correct loophole logic",
     "is_this_a_pigeon":        "Confidently misidentifying something obvious — labeling the wrong thing incorrectly",
     "ight_imma_head_out":      "Spongebob getting up to leave — when something awkward or bad happens and you just go",
+    "drunk_friend_caught":     "Someone caught on camera with a dazed, confused, blackout-adjacent stare — 'wait what's happening'; perfect for drunk friend moments, being caught off guard, pretending to be sober, POV phone-in-face surprise, or general dissociation at a social event",
 }
 
 
