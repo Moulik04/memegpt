@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -7,6 +7,19 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "MemeGPT",
   description: "A chatbot that speaks exclusively in memes.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "MemeGPT",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  themeColor: "#030712",
 };
 
 export default function RootLayout({
@@ -16,7 +29,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} bg-gray-950 text-gray-100 min-h-screen`}>
+      <body className={`${inter.className} bg-gray-950 text-gray-100`}>
         {children}
       </body>
     </html>

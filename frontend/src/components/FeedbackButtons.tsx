@@ -16,17 +16,17 @@ export function FeedbackButtons({ onFeedback }: Props) {
   }
 
   return (
-    <div className="flex gap-1 mt-2 justify-end">
+    <div className="flex gap-0.5">
       <button
         onClick={() => handleVote("up")}
         disabled={!!voted}
         title="Good meme"
-        className={`text-base px-1.5 py-0.5 rounded transition-all duration-200 ${
+        className={`action-btn text-base px-1.5 py-0.5 ${
           voted === "up"
-            ? "opacity-100 scale-110"
+            ? "opacity-100"
             : voted
             ? "opacity-20 cursor-not-allowed"
-            : "opacity-40 hover:opacity-90 hover:scale-110 cursor-pointer"
+            : ""
         }`}
       >
         👍
@@ -35,12 +35,12 @@ export function FeedbackButtons({ onFeedback }: Props) {
         onClick={() => handleVote("down")}
         disabled={!!voted}
         title="Bad meme"
-        className={`text-base px-1.5 py-0.5 rounded transition-all duration-200 ${
+        className={`action-btn text-base px-1.5 py-0.5 ${
           voted === "down"
-            ? "opacity-100 scale-110"
+            ? "opacity-100"
             : voted
             ? "opacity-20 cursor-not-allowed"
-            : "opacity-40 hover:opacity-90 hover:scale-110 cursor-pointer"
+            : ""
         }`}
       >
         👎

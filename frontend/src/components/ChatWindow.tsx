@@ -7,9 +7,16 @@ import { MessageBubble } from "./MessageBubble";
 import { ThinkingBubble } from "./ThinkingBubble";
 import type { ChatMessage } from "@/types";
 
-interface ThinkingState {
-  message: string;
-}
+const EXAMPLE_PROMPTS = [
+  "waiting for my PR to get reviewed for 3 days",
+  "my plan was going great then suddenly it wasn't",
+  "me vs my alarm clock at 7am",
+  "when the deploy finally works on first try",
+  "my friend after 4 drinks claiming he's sober",
+  "my manager asking who broke production",
+];
+
+interface ThinkingState { message: string }
 
 export function ChatWindow() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -18,8 +25,8 @@ export function ChatWindow() {
   const [thinking, setThinking] = useState<ThinkingState | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
-
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -29,53 +36,41 @@ export function ChatWindow() {
     async (messageIndex: number, rating: "up" | "down") => {
       const msg = messages[messageIndex];
       if (!msg || msg.role !== "assistant") return;
-      // Look back for the user message that triggered this meme
-      const userMsg = messages
-        .slice(0, messageIndex)
-        .reverse()
-        .find((m) => m.role === "user");
+      const userMsg = messages.slice(0, messageIndex).reverse().find((m) => m.role === "user");
       await postFeedback({
         conversation_id: conversationId,
         template_id: msg.template_id || "",
         texts: {},
         rating,
         user_message: userMsg?.content,
-      }).catch(() => {
-        // Non-critical — fail silently
-      });
+      }).catch(() => {});
     },
-    [messages, conversationId]
+    [messages, conversationId],
   );
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text || loading) return;
-
+  async function submit(text: string) {
+    if (!text.trim() || loading) return;
     const userMsg: ChatMessage = {
       role: "user",
-      content: text,
+      content: text.trim(),
       timestamp: new Date().toISOString(),
     };
-
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
     setError(null);
-    setThinking({ message: "Reading your vibe..." });
-
+    setThinking({ message: "Reading your vibe…" });
     try {
-      await sendChatStream(text, conversationId, (event) => {
+      await sendChatStream(text.trim(), conversationId, (event) => {
         if (event.type === "thinking") {
           setThinking({ message: event.message });
         } else if (event.type === "done") {
           setThinking(null);
           setConversationId(event.conversation_id);
-          const botMsg: ChatMessage = {
-            ...event.message,
-            template_id: event.template_used,
-          };
-          setMessages((prev) => [...prev, botMsg]);
+          setMessages((prev) => [
+            ...prev,
+            { ...event.message, template_id: event.template_used },
+          ]);
         } else if (event.type === "error") {
           setError(event.message);
           setThinking(null);
@@ -89,15 +84,40 @@ export function ChatWindow() {
     }
   }
 
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    submit(input);
+  }
+
+  function handlePromptChip(prompt: string) {
+    setInput(prompt);
+    inputRef.current?.focus();
+  }
+
   return (
-    <div className="flex flex-col w-full max-w-2xl h-[70vh] bg-gray-900 rounded-2xl border border-gray-700 shadow-2xl">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto p-4 chat-scroll">
-        {messages.length === 0 && (
-          <p className="text-center text-gray-600 text-sm mt-8">
-            Say anything — I&apos;ll reply in memes.
-          </p>
+      <div className="flex-1 overflow-y-auto px-4 py-4 chat-scroll">
+        {messages.length === 0 && !thinking && (
+          <div className="flex flex-col items-center justify-center h-full gap-6 py-8">
+            <div className="text-center">
+              <p className="text-gray-500 text-sm">Say anything — I&apos;ll reply in memes.</p>
+              <p className="text-gray-600 text-xs mt-1">Or pick a prompt below ↓</p>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center max-w-sm">
+              {EXAMPLE_PROMPTS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => handlePromptChip(p)}
+                  className="prompt-chip"
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
+
         {messages.map((msg, i) => (
           <MessageBubble
             key={i}
@@ -113,34 +133,40 @@ export function ChatWindow() {
         {thinking && <ThinkingBubble message={thinking.message} />}
 
         {error && (
-          <p className="text-center text-red-400 text-xs mt-2">{error}</p>
+          <div className="flex justify-start mb-3">
+            <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/40
+                          rounded-xl px-3 py-2 max-w-[80%]">
+              {error}
+            </p>
+          </div>
         )}
         <div ref={bottomRef} />
       </div>
 
       {/* Input bar */}
-      <form
-        onSubmit={handleSubmit}
-        className="flex items-center gap-2 p-3 border-t border-gray-700"
-      >
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
-          disabled={loading}
-          className="flex-1 bg-gray-800 rounded-xl px-4 py-2.5 text-sm placeholder-gray-500
-                     focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 transition-colors
-                     text-white text-sm font-semibold rounded-xl px-4 py-2.5"
-        >
-          Send
-        </button>
-      </form>
+      <div className="shrink-0 border-t border-gray-800/60 px-3 py-3">
+        <form onSubmit={handleSubmit} className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Type a message…"
+            disabled={loading}
+            className="flex-1 bg-[#13131e] border border-gray-800 rounded-xl px-4 py-2.5
+                       text-sm placeholder-gray-600 focus:outline-none focus:border-brand-600
+                       disabled:opacity-50 transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 transition-colors
+                       text-white text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
+          >
+            Send
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

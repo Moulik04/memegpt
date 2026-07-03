@@ -12,12 +12,12 @@ export function MemeDisplay({ url, alt = "meme" }: Props) {
   const src = url.startsWith("http") ? url : memeImageUrl(url);
 
   return (
-    <div className="meme-reveal mt-2 rounded-xl overflow-hidden border border-gray-700 max-w-sm">
+    <div className="meme-reveal mt-2 rounded-xl overflow-hidden border border-gray-700/60">
       <Image
         src={src}
         alt={alt}
-        width={500}
-        height={400}
+        width={600}
+        height={500}
         className="w-full h-auto object-contain"
         unoptimized
       />
