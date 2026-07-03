@@ -360,13 +360,14 @@ async def _call_groq(
             timeout=30.0,
         )
         if response.status_code == 429:
-            # Rate limited — wait the suggested retry-after (or 3s) then try once more
-            retry_after = int(response.headers.get("retry-after", "3"))
-            await asyncio.sleep(min(retry_after, 5))
+            # Rate limited — respect Groq's retry-after (cap at 30s so we don't stall forever)
+            retry_after = int(response.headers.get("retry-after", "5"))
+            await asyncio.sleep(min(retry_after, 30))
             continue
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
-    response.raise_for_status()
+    # Both attempts hit 429 — return empty so parse_intent falls through to hard fallback
+    # rather than raising httpx.HTTPStatusError and bypassing the fallback entirely
     return ""
 
 
@@ -446,7 +447,7 @@ async def parse_intent(
             if result.template_id not in known_id_set:
                 raise ValueError(f"Hallucinated template_id: {result.template_id}")
             return result
-        except (json.JSONDecodeError, ValidationError, ValueError, KeyError):
+        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, httpx.HTTPError):
             pass
 
         # Attempt 2 — minimal strict prompt at low temperature
@@ -465,7 +466,7 @@ async def parse_intent(
             if result.template_id not in known_id_set:
                 raise ValueError(f"Hallucinated template_id: {result.template_id}")
             return result
-        except (json.JSONDecodeError, ValidationError, ValueError, KeyError):
+        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, httpx.HTTPError):
             pass
 
     # Hard fallback — always returns something rather than 500-ing
