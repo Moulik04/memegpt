@@ -435,12 +435,12 @@ async def parse_intent(
 
     async with httpx.AsyncClient() as client:
         # Attempt 1 — rich prompt with few-shot + avoid block
-        raw = await _call_llm(client, settings, [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ])
-        raw = _strip_markdown(raw)
         try:
+            raw = await _call_llm(client, settings, [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ])
+            raw = _strip_markdown(raw)
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
             result = IntentResponse(**data)
@@ -455,11 +455,11 @@ async def parse_intent(
             user_message=user_message,
             template_ids=", ".join(template_ids[:14]),
         )
-        raw = await _call_llm(client, settings, [
-            {"role": "user", "content": retry_prompt},
-        ], temperature=0.2)
-        raw = _strip_markdown(raw)
         try:
+            raw = await _call_llm(client, settings, [
+                {"role": "user", "content": retry_prompt},
+            ], temperature=0.2)
+            raw = _strip_markdown(raw)
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
             result = IntentResponse(**data)
