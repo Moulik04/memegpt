@@ -192,6 +192,9 @@ USE_WHEN: dict[str, str] = {
     "drake_blank":             "Drake approving/rejecting without labels — blank version for custom top/bottom rejection-then-preference comparisons",
     "trump_bill_signing":      "Someone signing a document with theatrical gravity — officially decreeing something; executive decision energy",
     "mother_ignoring_kid_drowning_in_a_pool": "Mother on phone ignoring drowning kid — completely absorbed in one thing while something urgent is happening right next to you",
+    "scientist_myself":        "Norman Osborn 'I'm something of a scientist myself' — unexpected relate; claiming insider status in something you're really not an expert in",
+    "empire_state_climbers":   "Two people having a side conversation while climbing the Empire State Building — unexpected tangent mid-crisis; chatting about random things during a high-stakes moment",
+    "shut_up_and_take_my_money": "Fry from Futurama throwing money — 'shut up and take my money'; wanting something so badly you'd pay anything; instant must-have energy",
     "friendship_ended":        "'Friendship ended with X, now Y is my best friend' — publicly replacing a former favourite with a new one",
     "laughing_leo":            "Leo DiCaprio pointing and laughing — spotted the funny thing; 'this guy, look at this guy'",
 
