@@ -305,22 +305,38 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
     ),
 
     # ── Boardroom Meeting Suggestion ─────────────────────────────────────────
-    # 3-panel vertical: presenter pitches idea → 3 employees all suggest same thing → boss throws them out
+    # 3-panel vertical (500x649): presenter pitches → 3 employees echo → boss throws someone out
+    # Increased font sizes — speech bubbles are small areas, need larger text to be readable
     "boardroom_meeting_suggestion": TemplateConfig(
         template_id="boardroom_meeting_suggestion",
         text_boxes=[
-            TextBoxConfig("suggestion",  x_pct=12, y_pct=1,  w_pct=41, h_pct=14, font_size_pct=4,   uppercase=False),
-            TextBoxConfig("person_1",    x_pct=4,  y_pct=33, w_pct=22, h_pct=10, font_size_pct=3.5, uppercase=False),
-            TextBoxConfig("person_2",    x_pct=28, y_pct=32, w_pct=24, h_pct=9,  font_size_pct=3.5, uppercase=False),
-            TextBoxConfig("person_3",    x_pct=53, y_pct=31, w_pct=43, h_pct=14, font_size_pct=3.5, uppercase=False),
-            TextBoxConfig("reaction",    x_pct=5,  y_pct=83, w_pct=90, h_pct=13, font_size_pct=4.5),
+            TextBoxConfig("suggestion",  x_pct=12, y_pct=1,  w_pct=41, h_pct=14, font_size_pct=5,   uppercase=False),
+            TextBoxConfig("person_1",    x_pct=4,  y_pct=33, w_pct=22, h_pct=10, font_size_pct=5,   uppercase=False),
+            TextBoxConfig("person_2",    x_pct=28, y_pct=32, w_pct=24, h_pct=9,  font_size_pct=5,   uppercase=False),
+            TextBoxConfig("person_3",    x_pct=53, y_pct=31, w_pct=43, h_pct=14, font_size_pct=5,   uppercase=False),
+            TextBoxConfig("reaction",    x_pct=5,  y_pct=83, w_pct=90, h_pct=13, font_size_pct=5.5),
         ],
         box_descriptions={
             "suggestion": "The idea being pitched by the presenter (panel 1 speech bubble)",
-            "person_1":   "Left employee's take — a slight variation of the same idea (panel 2, left bubble)",
+            "person_1":   "Left employee's take — a slight variation of the same bad idea (panel 2, left bubble)",
             "person_2":   "Center employee's take (panel 2, center bubble)",
             "person_3":   "Right employee's take — often the dumbest or most obvious (panel 2, right bubble)",
-            "reaction":   "What the boss does in response — usually throws them out (panel 3 caption)",
+            "reaction":   "What the boss does — usually throws them all out (panel 3 caption)",
+        },
+    ),
+
+    # ── Evil Kermit ──────────────────────────────────────────────────────────
+    # 700x325 landscape — two-panel side-by-side: LEFT = regular Kermit, RIGHT = hooded evil Kermit.
+    # Text at the bottom of each half so it doesn't cover the faces.
+    "evil_kermit": TemplateConfig(
+        template_id="evil_kermit",
+        text_boxes=[
+            TextBoxConfig("regular_kermit", x_pct=2,  y_pct=62, w_pct=46, h_pct=35, font_size_pct=6.5, uppercase=False),
+            TextBoxConfig("evil_kermit",    x_pct=52, y_pct=62, w_pct=46, h_pct=35, font_size_pct=6.5, uppercase=False),
+        ],
+        box_descriptions={
+            "regular_kermit": "The responsible, sensible thought — what you SHOULD do (left panel, regular Kermit)",
+            "evil_kermit":    "The dark temptation — what your inner demon is actually suggesting (right panel, hooded evil Kermit)",
         },
     ),
 

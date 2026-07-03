@@ -11,6 +11,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 
@@ -117,7 +118,7 @@ USE_WHEN: dict[str, str] = {
     "drunk_friend_caught":     "Someone caught on camera with a dazed, confused, blackout-adjacent stare — 'wait what's happening'; perfect for drunk friend moments, being caught off guard, pretending to be sober, POV phone-in-face surprise, or general dissociation at a social event",
 
     # --- Full catalog — file-stem-matched keys so ChromaDB lookups resolve correctly ---
-    "epic_handshake":          "Two opposing sides agreeing on exactly one thing — 'we disagree on everything except X'; unexpected common ground between rivals",
+    "epic_handshake":          "Two rivals, enemies, or opposites shaking hands because they both agree on one specific thing — 'we hate each other but we both hate X'; enemies uniting; two sides with nothing in common suddenly agreeing; unexpected common ground between opponents",
     "evil_kermit":             "Your inner demon tempting you — regular Kermit says the responsible thing, evil Kermit in a hood suggests the chaotic/petty option",
     "tuxedo_winnie_the_pooh":  "Basic version vs fancy/intellectual version of the same thing — upgrading vocabulary without changing the meaning; classifying up",
     "panik_kalm_panik":        "Panic → brief false calm → panic returns worse; a situation that seemed resolved then gets dramatically worse",
@@ -341,23 +342,31 @@ async def _call_groq(
     temperature: float = 0.75,
 ) -> str:
     """Groq cloud inference — free tier, ~400 t/s, no GPU required."""
-    response = await client.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        json={
-            "model": settings.groq_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": 200,
-            "response_format": {"type": "json_object"},
-        },
-        headers={
-            "Authorization": f"Bearer {settings.groq_api_key}",
-            "Content-Type": "application/json",
-        },
-        timeout=30.0,
-    )
+    for attempt in range(2):
+        response = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            json={
+                "model": settings.groq_model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": 200,
+                "response_format": {"type": "json_object"},
+            },
+            headers={
+                "Authorization": f"Bearer {settings.groq_api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+        if response.status_code == 429:
+            # Rate limited — wait the suggested retry-after (or 3s) then try once more
+            retry_after = int(response.headers.get("retry-after", "3"))
+            await asyncio.sleep(min(retry_after, 5))
+            continue
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"].strip()
     response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"].strip()
+    return ""
 
 
 async def _call_llm(
