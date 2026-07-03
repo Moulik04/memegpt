@@ -408,9 +408,11 @@ async def parse_intent(
     rag_results = query_similar_memes(user_message, n_results=8)
     rag_ids = [r["id"] for r in rag_results if r.get("id") in known_id_set]
 
-    # Final catalog: RAG results first, then core templates, deduplicated, max 20
-    # This keeps the prompt well under 4096 tokens regardless of collection size
-    prompt_ids = list(dict.fromkeys(rag_ids + _CORE_TEMPLATE_IDS))[:20]
+    # Core templates always come first (guaranteed in prompt); unique RAG extras appended after.
+    # Cap at 25 — 70b handles ~25 compact JSON entries well within its context window.
+    core_set = set(_CORE_TEMPLATE_IDS)
+    extra_rag = [id for id in rag_ids if id not in core_set]
+    prompt_ids = (_CORE_TEMPLATE_IDS + extra_rag)[:25]
     template_ids = prompt_ids  # used in retry prompt below
     catalog = _build_template_catalog(prompt_ids)
 
