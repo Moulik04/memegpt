@@ -341,42 +341,84 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
 
     # ── Indian Templates ─────────────────────────────────────────────────────
 
-    # SRK arms wide — landscape shot, person centered; top sky area + bottom ground area
-    "srk_arms_wide": TemplateConfig(
-        template_id="srk_arms_wide",
+    # Baburao (640x640 square) — bottom ~15% has a baked-in subtitle strip;
+    # keep both text boxes above y=72 so captions never overlap the subtitle.
+    "baburao": TemplateConfig(
+        template_id="baburao",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=22, font_size_pct=7),
+            TextBoxConfig("bottom_text", x_pct=5, y_pct=54, w_pct=90, h_pct=22, font_size_pct=7),
+        ],
+        box_descriptions={
+            "top_text":    "The problem or situation that needs solving",
+            "bottom_text": "Baburao's absurd, wrong, or confidently delivered solution",
+        },
+    ),
+
+    # SRK DDLJ train scene (600x450) — landscape, two people reaching for each other;
+    # top text over sky, bottom text over ground/crowd area
+    "srk_ddlj": TemplateConfig(
+        template_id="srk_ddlj",
         text_boxes=[
             TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=20, font_size_pct=7),
+            TextBoxConfig("bottom_text", x_pct=5, y_pct=78, w_pct=90, h_pct=20, font_size_pct=6),
+        ],
+        box_descriptions={
+            "top_text":    "What was almost missed / the setup for the last-minute moment",
+            "bottom_text": "The barely-made-it punchline or dramatic declaration",
+        },
+    ),
+
+    # Circuit (400x712 portrait) — tall image, face in centre; push text to clear edges
+    "circuit_plan": TemplateConfig(
+        template_id="circuit_plan",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=16, font_size_pct=6),
+            TextBoxConfig("bottom_text", x_pct=5, y_pct=82, w_pct=90, h_pct=16, font_size_pct=6),
+        ],
+        box_descriptions={
+            "top_text":    "The problem or situation Circuit is scheming about",
+            "bottom_text": "His confident jugaad plan (probably terrible, definitely stated with conviction)",
+        },
+    ),
+
+    # Jethalal 4-panel (645x476) — 2×2 grid of escalating shock expressions;
+    # single top caption for setup, single bottom for peak-panic punchline
+    "jethalal_panic": TemplateConfig(
+        template_id="jethalal_panic",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=18, font_size_pct=6),
             TextBoxConfig("bottom_text", x_pct=5, y_pct=80, w_pct=90, h_pct=18, font_size_pct=6),
         ],
         box_descriptions={
-            "top_text":    "What you've been waiting for / the emotional setup",
-            "bottom_text": "The grand welcome or declaration (punchline)",
+            "top_text":    "What Jethalal just found out / what triggered the escalating panic",
+            "bottom_text": "Peak horror — the worst-case realisation (the final panel energy)",
         },
     ),
 
-    # Mogambo khush hua — single panel, dark background, text fits top/bottom well
+    # Mogambo (400x274 landscape) — villain in costume, dark tones; classic top/bottom
     "mogambo_khush": TemplateConfig(
         template_id="mogambo_khush",
         text_boxes=[
-            TextBoxConfig("evil_plan",   x_pct=5, y_pct=2,  w_pct=90, h_pct=20, font_size_pct=7),
-            TextBoxConfig("mogambo_khush", x_pct=5, y_pct=78, w_pct=90, h_pct=20, font_size_pct=7),
+            TextBoxConfig("evil_plan",      x_pct=5, y_pct=2,  w_pct=90, h_pct=28, font_size_pct=7),
+            TextBoxConfig("mogambo_khush",  x_pct=5, y_pct=68, w_pct=90, h_pct=28, font_size_pct=7),
         ],
         box_descriptions={
-            "evil_plan":     "What worked out / the plan that succeeded or the karma that hit",
-            "mogambo_khush": "The reaction — 'Mogambo khush hua' or your sinister satisfaction",
+            "evil_plan":    "What worked out / the plan that succeeded or karma that landed",
+            "mogambo_khush": "The villainous satisfaction — 'Mogambo khush hua'",
         },
     ),
 
-    # Sholay Gabbar — often a close-up face shot; text at top and bottom
+    # Gabbar (640x480) — outdoor scene with revolver; interrogation format
     "sholay_gabbar": TemplateConfig(
         template_id="sholay_gabbar",
         text_boxes=[
-            TextBoxConfig("question",  x_pct=5, y_pct=2,  w_pct=90, h_pct=20, font_size_pct=6, uppercase=False),
-            TextBoxConfig("failure",   x_pct=5, y_pct=78, w_pct=90, h_pct=20, font_size_pct=7),
+            TextBoxConfig("question",  x_pct=5, y_pct=2,  w_pct=90, h_pct=22, font_size_pct=6, uppercase=False),
+            TextBoxConfig("failure",   x_pct=5, y_pct=76, w_pct=90, h_pct=22, font_size_pct=7),
         ],
         box_descriptions={
-            "question": "Gabbar's interrogation — 'Kitne aadmi the?' / what failed and why",
-            "failure":  "The embarrassing answer / what went wrong",
+            "question": "Gabbar's demand — 'Kitne aadmi the?' / what task was given",
+            "failure":  "The embarrassing failure / what went wrong",
         },
     ),
 
