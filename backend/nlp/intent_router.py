@@ -42,6 +42,7 @@ _CORE_TEMPLATE_IDS = [
     "hide_the_pain_harold", "this_is_fine", "mocking_spongebob",
     "change_my_mind", "batman_slapping_robin",
     "buff_doge_vs_cheems", "boardroom_meeting_suggestion",
+    "epic_handshake", "evil_kermit", "panik_kalm_panik", "tuxedo_winnie_the_pooh",
 ]
 
 USE_WHEN: dict[str, str] = {
