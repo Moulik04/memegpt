@@ -29,6 +29,10 @@ _FALLBACK_TEMPLATES = [
     "doge", "woman_yelling_at_cat", "surprised_pikachu", "grus_plan",
     "mocking_spongebob", "hide_the_pain_harold", "buff_doge_vs_cheems",
     "batman_slapping_robin", "drunk_friend_caught",
+    # Indian templates
+    "baburao", "raju_hera_pheri", "srk_arms_wide", "ranveer_screaming",
+    "ratan_tata_pointing", "dhoni_calm", "circuit_plan", "jethalal_panic",
+    "alliswel", "mogambo_khush", "sholay_gabbar", "kapil_laughing",
 ]
 
 # Always included in every prompt regardless of RAG results
@@ -112,6 +116,20 @@ USE_WHEN: dict[str, str] = {
     "is_this_a_pigeon":        "Confidently misidentifying something obvious — labeling the wrong thing incorrectly",
     "ight_imma_head_out":      "Spongebob getting up to leave — when something awkward or bad happens and you just go",
     "drunk_friend_caught":     "Someone caught on camera with a dazed, confused, blackout-adjacent stare — 'wait what's happening'; perfect for drunk friend moments, being caught off guard, pretending to be sober, POV phone-in-face surprise, or general dissociation at a social event",
+
+    # --- Indian templates ---
+    "baburao":                 "Baburao Apte from Hera Pheri (Paresh Rawal) — delivering a confidently wrong or absurd solution to a simple problem; jugaad gone wrong; 'bhai yeh kar na'; when someone proposes the dumbest possible fix with full conviction",
+    "raju_hera_pheri":         "Raju from Hera Pheri (Akshay Kumar) scared/nervous — caught in a mess, terrified of consequences, pretending everything is fine while visibly panicking; perfect for 'I'm in trouble and I know it' moments",
+    "srk_arms_wide":           "Shah Rukh Khan DDLJ arms spread wide open — grand emotional welcome, 'finally arrived', open arms for something you've been waiting for, dramatic romantic or nostalgic declaration; iconic Bollywood open-arms pose",
+    "ranveer_screaming":       "Ranveer Singh yelling intensely — extreme hype, overreacting to something minor, unhinged excitement, 'this person needs to calm down'; when someone takes a small win too seriously",
+    "ratan_tata_pointing":     "Ratan Tata pointing directly at the camera — endorsing, approving, pointing out exactly the right thing; 'yes this one', wholesome approval, calling something out with respect",
+    "dhoni_calm":              "MS Dhoni's legendary calm face under extreme pressure — completely unbothered while everyone around is panicking; 'keep calm and finish it off'; pressure? what pressure?",
+    "circuit_plan":            "Circuit (Arshad Warsi) from Munna Bhai confidently presenting a dumb plan — jugaad solutions, 'bhai ek kaam karte hain', chaotic but confident ideas, desi problem-solving energy",
+    "jethalal_panic":          "Jethalal from Taarak Mehta terrified/panicking — dreading consequences, scared of getting caught, 'Babita ji dekh legi' energy; absolute domestic fear and anxiety",
+    "alliswel":                "Aamir Khan 'All is well' from 3 Idiots — fake reassurance when everything is clearly falling apart; convincing yourself it's fine; toxic positivity; chanting to ignore reality",
+    "mogambo_khush":           "Mogambo from Mr. India — 'Mogambo khush hua'; sinister satisfaction when your plan works; villain energy; when karma hits someone who deserved it; evil laugh moment",
+    "sholay_gabbar":           "Gabbar Singh from Sholay — 'Kitne aadmi the'; demanding accountability for failure; interrogating someone about what went wrong; iconic villain energy calling out underperformance",
+    "kapil_laughing":          "Kapil Sharma on his comedy show unable to stop laughing — something is too funny to even respond to; 'I can't'; losing composure completely; when a joke lands too hard",
 }
 
 

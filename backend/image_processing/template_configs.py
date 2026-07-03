@@ -339,7 +339,48 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         },
     ),
 
-    # ── Doge ─────────────────────────────────────────────────────────────────
+    # ── Indian Templates ─────────────────────────────────────────────────────
+
+    # SRK arms wide — landscape shot, person centered; top sky area + bottom ground area
+    "srk_arms_wide": TemplateConfig(
+        template_id="srk_arms_wide",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=20, font_size_pct=7),
+            TextBoxConfig("bottom_text", x_pct=5, y_pct=80, w_pct=90, h_pct=18, font_size_pct=6),
+        ],
+        box_descriptions={
+            "top_text":    "What you've been waiting for / the emotional setup",
+            "bottom_text": "The grand welcome or declaration (punchline)",
+        },
+    ),
+
+    # Mogambo khush hua — single panel, dark background, text fits top/bottom well
+    "mogambo_khush": TemplateConfig(
+        template_id="mogambo_khush",
+        text_boxes=[
+            TextBoxConfig("evil_plan",   x_pct=5, y_pct=2,  w_pct=90, h_pct=20, font_size_pct=7),
+            TextBoxConfig("mogambo_khush", x_pct=5, y_pct=78, w_pct=90, h_pct=20, font_size_pct=7),
+        ],
+        box_descriptions={
+            "evil_plan":     "What worked out / the plan that succeeded or the karma that hit",
+            "mogambo_khush": "The reaction — 'Mogambo khush hua' or your sinister satisfaction",
+        },
+    ),
+
+    # Sholay Gabbar — often a close-up face shot; text at top and bottom
+    "sholay_gabbar": TemplateConfig(
+        template_id="sholay_gabbar",
+        text_boxes=[
+            TextBoxConfig("question",  x_pct=5, y_pct=2,  w_pct=90, h_pct=20, font_size_pct=6, uppercase=False),
+            TextBoxConfig("failure",   x_pct=5, y_pct=78, w_pct=90, h_pct=20, font_size_pct=7),
+        ],
+        box_descriptions={
+            "question": "Gabbar's interrogation — 'Kitne aadmi the?' / what failed and why",
+            "failure":  "The embarrassing answer / what went wrong",
+        },
+    ),
+
+    # Doge ─────────────────────────────────────────────────────────────────
     # Scattered Comic-Sans style text around a Shiba Inu — 5 position zones
     "doge": TemplateConfig(
         template_id="doge",
