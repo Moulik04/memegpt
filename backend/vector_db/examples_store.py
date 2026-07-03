@@ -87,3 +87,95 @@ def get_similar_examples(query: str, n_results: int = 3) -> list[dict[str, Any]]
 
 def example_count() -> int:
     return _get_collection().count()
+
+
+# Curated few-shot examples — seeded on first startup.
+# These cover templates the LLM tends to confuse with more popular ones.
+_SEED_EXAMPLES: list[tuple[str, str, dict]] = [
+    (
+        "my inner demon telling me to order pizza at 2am while responsible me says sleep",
+        "evil_kermit",
+        {"regular_kermit": "Just go to sleep, you have work tomorrow", "evil_kermit": "Order the extra-large pizza with double cheese"},
+    ),
+    (
+        "saying 'residence' instead of 'house'",
+        "tuxedo_winnie_the_pooh",
+        {"basic": "my house", "fancy": "my place of residence"},
+    ),
+    (
+        "first calm then panic then calm again then panic worse about the exam results",
+        "panik_kalm_panik",
+        {"panik": "results come out tomorrow", "kalm": "I think I did okay", "panik_2": "I definitely failed"},
+    ),
+    (
+        "two enemies shaking hands because they both hate the same person",
+        "epic_handshake",
+        {"left_arm": "people who hate pineapple on pizza", "right_arm": "people who love pineapple on pizza", "label": "hating the guy who suggested it"},
+    ),
+    (
+        "calling wifi 'wireless fidelity' like a gentleman",
+        "tuxedo_winnie_the_pooh",
+        {"basic": "wifi", "fancy": "wireless fidelity"},
+    ),
+    (
+        "me vs my evil side at midnight: sleep or doomscroll reels",
+        "evil_kermit",
+        {"regular_kermit": "Close your phone and sleep", "evil_kermit": "One more reel won't hurt"},
+    ),
+    (
+        "two rivals agreeing that coffee is better than tea",
+        "epic_handshake",
+        {"left_arm": "morning people", "right_arm": "night owls", "label": "coffee is life"},
+    ),
+    (
+        "Baburao confidently explaining his jugaad fix for the leaking roof",
+        "baburao",
+        {"top_text": "Landlord: roof is leaking again", "bottom_text": "Baburao: bhai upar bucket rakh do — sorted"},
+    ),
+    (
+        "Jethalal realizing Babita ji saw what he just did — escalating panic",
+        "jethalal_panic",
+        {"top_text": "Me doing something embarrassing", "bottom_text": "The moment I realize my boss was watching"},
+    ),
+    (
+        "Dhoni calm while everyone else is panicking about the last over",
+        "dhoni_calm",
+        {"top_text": "Team needs 20 off 6 balls", "bottom_text": "Dhoni walking in like he's going to the canteen"},
+    ),
+    (
+        "my plan looked great on paper until the last step completely betrayed me",
+        "grus_plan",
+        {"step_1": "Write the essay the night before", "step_2": "Pull an all-nighter", "step_3": "Submit on time", "step_4": "Submit on time"},
+    ),
+    (
+        "me upgrading from calling it a 'snack' to a 'light culinary refreshment'",
+        "tuxedo_winnie_the_pooh",
+        {"basic": "snack", "fancy": "light culinary refreshment"},
+    ),
+    (
+        "introverts and extroverts both agreeing that Friday afternoon is sacred",
+        "epic_handshake",
+        {"left_arm": "introverts", "right_arm": "extroverts", "label": "Friday 5pm is untouchable"},
+    ),
+    (
+        "Circuit scheming with Munna bhai about how to fix everything with one call",
+        "circuit_plan",
+        {"top_text": "Problem: everything is broken", "bottom_text": "Circuit: bhai ek kaam karte hain"},
+    ),
+    (
+        "telling myself all is well while the project deadline collapses around me",
+        "alliswel",
+        {"panel_1": "Deadline in 3 days", "panel_2": "Still haven't started", "panel_3": "All is well"},
+    ),
+]
+
+
+def seed_examples() -> None:
+    """Seed curated few-shot examples if the collection is empty."""
+    col = _get_collection()
+    if col.count() > 0:
+        return
+    print("Seeding few-shot meme examples...", flush=True)
+    for user_msg, template_id, texts in _SEED_EXAMPLES:
+        upsert_example(user_msg, template_id, texts)
+    print(f"Seeded {len(_SEED_EXAMPLES)} few-shot examples.", flush=True)

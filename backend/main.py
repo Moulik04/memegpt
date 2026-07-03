@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from config import get_settings
 from routers import chat, explain, feedback, generate
 from vector_db.chroma_client import init_chroma, list_template_ids, upsert_templates_batch
-from vector_db.examples_store import _get_collection as _init_examples
+from vector_db.examples_store import _get_collection as _init_examples, seed_examples
 
 settings = get_settings()
 
@@ -63,6 +63,7 @@ async def lifespan(app: FastAPI):
     # Run in a background thread — don't block startup on the embedding
     # model's first-use cost (slow on Render free tier's throttled CPU).
     asyncio.create_task(asyncio.to_thread(_auto_seed_if_empty))
+    asyncio.create_task(asyncio.to_thread(seed_examples))
     yield
 
 
