@@ -60,10 +60,14 @@ def _auto_seed_if_empty() -> None:
 async def lifespan(app: FastAPI):
     init_chroma()
     _init_examples()  # pre-warm examples store so first request isn't slow
-    # Run in a background thread — don't block startup on the embedding
-    # model's first-use cost (slow on Render free tier's throttled CPU).
-    asyncio.create_task(asyncio.to_thread(_auto_seed_if_empty))
-    asyncio.create_task(asyncio.to_thread(seed_examples))
+
+    def _sequential_seed():
+        # Run template seeding first, then examples — never concurrently.
+        # Concurrent ChromaDB embedding model loads can spike past Render's 512MB limit.
+        _auto_seed_if_empty()
+        seed_examples()
+
+    asyncio.create_task(asyncio.to_thread(_sequential_seed))
     yield
 
 
