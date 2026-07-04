@@ -11,7 +11,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Ollama](https://img.shields.io/badge/Ollama-Llama_3.1_8B-74AA9C?style=flat-square)](https://ollama.com)
 [![Groq](https://img.shields.io/badge/Groq-Cloud_LLM-F55036?style=flat-square)](https://groq.com)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-1.x-FF6B35?style=flat-square)](https://www.trychroma.com/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-0.5.x-FF6B35?style=flat-square)](https://www.trychroma.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
 
@@ -19,7 +19,7 @@
 
 ---
 
-MemeGPT converts any natural-language message into a contextually appropriate meme. Type a message; the system routes it through an LLM structured-output pipeline, picks the best template from 100 options via semantic search, renders captions using a pixel-accurate bounding-box compositor, and streams the result back to a dark-themed chat interface in real time.
+MemeGPT converts any natural-language message into a contextually appropriate meme. Type a message; the system routes it through an LLM structured-output pipeline, picks the best template from 120+ options via semantic search, renders captions using a pixel-accurate bounding-box compositor, and streams the result back to a dark-themed chat interface in real time.
 
 **[Try it live →](https://memegpt-six.vercel.app)**
 
@@ -78,7 +78,7 @@ User message
 
 - **Zero-cost local LLM** — Ollama runs Llama 3.1 8B entirely on-device. No API key, no rate limits, works offline. GPU-accelerated on Apple Silicon (Metal) and NVIDIA (CUDA).
 - **Structured JSON output** — the model returns a typed JSON object (`template_id`, `texts`, `reasoning`) validated by Pydantic v2 before any image is touched. No regex heuristics. Retry logic handles malformed responses.
-- **RAG template retrieval** — ChromaDB indexes 100 templates as natural-language documents. Every request does a cosine-similarity search to find semantically relevant candidates, then merges with a core set — keeping the prompt under 1,300 tokens (fits in Ollama's 4096-token context).
+- **RAG template retrieval** — ChromaDB indexes 120+ templates as natural-language documents. Every request does a cosine-similarity search to find semantically relevant candidates, then merges with a core set — keeping the prompt under 1,300 tokens (fits in Ollama's 4096-token context).
 - **Per-template text layout** — `template_configs.py` defines named bounding boxes (in % coordinates) per template ID. The compositor converts to pixels at runtime and auto-shrinks font to fit. Supports arbitrary multi-panel layouts: Drake 2-panel, Gru 4-panel, Boardroom 5-bubble, Distracted Boyfriend 3-label, and more.
 - **Classic meme typography** — Anton font (free Impact equivalent, OFL license) with 8-directional stroke pass. Falls back to LiberationSans-Bold → Pillow default.
 - **SSE streaming** — `/chat/` yields `thinking → rendering → done` events so the UI updates live as each stage completes.
@@ -125,7 +125,7 @@ memegpt/
 │   │
 │   ├── image_processing/
 │   │   ├── compositor.py           Pillow compositor (font, wrap, bbox, stroke)
-│   │   └── template_configs.py     Per-template bounding box definitions (100 templates)
+│   │   └── template_configs.py     Per-template bounding box definitions (~120 templates)
 │   │
 │   ├── vector_db/
 │   │   ├── chroma_client.py        ChromaDB singleton — dual-mode (local + HTTP)
@@ -133,28 +133,39 @@ memegpt/
 │   │
 │   ├── nlp/
 │   │   └── intent_router.py        Ollama → JSON → IntentResponse (RAG + retry logic)
+│   ├── memory/
+│   │   └── conversation_store.py   Per-conversation recent-template memory (anti-repetition)
 │   │
-│   ├── templates/                  100 base meme images (.jpg / .png)
+│   ├── templates/                  ~120 base meme images (.jpg / .png)
 │   └── fonts/                      Drop Impact.ttf here to override Anton
 │
 ├── frontend/
 │   ├── Dockerfile
 │   └── src/
 │       ├── app/                    Next.js App Router (layout, page, globals.css)
+│       │   ├── api/chat/route.ts   True SSE proxy to POST /chat/ (rewrites() alone buffers SSE)
+│       │   ├── api/feedback/route.ts
+│       │   └── share/page.tsx      PWA share-target page (Web Share API)
 │       ├── components/
 │       │   ├── ChatWindow.tsx      Stateful chat container, SSE consumer, send logic
 │       │   ├── MessageBubble.tsx   Per-message bubble (user right, meme left)
+│       │   ├── FeedbackButtons.tsx / ShareButtons.tsx / ThinkingBubble.tsx
 │       │   └── MemeDisplay.tsx     next/image wrapper for rendered memes
 │       ├── lib/api.ts              Typed fetch helpers (sendChat, generateMeme…)
 │       └── types/index.ts          TypeScript interfaces mirroring backend schemas
 │
 └── scripts/
-    ├── seed_templates.py           Seeds all 100 templates into ChromaDB on first run
+    ├── seed_templates.py           Seeds Imgflip's top-100 templates into ChromaDB (one-time bootstrap)
+    ├── seed_examples.py            Manually seeds backend/data/curated_examples.jsonl (older, separate
+    │                                from the 15 examples auto-seeded by examples_store.py)
     ├── colab_ollama_server.ipynb   Run Ollama on Colab T4 GPU via ngrok HTTP tunnel
     ├── bridges2_ollama_service.sh  SLURM job for Ollama on PSC Bridges-2 V100-32GB
+    ├── bridges2_job.sh             SLURM job for the fine-tuning run itself (see below)
     ├── use_remote_ollama.sh        Switch OLLAMA_HOST and restart backend in one command
     ├── finetune_unsloth.py         LoRA fine-tuning with Unsloth (auto-detects T4 / V100)
     ├── prepare_finetune_dataset.py Converts Imgflip 100k CSV → ChatML JSONL
+    ├── ingest_imgflip_dataset.py   Downloads/prepares the raw Imgflip 100k dataset
+    ├── Modelfile                   Ollama Modelfile for loading a finished fine-tuned GGUF
     └── dummy_template_test.py      Standalone Pillow PoC — no services required
 ```
 
@@ -255,14 +266,14 @@ data: {"type": "done",     "conversation_id": "…", "message": {"meme_url": "/s
 
 - [x] SSE streaming (`thinking → rendering → done`)
 - [x] Docker Compose full-stack deployment
-- [x] Per-template bounding-box text layout (100 templates)
+- [x] Per-template bounding-box text layout (~120 templates)
 - [x] RAG pre-filtering to stay within 4096-token Ollama context
 - [x] Few-shot example store for improved template selection
 - [x] Remote GPU support (Colab T4 + Bridges-2 V100)
 - [x] Thumbs up / down feedback endpoint
 - [x] Groq cloud LLM backend + production deployment (Render backend, Vercel frontend)
 - [ ] `POST /templates/upload` — user-uploaded base images with auto-tagging
-- [ ] Conversation history passed back to LLM for multi-turn meme chains
+- [x] Conversation-level anti-repetition memory (recent template ids passed to the LLM); full multi-turn message context still pending
 - [ ] Fine-tuned model on Imgflip 100k dataset (scripts ready, training pending)
 - [ ] Pytest suite with golden-image diff tests for the compositor
 - [ ] Rate limiting via `slowapi`

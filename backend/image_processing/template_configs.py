@@ -147,24 +147,6 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         },
     ),
 
-    # ── Galaxy Brain ─────────────────────────────────────────────────────────
-    # Same 4-row layout as Expanding Brain (LEFT half = white text, RIGHT = brain)
-    "galaxy_brain": TemplateConfig(
-        template_id="galaxy_brain",
-        text_boxes=[
-            TextBoxConfig("logic_1", x_pct=2, y_pct=2,  w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
-            TextBoxConfig("logic_2", x_pct=2, y_pct=26, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
-            TextBoxConfig("logic_3", x_pct=2, y_pct=51, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
-            TextBoxConfig("logic_4", x_pct=2, y_pct=76, w_pct=46, h_pct=21, font_size_pct=4.5, font_color="#000000", stroke_color="#CCCCCC"),
-        ],
-        box_descriptions={
-            "logic_1": "The starting premise (reasonable)",
-            "logic_2": "The reasoning gets a bit stretched",
-            "logic_3": "Now it's getting absurd",
-            "logic_4": "The wild galaxy-brained conclusion everyone arrives at",
-        },
-    ),
-
     # ── Two Buttons ──────────────────────────────────────────────────────────
     "two_buttons": TemplateConfig(
         template_id="two_buttons",
@@ -435,26 +417,6 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         box_descriptions={
             "question": "Gabbar's demand — 'Kitne aadmi the?' / what task was given",
             "failure":  "The embarrassing failure / what went wrong",
-        },
-    ),
-
-    # Doge ─────────────────────────────────────────────────────────────────
-    # Scattered Comic-Sans style text around a Shiba Inu — 5 position zones
-    "doge": TemplateConfig(
-        template_id="doge",
-        text_boxes=[
-            TextBoxConfig("wow",    x_pct=2,  y_pct=2,  w_pct=38, h_pct=14, font_size_pct=6, font_color="#FF69B4", uppercase=False),
-            TextBoxConfig("such",   x_pct=60, y_pct=5,  w_pct=38, h_pct=14, font_size_pct=6, font_color="#FFD700", uppercase=False),
-            TextBoxConfig("very",   x_pct=2,  y_pct=40, w_pct=35, h_pct=14, font_size_pct=6, font_color="#00BFFF", uppercase=False),
-            TextBoxConfig("much",   x_pct=63, y_pct=38, w_pct=35, h_pct=14, font_size_pct=6, font_color="#7CFC00", uppercase=False),
-            TextBoxConfig("many",   x_pct=15, y_pct=72, w_pct=70, h_pct=18, font_size_pct=6, font_color="#FF6347", uppercase=False),
-        ],
-        box_descriptions={
-            "wow":  "Top-left — 'wow' phrase (e.g. 'wow such code')",
-            "such": "Top-right — 'such' phrase (e.g. 'such amaze')",
-            "very": "Middle-left — 'very' phrase (e.g. 'very confused')",
-            "much": "Middle-right — 'much' phrase (e.g. 'much wow')",
-            "many": "Bottom-center — final phrase (e.g. 'many meme, very format')",
         },
     ),
 

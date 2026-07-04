@@ -71,7 +71,7 @@ services:
       - .env
     environment:
       # Use native Ollama on the Mac host (Metal GPU) instead of Docker Ollama (CPU-only)
-      OLLAMA_HOST: https://departure-handyman-impaired.ngrok-free.dev/
+      OLLAMA_HOST: http://host.docker.internal:11434
       CHROMA_HOST: vector-db
       CHROMA_PORT: "8000"
     volumes:

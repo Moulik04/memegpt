@@ -16,7 +16,7 @@ services:
       - key: GROQ_API_KEY
         sync: false          # add this manually in Render dashboard → Environment
       - key: GROQ_MODEL
-        value: llama-3.1-8b-instant
+        value: qwen/qwen3.6-27b
       - key: CORS_ALLOW_ALL_ORIGINS
         value: "true"
       - key: PYTHON_VERSION

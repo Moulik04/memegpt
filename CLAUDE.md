@@ -35,29 +35,51 @@ memegpt/
 │   ├── nlp/
 │   │   └── intent_router.py  _call_llm() dispatches to Ollama (local) or Groq (cloud) → IntentResponse JSON
 │   │
-│   ├── templates/            100 base meme images (JPG/PNG), named by template_id
+│   ├── memory/
+│   │   └── conversation_store.py  In-memory per-conversation template history (anti-repetition)
+│   │
+│   ├── templates/            ~122 base meme images (JPG/PNG), named by template_id
 │   ├── fonts/                Anton-Regular.ttf (downloaded at build time — free Impact equivalent)
 │   ├── static/generated/     Runtime output — compositor writes PNGs here (ephemeral on Render)
-│   └── data/chroma/          ChromaDB persistent store (git-ignored)
+│   ├── data/curated_examples.jsonl  Older 51-example few-shot set — see note below
+│   ├── data/chroma/           ChromaDB persistent store (git-ignored)
+│   ├── Dockerfile / .dockerignore
+│   └── .env.example
 │
 ├── frontend/                 Next.js 14 + Tailwind CSS (TypeScript)
 │   └── src/
 │       ├── app/
-│       │   ├── layout.tsx    Root layout, dark theme, Inter font
+│       │   ├── layout.tsx    Root layout, dark theme, Inter font, PWA manifest link
 │       │   ├── page.tsx      Single-page entry — renders <ChatWindow />
+│       │   ├── share/page.tsx  Share-target landing page (PWA `manifest.json` + Web Share API)
+│       │   ├── api/chat/route.ts      App Router handler that proxies POST /chat/ with true SSE
+│       │   │                          streaming — next.config.js `rewrites()` alone buffers the
+│       │   │                          whole response and breaks SSE, so this route (checked
+│       │   │                          before rewrites) takes precedence for this one path
+│       │   ├── api/feedback/route.ts  Proxies POST /feedback/
 │       │   └── globals.css   Tailwind directives + scrollbar + fadeIn animation
 │       ├── components/
-│       │   ├── ChatWindow.tsx  Stateful chat container, SSE consumer, conversation ID
-│       │   ├── MessageBubble.tsx  Per-message bubble (user right, bot left) + feedback buttons
+│       │   ├── ChatWindow.tsx    Stateful chat container, SSE consumer, conversation ID
+│       │   ├── MessageBubble.tsx Per-message bubble (user right, bot left)
+│       │   ├── FeedbackButtons.tsx  Thumbs up/down, posts to /feedback/
+│       │   ├── ShareButtons.tsx     Web Share API / copy-link for a generated meme
+│       │   ├── ThinkingBubble.tsx   Renders the `thinking` SSE stage messages
 │       │   └── MemeDisplay.tsx   next/image wrapper for rendered memes
 │       ├── lib/
 │       │   └── api.ts         Typed fetch helpers: sendChatStream, generateMeme, explainMeme, memeImageUrl
 │       └── types/
 │           └── index.ts       Shared TypeScript interfaces mirroring backend schemas
 │
+├── docker-compose.yml         Self-hosted stack: Ollama + ChromaDB + backend + frontend containers
 ├── render.yaml                Render.com Blueprint — native Python env, build/start commands
 └── scripts/
-    ├── seed_templates.py       Manual seed CLI (auto-seed on startup makes this optional now)
+    ├── seed_templates.py         Downloads Imgflip's top-100 templates + seeds ChromaDB (one-time bootstrap)
+    ├── seed_examples.py          Manually seeds backend/data/curated_examples.jsonl (see note below)
+    ├── ingest_imgflip_dataset.py / prepare_finetune_dataset.py / finetune_unsloth.py
+    │                             Imgflip-100k → ChatML → Unsloth LoRA fine-tuning pipeline (not yet run)
+    ├── Modelfile                 Ollama Modelfile for loading a finished fine-tuned GGUF
+    ├── bridges2_job.sh / bridges2_ollama_service.sh / colab_ollama_server.ipynb / use_remote_ollama.sh
+    │                             Remote GPU inference (PSC Bridges-2, Colab T4) for local dev
     └── dummy_template_test.py  Standalone Pillow PoC — run without any backend services
 ```
 
@@ -125,13 +147,17 @@ Frontend resolves meme_url via memeImageUrl() → NEXT_PUBLIC_API_BASE + relativ
 - `main.py` auto-seeds all templates found in `backend/templates/` on startup if the collection is empty — no manual seed step needed for a fresh deploy.
 - Seeding is **sequential** (templates first, then few-shot examples via `examples_store.seed_examples()`). Concurrent ChromaDB embedding model loads spiked past Render's 512MB free-tier limit; serialized into `_sequential_seed()` run in a single background thread.
 - `usage_count` and `recent_uses` are stored as metadata fields (not documents) so they survive re-embedding without touching the document text.
-- Few-shot examples seeded into a separate ChromaDB collection by `examples_store.py` — 15 curated (prompt → template) pairs covering the most abstract/confusable templates.
+- Few-shot examples seeded into a separate ChromaDB collection by `examples_store.py` — 15 curated (prompt → template) pairs covering the most abstract/confusable templates, auto-seeded on startup via `seed_examples()`.
+- **Known duplication:** `backend/data/curated_examples.jsonl` (51 older examples, popular templates) is a second, disconnected few-shot source seeded only by manually running `scripts/seed_examples.py`. It predates the 15-item hardcoded set and the two have no defined relationship — running the script adds to, rather than replaces, the auto-seeded set.
 
 ### Frontend (`frontend/`)
 - `next.config.js` rewrites `/api/*` → `process.env.BACKEND_URL` (defaults to `localhost:8000`) so the frontend never hardcodes the backend URL in component code. `remotePatterns` allow image loading from `localhost`, the Docker `backend` hostname, and `*.onrender.com`.
+- **`app/api/chat/route.ts` overrides the generic rewrite for `/chat/`** — Next.js checks the filesystem for a matching route before applying `rewrites()`, and `rewrites()` buffers the entire upstream response before forwarding, which breaks SSE. The route handler pipes the backend's `ReadableStream` straight through instead.
 - Tailwind brand color palette uses shades 50–900 (all must be defined; missing shades like 400 cause Vercel build failures if referenced in CSS).
 - `memeImageUrl()` in `lib/api.ts` prefixes relative meme URLs with `process.env.NEXT_PUBLIC_API_BASE` (must be set in Vercel for production; falls back to `localhost:8000` for local dev).
 - Conversation state (`conversationId`) is held in `ChatWindow` component state — intentionally ephemeral, resets on page refresh.
+- Backend-side conversation memory (`backend/memory/conversation_store.py`) tracks the last 5 template ids per `conversation_id` and feeds them to `parse_intent(..., avoid_templates=...)` so the LLM is nudged away from repeating the same template within a session.
+- `/share` page + `ShareButtons.tsx` + `manifest.json` implement a basic PWA share flow (Web Share API with a copy-link fallback).
 
 ### Deployment
 - **Backend (Render):** native Python runtime (`env: python` in `render.yaml`), not Docker — the service must be configured this way in Settings if created manually through the dashboard, since render.yaml service-type changes don't apply retroactively to manually-created services. Build command installs deps + downloads Anton font. `LLM_PROVIDER=groq` + `GROQ_API_KEY` env var for cloud inference (Render's CPU-only free tier can't run Ollama at usable speed).
@@ -144,7 +170,7 @@ Frontend resolves meme_url via memeImageUrl() → NEXT_PUBLIC_API_BASE + relativ
 
 ### Medium Priority
 - [ ] **User-uploaded templates**: `POST /templates/upload` endpoint — accept an image, extract dominant color palette, generate a `template_id`, write to `backend/templates/`, upsert into ChromaDB.
-- [ ] **Conversation history**: pass prior `ChatMessage` turns back to the LLM as context so it can build on previous memes in a session.
+- [x] **Conversation history**: `backend/memory/conversation_store.py` tracks recent template ids per conversation and passes them to `parse_intent` as `avoid_templates` to reduce repetition. (Full prior-message context, not just template ids, is still not passed back.)
 - [ ] **Fine-tuned model**: scripts for LoRA fine-tuning on the Imgflip 100k dataset exist (`scripts/finetune_unsloth.py`) but training hasn't been run.
 
 ### Low Priority / Polish
