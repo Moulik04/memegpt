@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { memeImageUrl } from "@/lib/api";
 
 interface Props {
@@ -11,11 +11,32 @@ interface Props {
 export function ShareButtons({ memeUrl, large = false }: Props) {
   const [copying, setCopying] = useState(false);
   const [copied, setCopied] = useState(false);
+  const fileRef = useRef<File | null>(null);
 
   const fullUrl = memeUrl.startsWith("http") ? memeUrl : memeImageUrl(memeUrl);
   const canShare = typeof navigator !== "undefined" && !!navigator.share;
 
+  // Pre-fetch the image as soon as it's on screen so handleShare can call
+  // navigator.share() synchronously from the click handler. Mobile browsers
+  // only honor share()/clipboard calls within the same tick as the user's
+  // tap ("user activation") — awaiting a fetch first silently drops that
+  // activation, so the share sheet doesn't fire on this tap and instead
+  // fires (mispositioned) on whatever the user's next unrelated tap is.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(fullUrl)
+      .then((res) => res.blob())
+      .then((blob) => {
+        if (!cancelled) fileRef.current = new File([blob], "meme.png", { type: "image/png" });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [fullUrl]);
+
   async function fetchBlob(): Promise<Blob> {
+    if (fileRef.current) return fileRef.current;
     const res = await fetch(fullUrl);
     return res.blob();
   }
@@ -57,21 +78,19 @@ export function ShareButtons({ memeUrl, large = false }: Props) {
     }
   }
 
-  async function handleShare() {
-    try {
-      const blob = await fetchBlob();
-      const file = new File([blob], "meme.png", { type: "image/png" });
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: "MemeGPT",
-          text: "Check this meme 😂",
-        });
-        return;
-      }
-    } catch {}
+  function handleShare() {
+    // Must call navigator.share() synchronously (no await beforehand) or
+    // mobile browsers drop the user-activation and the sheet never opens —
+    // see the useEffect above for why the file is already pre-fetched.
+    const file = fileRef.current;
+    if (file && navigator.canShare?.({ files: [file] })) {
+      navigator
+        .share({ files: [file], title: "MemeGPT", text: "Check this meme 😂" })
+        .catch(() => {});
+      return;
+    }
     if (navigator.share) {
-      await navigator.share({ url: fullUrl, title: "MemeGPT" }).catch(() => {});
+      navigator.share({ url: fullUrl, title: "MemeGPT" }).catch(() => {});
     }
   }
 
