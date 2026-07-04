@@ -55,10 +55,10 @@ USE_WHEN: dict[str, str] = {
     "two_buttons":             "Agonizing between two equally tempting or equally bad choices",
     "always_has_been":         "Revealing a dark or ironic truth that was always the case",
     "batman_slapping_robin":   "Interrupting someone mid-sentence to correct them sharply",
-    "buff_doge_vs_cheems":     "Comparing two states of the same person/thing — past vs present, rested vs exhausted, 2am energy vs 9am regret, before vs after, idealized vs reality",
+    "buff_doge_vs_cheems":     "Comparing two EXTERNAL versions of the same thing — strong vs weak, past vs present, rested vs exhausted, 2am energy vs 9am regret; NOT for internal conscience/temptation conflicts",
     "surprised_pikachu":       "Shocked by the obvious, predictable consequences of your own actions",
     "left_exit_12":            "Abandoning the sensible planned path to swerve toward something tempting",
-    "change_my_mind":          "Stating a bold controversial opinion at a table and daring anyone to argue",
+    "change_my_mind":          "Stating ONE bold controversial opinion and daring anyone to argue — NOT for vocabulary upgrades, NOT for inner-demon conflicts; only for genuinely debatable claims",
     "anakin_padme":            "Assuming a positive outcome that clearly isn't happening — silent confirmation",
     "doge":                    "Wow, much, very, many — comically enthusiastic amazement or ironic enthusiasm",
     "galaxy_brain":            "Increasingly absurd logic chain that arrives at a wild conclusion",
@@ -120,8 +120,8 @@ USE_WHEN: dict[str, str] = {
 
     # --- Full catalog — file-stem-matched keys so ChromaDB lookups resolve correctly ---
     "epic_handshake":          "Two rivals, enemies, or opposites shaking hands because they both agree on one specific thing — 'we hate each other but we both hate X'; enemies uniting; two sides with nothing in common suddenly agreeing; unexpected common ground between opponents",
-    "evil_kermit":             "Your inner demon tempting you — regular Kermit says the responsible thing, evil Kermit in a hood suggests the chaotic/petty option",
-    "tuxedo_winnie_the_pooh":  "Basic version vs fancy/intellectual version of the same thing — upgrading vocabulary without changing the meaning; classifying up",
+    "evil_kermit":             "INTERNAL CONSCIENCE CONFLICT: your inner demon/dark side vs your responsible/good side — two voices inside your head arguing; 'me telling myself to do X' vs 'evil me saying do Y instead'; NOT for external comparisons",
+    "tuxedo_winnie_the_pooh":  "Saying the exact same thing in fancy vs plain language — vocabulary or phrasing upgrade with zero meaning change; calling a drink a 'beverage', saying 'residence' for 'house', using pretentious synonyms; NOT for opinions or comparisons",
     "panik_kalm_panik":        "Panic → brief false calm → panic returns worse; a situation that seemed resolved then gets dramatically worse",
     "imagination_spongebob":   "SpongeBob making an air-quote rainbow — presenting a sarcastic, grandiose, or ironic label for something",
     "squidward_window":        "Squidward staring from behind a curtain — watching something from outside, uninvited, lurking with quiet envy or judgment",
