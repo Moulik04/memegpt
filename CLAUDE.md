@@ -2,7 +2,7 @@
 
 ## Overview
 
-MemeGPT is a chatbot that communicates exclusively through memes. A user sends a plain-English message; the system routes it through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over 100 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result back to a React/Next.js chat interface via SSE.
+MemeGPT is a chatbot that communicates exclusively through memes. A user sends a plain-English message; the system routes it through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over ~110 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result back to a React/Next.js chat interface via SSE.
 
 **Live demo:** frontend on Vercel (`memegpt-six.vercel.app`), backend on Render (`memegpt-backend.onrender.com`).
 
@@ -111,19 +111,25 @@ Frontend resolves meme_url via memeImageUrl() → NEXT_PUBLIC_API_BASE + relativ
 
 ### NLP / Intent Router (`nlp/intent_router.py`)
 - `_call_llm()` dispatches to `_call_groq()` (cloud, used in production via `LLM_PROVIDER=groq`) or `_call_ollama()` (local dev, free, needs `ollama serve`).
-- RAG pre-filter (`query_similar_memes`) finds the 8 most relevant templates, merged with a core list, capped at 20 — keeps the prompt under Ollama's 4096-token context.
+- **Production model:** `qwen/qwen3.6-27b` on Groq (llama-3.3-70b-versatile deprecated June 17 2026). Qwen 3.x thinking mode is disabled via `reasoning_effort: "none"` to prevent `<think>` tokens from breaking JSON parsing.
+- RAG pre-filter (`query_similar_memes`) finds the 8 most relevant templates, merged with an 18-template core list (core templates listed first), capped at 25 — keeps the prompt under token limits.
 - Response is parsed via `json.loads()` + `_normalize_llm_response()` (handles common LLM JSON format deviations) + Pydantic validation.
+- Both the primary parse attempt and the retry each wrap the full `_call_llm()` + parse chain in `try/except (json.JSONDecodeError, ValidationError, ValueError, KeyError, httpx.HTTPError)` — this ensures `httpx.HTTPError` from network failures can't bypass the hard fallback.
 - **`template_id` is validated against the known ChromaDB id set on both the primary and retry attempt** — if the LLM hallucinates an id not in the catalog, it's rejected and retried rather than passed to the compositor (which would 404).
 - Hard fallback (`hide_the_pain_harold`) guarantees `parse_intent` never raises to the caller.
+- `USE_WHEN` dict: each template_id maps to a terse description including NOT-FOR language naming specific alternatives — prevents common confusion clusters (drake/evil_kermit/two_buttons, distracted_boyfriend/left_exit_12/uno_draw_25_cards, etc.).
 
 ### Vector DB (`vector_db/chroma_client.py`)
 - ChromaDB uses its default embedding model (`all-MiniLM-L6-v2`) — no external embedding API key required.
 - Dual-mode client: `PersistentClient` for local dev / Render (embedded, no `CHROMA_HOST`), `HttpClient` when `CHROMA_HOST` is set (Docker Compose).
 - `main.py` auto-seeds all templates found in `backend/templates/` on startup if the collection is empty — no manual seed step needed for a fresh deploy.
+- Seeding is **sequential** (templates first, then few-shot examples via `examples_store.seed_examples()`). Concurrent ChromaDB embedding model loads spiked past Render's 512MB free-tier limit; serialized into `_sequential_seed()` run in a single background thread.
 - `usage_count` and `recent_uses` are stored as metadata fields (not documents) so they survive re-embedding without touching the document text.
+- Few-shot examples seeded into a separate ChromaDB collection by `examples_store.py` — 15 curated (prompt → template) pairs covering the most abstract/confusable templates.
 
 ### Frontend (`frontend/`)
 - `next.config.js` rewrites `/api/*` → `process.env.BACKEND_URL` (defaults to `localhost:8000`) so the frontend never hardcodes the backend URL in component code. `remotePatterns` allow image loading from `localhost`, the Docker `backend` hostname, and `*.onrender.com`.
+- Tailwind brand color palette uses shades 50–900 (all must be defined; missing shades like 400 cause Vercel build failures if referenced in CSS).
 - `memeImageUrl()` in `lib/api.ts` prefixes relative meme URLs with `process.env.NEXT_PUBLIC_API_BASE` (must be set in Vercel for production; falls back to `localhost:8000` for local dev).
 - Conversation state (`conversationId`) is held in `ChatWindow` component state — intentionally ephemeral, resets on page refresh.
 
@@ -137,7 +143,6 @@ Frontend resolves meme_url via memeImageUrl() → NEXT_PUBLIC_API_BASE + relativ
 ## Remaining Implementation Work
 
 ### Medium Priority
-- [ ] **Multi-panel templates beyond current set**: `TextBoxConfig` already supports arbitrary coordinates for any new template — just add an entry to `TEMPLATE_CATALOG`.
 - [ ] **User-uploaded templates**: `POST /templates/upload` endpoint — accept an image, extract dominant color palette, generate a `template_id`, write to `backend/templates/`, upsert into ChromaDB.
 - [ ] **Conversation history**: pass prior `ChatMessage` turns back to the LLM as context so it can build on previous memes in a session.
 - [ ] **Fine-tuned model**: scripts for LoRA fine-tuning on the Imgflip 100k dataset exist (`scripts/finetune_unsloth.py`) but training hasn't been run.
