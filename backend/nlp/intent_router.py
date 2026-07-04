@@ -47,21 +47,21 @@ _CORE_TEMPLATE_IDS = [
 
 USE_WHEN: dict[str, str] = {
     # --- Core templates (explicitly configured layouts) ---
-    "drake":                   "Rejecting one option and strongly preferring another — comparison or upgrade",
-    "distracted_boyfriend":    "Someone ignoring what they have to chase something new/tempting",
-    "grus_plan":               "A plan that has an obvious flaw revealed on the last step",
-    "woman_yelling_at_cat":    "Two-sided argument: someone raging vs calm unbothered response",
-    "expanding_brain":         "Escalating takes from basic/dumb to absurdly galaxy-brained",
-    "two_buttons":             "Agonizing between two equally tempting or equally bad choices",
+    "drake":                   "SETTLED PREFERENCE: A verdict already reached — smugly reject option A, endorse option B; no agonizing, no conflict. NOT for undecided dilemmas (two_buttons), inner temptation (evil_kermit), two people arguing (woman_yelling_at_cat), or strong-vs-weak decay (buff_doge_vs_cheems).",
+    "distracted_boyfriend":    "DISLOYAL WANDERING EYE: You already HAVE or committed to one thing, and you're openly checking out a shiny new thing while the committed thing watches — a three-label love triangle. NOT for abandoning a plan mid-journey (left_exit_12) and NOT for refusing a task (uno_draw_25_cards).",
+    "grus_plan":               "SELF-AUTHORED PLAN BACKFIRE: Presenting YOUR OWN numbered plan and only noticing at the final panel that one step is a disaster — panel 4 repeats panel 3 verbatim with dawning horror. Requires an actual multi-step plan; NOT a two-person exchange (anakin_padme) and NOT an emotional sequence (panik_kalm_panik).",
+    "woman_yelling_at_cat":    "SCREAMING VS DEADPAN ARGUMENT: Two DIFFERENT parties in an actual exchange — one hurls a furious emotional accusation, the other replies with a calm dismissive one-liner. Requires a back-and-forth; NOT a comparison (drake, buff_doge_vs_cheems) and NOT one person's inner conflict (evil_kermit).",
+    "expanding_brain":         "ENLIGHTENMENT LADDER: FOUR independent, alternative approaches to the SAME problem, ranked from basic to ironically transcendent — often praising the dumbest method as genius. The levels are separate options, not a chain; if each step follows logically from the previous one, use galaxy_brain instead. NOT a 2-step rephrase (tuxedo_winnie_the_pooh).",
+    "two_buttons":             "UNDECIDED SWEATY DILEMMA: Paralyzed between two mutually exclusive options with NO winner picked — the sweating indecision IS the joke. NOT for choices already made (drake), good-vs-evil conscience (evil_kermit), or two-party arguments (woman_yelling_at_cat).",
     "always_has_been":         "Revealing a dark or ironic truth that was always the case",
     "batman_slapping_robin":   "Interrupting someone mid-sentence to correct them sharply",
-    "buff_doge_vs_cheems":     "Comparing two EXTERNAL versions of the same thing — strong vs weak, past vs present, rested vs exhausted, 2am energy vs 9am regret; NOT for internal conscience/temptation conflicts",
+    "buff_doge_vs_cheems":     "STRONG-THEN VS WEAK-NOW: Third-person comparison of two EXTERNAL versions of the same thing — glorious/tough version vs pathetic/degraded version (past vs present, theirs vs ours). Nobody is choosing anything; NOT for preferences (drake), inner temptation (evil_kermit), or arguments (woman_yelling_at_cat).",
     "surprised_pikachu":       "Shocked by the obvious, predictable consequences of your own actions",
-    "left_exit_12":            "Abandoning the sensible planned path to swerve toward something tempting",
-    "change_my_mind":          "Stating ONE bold controversial opinion and daring anyone to argue — NOT for vocabulary upgrades, NOT for inner-demon conflicts; only for genuinely debatable claims",
-    "anakin_padme":            "Assuming a positive outcome that clearly isn't happening — silent confirmation",
+    "left_exit_12":            "LAST-SECOND SWERVE: Mid-journey, violently veering off the sensible planned ROUTE toward a tempting exit — the joke is the sudden reckless course-change in motion. The abandoned thing is a plan or intention, not a partner or possession (that's distracted_boyfriend); NOT pure task-avoidance (uno_draw_25_cards).",
+    "change_my_mind":          "DEBATE-ME SIGN: ONE bold, genuinely debatable opinion stated flatly as fact, daring the world to argue. Single statement, no progression, no rephrasing; NOT for fancy synonyms (tuxedo_winnie_the_pooh) or multi-step reasoning (expanding_brain, galaxy_brain).",
+    "anakin_padme":            "UNANSWERED '...RIGHT?': A two-speaker dialogue — one states something, the other optimistically assumes the good interpretation ('...right?') and is met with dead silence. Requires an assumption left hanging between two parties; NOT your own plan failing (grus_plan) and NOT solo panic beats (panik_kalm_panik).",
     "doge":                    "Wow, much, very, many — comically enthusiastic amazement or ironic enthusiasm",
-    "galaxy_brain":            "Increasingly absurd logic chain that arrives at a wild conclusion",
+    "galaxy_brain":            "LOGIC SPIRAL: ONE reasoning chain in four steps where each inference builds on the previous and derails into an unhinged conclusion — a single train of thought going off the rails. If the four levels are independent alternatives rather than causally linked steps, use expanding_brain instead.",
     # --- Standard top/bottom single-panel templates ---
     "this_is_fine":            "Denial mode — sitting in literal chaos or disaster and refusing to acknowledge it; only fill 'situation' box describing the chaos — 'this is fine' is already printed in the image; NOT for happy discoveries or good news",
     "boardroom_meeting_suggestion": "An idea gets suggested and everyone piles on with the same bad take — boss throws them all out; use for repeated bad suggestions, groupthink, or ideas that always get shot down",
@@ -120,13 +120,13 @@ USE_WHEN: dict[str, str] = {
 
     # --- Full catalog — file-stem-matched keys so ChromaDB lookups resolve correctly ---
     "epic_handshake":          "Two rivals, enemies, or opposites shaking hands because they both agree on one specific thing — 'we hate each other but we both hate X'; enemies uniting; two sides with nothing in common suddenly agreeing; unexpected common ground between opponents",
-    "evil_kermit":             "INTERNAL CONSCIENCE CONFLICT: your inner demon/dark side vs your responsible/good side — two voices inside your head arguing; 'me telling myself to do X' vs 'evil me saying do Y instead'; NOT for external comparisons",
-    "tuxedo_winnie_the_pooh":  "Saying the exact same thing in fancy vs plain language — vocabulary or phrasing upgrade with zero meaning change; calling a drink a 'beverage', saying 'residence' for 'house', using pretentious synonyms; NOT for opinions or comparisons",
-    "panik_kalm_panik":        "Panic → brief false calm → panic returns worse; a situation that seemed resolved then gets dramatically worse",
+    "evil_kermit":             "INNER DEVIL DIALOGUE: One person, two inner voices — sensible self says the responsible thing, hooded dark self whispers the irresponsible temptation ('me:' vs 'also me:'). NOT for comparing external things (drake, buff_doge_vs_cheems), rational 50/50 choices (two_buttons), or two different people in conflict (woman_yelling_at_cat).",
+    "tuxedo_winnie_the_pooh":  "VOCABULARY UPGRADE: The exact same statement said twice — plain wording, then a needlessly fancy rephrasing with ZERO change in meaning. Exactly 2 levels; NOT a 4-step escalation (expanding_brain, galaxy_brain) and NOT an actual opinion or claim (change_my_mind).",
+    "panik_kalm_panik":        "PANIC WHIPLASH: Three emotional beats in sequence — alarming thing, then a reassuring detail that calms you, then a realization that makes it WORSE than before. About one person's feelings over time; NOT a numbered plan (grus_plan) and NOT a dialogue with dashed assumptions (anakin_padme).",
     "imagination_spongebob":   "SpongeBob making an air-quote rainbow — presenting a sarcastic, grandiose, or ironic label for something",
     "squidward_window":        "Squidward staring from behind a curtain — watching something from outside, uninvited, lurking with quiet envy or judgment",
     "sleeping_shaq":           "Shaq lying awake for one thing, immediately asleep to another — priorities; selective awareness; can't sleep except about X",
-    "uno_draw_25_cards":       "Draw 25 cards rather than admit/do X — someone choosing the worse option just to avoid acknowledging the obvious thing",
+    "uno_draw_25_cards":       "AVOIDANCE AT ABSURD COST: Offered one small reasonable action ('just do/say/admit X') and choosing a massive self-inflicted penalty instead. Pure refusal — there is NO tempting alternative being chased, which is what separates it from distracted_boyfriend and left_exit_12.",
     "leonardo_dicaprio_cheers": "Leo pointing with champagne — 'ah yes, that's the one'; smug satisfaction at spotting something specific; toasting an exact moment",
     "laughing_leo":            "Leo pointing and laughing — found it, caught it, this is the funny thing right here; pointing out something ridiculous",
     "all_my_homies_hate":      "Group unanimous rejection — 'all my homies hate X'; rallying collective disdain, everyone agrees this thing is bad",
@@ -199,6 +199,17 @@ USE_WHEN: dict[str, str] = {
     "shut_up_and_take_my_money": "Fry from Futurama throwing money — 'shut up and take my money'; wanting something so badly you'd pay anything; instant must-have energy",
     "friendship_ended":        "'Friendship ended with X, now Y is my best friend' — publicly replacing a former favourite with a new one",
     "laughing_leo":            "Leo DiCaprio pointing and laughing — spotted the funny thing; 'this guy, look at this guy'",
+
+    # --- New 2024-2026 templates ---
+    "chill_guy":                "UNBOTHERED PROTAGONIST: Responding to stress, chaos, or high expectations by simply not caring — 'just a chill guy who lowkey doesn't gaf.' The nonchalance IS the punchline; NOT for hiding pain behind a smile (hide_the_pain_harold) or denial amid literal disaster (this_is_fine).",
+    "mr_incredible_uncanny":    "VIBE DETERIORATION 2-PANEL: The same person before vs after learning or experiencing something horrifying — normal face labeled with the fine situation, cursed distorted face labeled with the nightmare version. NOT a strength/quality comparison of external things (buff_doge_vs_cheems) and NOT a three-beat panic sequence (panik_kalm_panik).",
+    "midwit_bell_curve":        "HORSESHOE WISDOM: The simpleton (left) and the enlightened sage (right) say the SAME simple thing, while the anxious midwit in the middle overcomplicates it. Requires the two extremes agreeing against the middle; NOT a ranked worst-to-best ladder (expanding_brain).",
+    "math_lady":                "FRANTIC MENTAL MATH: Actively trying to calculate, decode, or figure something out in real time while visibly lost — floating equations energy. For effortful live confusion; NOT skeptical squinting at a claim (futurama_fry) and NOT information overload shutdown (my_brain_is_full).",
+    "kiss_cam_caught":          "BUSTED ON THE JUMBOTRON: Two things or people caught together in the most public way possible, mid-flinch, trying to hide too late. For exposed secrets, guilty pairings, and incompatible things discovered together; NOT for general embarrassment or solo awkwardness (monkey_puppet).",
+    "turkish_shooter":          "EFFORTLESS PRO: Casually achieving with zero equipment, prep, or visible effort what everyone else needs full gear and sweat for — hand-in-pocket mastery. For minimal-effort excellence and 'built different' calm; NOT for confident hot takes (giga_chad) or petty wins (success_kid).",
+    "well_yes_but_actually_no": "TECHNICALLY-TRUE REVERSAL: Something that is technically correct yet completely wrong in practice or spirit — the baked-in 'Well yes, but actually no' is the answer. Only fill the claim being answered; NOT for loophole logic you're endorsing (megamind) or corrections mid-sentence (batman_slapping_robin).",
+    "ah_shit_here_we_go_again": "DREADED RERUN: A familiar bad situation starting over yet again, met with weary resignation instead of shock — you have been here before and you know exactly how this ends. NOT for first-time consequences (surprised_pikachu) and NOT for escalating panic (panik_kalm_panik).",
+    "sad_hamster":              "PATHETIC PLEADING EYES: Feeling small, rejected, or pitiful and milking it for sympathy — theatrical puppy-dog-eyes self-pity over something minor. For cute performative sadness; NOT genuine despair (crying_cat) and NOT dramatic trivial suffering played straight (first_world_problems).",
 
     # --- Indian templates ---
     "baburao":          "Baburao Apte from Hera Pheri (Paresh Rawal) — delivering a confidently wrong or absurd solution with full conviction; jugaad gone wrong; 'bhai yeh kar na'; when someone proposes the dumbest possible fix as if it's genius",

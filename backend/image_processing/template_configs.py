@@ -112,7 +112,7 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             "step_1": "First step of the plan (top-left panel)",
             "step_2": "Second step (top-right panel)",
             "step_3": "Third step — this is where it goes wrong (bottom-left panel)",
-            "step_4": "Fourth step — same as step 2 but Gru is horrified (bottom-right). Mirror step 2 to reveal the flaw.",
+            "step_4": "Fourth step — repeat step 3 EXACTLY, Gru is horrified realizing the flaw (bottom-right panel).",
         },
     ),
 
@@ -455,6 +455,77 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             "very": "Middle-left — 'very' phrase (e.g. 'very confused')",
             "much": "Middle-right — 'much' phrase (e.g. 'much wow')",
             "many": "Bottom-center — final phrase (e.g. 'many meme, very format')",
+        },
+    ),
+
+    # ── Mr. Incredible Uncanny (2-panel horror) ──────────────────────────────
+    # Left panel = normal Mr. Incredible, right panel = uncanny distorted version
+    "mr_incredible_uncanny": TemplateConfig(
+        template_id="mr_incredible_uncanny",
+        text_boxes=[
+            TextBoxConfig("before", x_pct=2,  y_pct=3, w_pct=46, h_pct=20, font_size_pct=5.5),
+            TextBoxConfig("after",  x_pct=52, y_pct=3, w_pct=46, h_pct=20, font_size_pct=5.5),
+        ],
+        box_descriptions={
+            "before": "The blissfully ignorant state — what you knew/believed BEFORE (left panel, normal Mr. Incredible)",
+            "after":  "The horrible revelation that ruined you — what you know NOW (right panel, uncanny distorted Mr. Incredible)",
+        },
+    ),
+
+    # ── Midwit Bell Curve ────────────────────────────────────────────────────
+    # 3-zone horizontal: left = low-IQ simple, center-top = midwit overcomplicated,
+    # right = high-IQ returning to simplicity
+    "midwit_bell_curve": TemplateConfig(
+        template_id="midwit_bell_curve",
+        text_boxes=[
+            TextBoxConfig("simple_take",      x_pct=2,  y_pct=55, w_pct=28, h_pct=40, font_size_pct=4.5),
+            TextBoxConfig("midwit_take",      x_pct=32, y_pct=2,  w_pct=36, h_pct=38, font_size_pct=4.5),
+            TextBoxConfig("enlightened_take", x_pct=70, y_pct=55, w_pct=28, h_pct=40, font_size_pct=4.5),
+        ],
+        box_descriptions={
+            "simple_take":      "The low-effort answer that is ironically correct (left, low-IQ side)",
+            "midwit_take":      "The overthought, complicated, 'actually...' take that is wrong (center, midwit peak)",
+            "enlightened_take": "The galaxy-brained sage who arrives at the same simple answer (right, high-IQ side)",
+        },
+    ),
+
+    # ── Coldplay Kiss Cam Caught ─────────────────────────────────────────────
+    # Concert jumbotron: two people caught together publicly
+    "kiss_cam_caught": TemplateConfig(
+        template_id="kiss_cam_caught",
+        text_boxes=[
+            TextBoxConfig("person_1",       x_pct=2,  y_pct=3,  w_pct=46, h_pct=22, font_size_pct=5),
+            TextBoxConfig("person_2",       x_pct=52, y_pct=3,  w_pct=46, h_pct=22, font_size_pct=5),
+            TextBoxConfig("caught_context", x_pct=5,  y_pct=78, w_pct=90, h_pct=18, font_size_pct=5),
+        ],
+        box_descriptions={
+            "person_1":       "Who is in the first frame — the person expecting privacy (left)",
+            "person_2":       "Who they are caught being with — the unexpected or awkward company (right)",
+            "caught_context": "What makes the pairing devastating — the relationship or event that makes this exposure the worst possible timing",
+        },
+    ),
+
+    # ── Well Yes But Actually No ─────────────────────────────────────────────
+    # Pirate saying the phrase — "Well yes, but actually no" is baked into image
+    "well_yes_but_actually_no": TemplateConfig(
+        template_id="well_yes_but_actually_no",
+        text_boxes=[
+            TextBoxConfig("the_claim", x_pct=5, y_pct=2, w_pct=90, h_pct=25, font_size_pct=6),
+        ],
+        box_descriptions={
+            "the_claim": "The technically-true statement the pirate is about to contradict. Do NOT write 'well yes but actually no' — that phrase is already baked into the image.",
+        },
+    ),
+
+    # ── Ah Shit Here We Go Again ─────────────────────────────────────────────
+    # GTA San Andreas loading screen — "Ah shit, here we go again." is baked in
+    "ah_shit_here_we_go_again": TemplateConfig(
+        template_id="ah_shit_here_we_go_again",
+        text_boxes=[
+            TextBoxConfig("situation", x_pct=5, y_pct=3, w_pct=90, h_pct=22, font_size_pct=6),
+        ],
+        box_descriptions={
+            "situation": "What dreaded recurring situation is starting again. Do NOT write 'ah shit here we go again' — that line is already baked into the image.",
         },
     ),
 }
