@@ -458,17 +458,17 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         },
     ),
 
-    # ── Mr. Incredible Uncanny (2-panel horror) ──────────────────────────────
-    # Left panel = normal Mr. Incredible, right panel = uncanny distorted version
+    # ── Mr. Incredible Uncanny (2-panel horror, 1157x651) ────────────────────
+    # LEFT panel = dark uncanny/traumatized version, RIGHT panel = normal Mr. Incredible
     "mr_incredible_uncanny": TemplateConfig(
         template_id="mr_incredible_uncanny",
         text_boxes=[
-            TextBoxConfig("before", x_pct=2,  y_pct=3, w_pct=46, h_pct=20, font_size_pct=5.5),
-            TextBoxConfig("after",  x_pct=52, y_pct=3, w_pct=46, h_pct=20, font_size_pct=5.5),
+            TextBoxConfig("before", x_pct=52, y_pct=3, w_pct=46, h_pct=22, font_size_pct=5.5),
+            TextBoxConfig("after",  x_pct=2,  y_pct=3, w_pct=46, h_pct=22, font_size_pct=5.5),
         ],
         box_descriptions={
-            "before": "The blissfully ignorant state — what you knew/believed BEFORE (left panel, normal Mr. Incredible)",
-            "after":  "The horrible revelation that ruined you — what you know NOW (right panel, uncanny distorted Mr. Incredible)",
+            "before": "The blissfully ignorant state — what you knew/believed BEFORE (RIGHT panel, normal smiling Mr. Incredible)",
+            "after":  "The horrible revelation that ruined you — what you know NOW (LEFT panel, dark uncanny Mr. Incredible)",
         },
     ),
 
