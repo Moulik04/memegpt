@@ -361,8 +361,8 @@ async def _call_groq(
         )
         if response.status_code == 429:
             # Rate limited — respect Groq's retry-after (cap at 30s so we don't stall forever)
-            retry_after = int(response.headers.get("retry-after", "5"))
-            await asyncio.sleep(min(retry_after, 30))
+            retry_after = int(response.headers.get("retry-after", "3"))
+            await asyncio.sleep(min(retry_after, 8))
             continue
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
