@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
+from nlp.intent_router import USE_WHEN
 from routers import chat, explain, feedback, generate
 from vector_db.chroma_client import init_chroma, list_template_ids, upsert_templates_batch
 from vector_db.examples_store import _get_collection as _init_examples, seed_examples
@@ -45,11 +46,13 @@ def _auto_seed_if_empty() -> None:
         if tid in existing:
             continue
         name = tid.replace("_", " ").title()
+        # Embed the USE_WHEN scenario text (when available) so RAG matches user
+        # messages against usage situations, not just the template's name.
         records.append({
             "template_id": tid,
             "name": name,
             "tags": [tid],
-            "description": f"Meme template: {name}",
+            "description": USE_WHEN.get(tid, f"Meme template: {name}"),
         })
     for i in range(0, len(records), _SEED_CHUNK_SIZE):
         upsert_templates_batch(records[i : i + _SEED_CHUNK_SIZE])
