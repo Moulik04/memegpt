@@ -344,15 +344,20 @@ async def _call_groq(
 ) -> str:
     """Groq cloud inference — free tier, ~400 t/s, no GPU required."""
     for attempt in range(2):
+        payload: dict = {
+            "model": settings.groq_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 200,
+            "response_format": {"type": "json_object"},
+        }
+        # Qwen 3.x thinking mode emits reasoning tokens before JSON, breaking the parser.
+        # Disable it explicitly for any Qwen model on this endpoint.
+        if "qwen" in settings.groq_model.lower():
+            payload["reasoning_effort"] = "none"
         response = await client.post(
             "https://api.groq.com/openai/v1/chat/completions",
-            json={
-                "model": settings.groq_model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": 200,
-                "response_format": {"type": "json_object"},
-            },
+            json=payload,
             headers={
                 "Authorization": f"Bearer {settings.groq_api_key}",
                 "Content-Type": "application/json",
