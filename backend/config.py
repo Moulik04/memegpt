@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Groq — cloud inference, free tier (https://console.groq.com)
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "qwen/qwen3.6-27b"
 
     # ChromaDB — empty string = embedded PersistentClient (local dev)
     #            set to service name (e.g. "vector-db") → HttpClient (Docker)
