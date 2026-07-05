@@ -22,6 +22,7 @@ SSE event stream:
 
 import asyncio
 import json
+import logging
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -39,6 +40,8 @@ from schemas import ChatMessage, ChatRequest, ChatResponse, VisionDescription
 from uploads.safe_ingest import CleanImage, ModerationRejected, UploadRejected, safe_ingest
 from vector_db.chroma_client import log_usage
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 _GENERIC_UPLOAD_REFUSAL = "That image couldn't be processed — try a different one."
@@ -46,6 +49,22 @@ _DESCRIBE_IN_WORDS_PROMPT = (
     "I couldn't quite look at that image right now — mind describing the "
     "situation in words instead?"
 )
+
+
+def _clamp_dump_text(text: str | None) -> str | None:
+    """Lore's big-paste ceiling (max_dump_chars) — truncates rather than
+    rejects, since a partial highlight reel from the first N characters is
+    still useful, unlike hard-refusing a slightly-too-long paste."""
+    if text is None:
+        return None
+    settings = get_settings()
+    if len(text) > settings.max_dump_chars:
+        logger.debug(
+            "dump_text_clamped",
+            extra={"original_len": len(text), "clamped_len": settings.max_dump_chars},
+        )
+        return text[: settings.max_dump_chars]
+    return text
 
 
 def _sse(event: dict) -> str:
@@ -245,7 +264,8 @@ async def chat(request: ChatRequest):
     this is one situation or several.
     """
     conversation_id = request.conversation_id or ""
-    contexts = await resolve_contexts(request.message, None, request.meme_count)
+    message = _clamp_dump_text(request.message) or ""
+    contexts = await resolve_contexts(message, None, request.meme_count)
     return _sse_response(_stream_batch(contexts, conversation_id))
 
 
@@ -283,6 +303,7 @@ async def chat_with_image(
     for both modes.
     """
     conv_id = conversation_id or ""
+    message = _clamp_dump_text(message)
     if mode not in ("context", "canvas"):
         mode = None
     resolved_mode = mode or infer_mode(message)

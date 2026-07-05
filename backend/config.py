@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     max_memes_per_request: int = 5     # requested_count is clamped to this, never rejected
     max_images_per_request: int = 6    # independent of the above — bounds moderation/vision cost
     segmentation_text_threshold_chars: int = 240  # longer text triggers segmentation
+    max_dump_chars: int = 20000  # Lore mode's big-paste ceiling — clamped, never rejected
 
     # ChromaDB — empty string = embedded PersistentClient (local dev)
     #            set to service name (e.g. "vector-db") → HttpClient (Docker)

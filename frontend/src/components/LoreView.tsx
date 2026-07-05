@@ -21,6 +21,10 @@ function base64ToFile(dataBase64: string, filename: string, contentType: string)
 
 const MEME_COUNT_OPTIONS = [2, 3, 4, 5];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // client-side UX nicety only, see uploads/safe_ingest.py
+// Matches config.py's max_dump_chars default — a UX nicety only, the real
+// clamp is server-side (routers/chat.py's _clamp_dump_text). Never blocks
+// submission, just sets expectations.
+const MAX_DUMP_CHARS = 20000;
 
 interface PendingImage {
   file: File;
@@ -198,6 +202,12 @@ export function LoreView() {
             className="w-full bg-transparent resize-none text-sm placeholder-gray-600
                        focus:outline-none disabled:opacity-50"
           />
+
+          {text.length > MAX_DUMP_CHARS && (
+            <p className="text-[10px] text-amber-500">
+              Long lore! Using the first ~{Math.round(MAX_DUMP_CHARS / 1000)}k characters.
+            </p>
+          )}
 
           {pendingImages.length > 0 && (
             <div className="flex items-center gap-2 overflow-x-auto">
