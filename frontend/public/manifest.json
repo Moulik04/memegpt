@@ -1,8 +1,8 @@
 {
   "name": "MemeGPT",
   "short_name": "MemeGPT",
-  "description": "Generate and share memes from any context",
-  "start_url": "/share",
+  "description": "A chatbot that only replies in memes — chat with it, or drop a whole conversation into Lore mode for the highlight reel",
+  "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#030712",
@@ -15,5 +15,20 @@
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [
+        {
+          "name": "images",
+          "accept": ["image/*"]
+        }
+      ]
+    }
+  }
 }

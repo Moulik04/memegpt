@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
 import { FeedbackButtons } from "./FeedbackButtons";
@@ -8,6 +9,15 @@ import { MemeDisplay } from "./MemeDisplay";
 import { ShareButtons } from "./ShareButtons";
 import { ThinkingBubble } from "./ThinkingBubble";
 import type { MemeItem } from "@/types";
+
+const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+function base64ToFile(dataBase64: string, filename: string, contentType: string): File {
+  const byteChars = atob(dataBase64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  return new File([bytes], filename, { type: contentType });
+}
 
 const MEME_COUNT_OPTIONS = [2, 3, 4, 5];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // client-side UX nicety only, see uploads/safe_ingest.py
@@ -40,6 +50,41 @@ export function LoreView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream();
+  const router = useRouter();
+
+  // Consume a share-target handoff (?intake=<token>) on mount, if present.
+  // Reads window.location.search directly rather than next/navigation's
+  // useSearchParams() to avoid that hook's Suspense-boundary requirement on
+  // an otherwise statically-prerendered page. Pre-fills the composer —
+  // never auto-submits — then strips the query param so a refresh doesn't
+  // retry an already-consumed (single-use) token.
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("intake");
+    if (!token) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`${BACKEND_BASE}/share-intake/${token}/`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.text) setText((prev) => prev || data.text);
+
+        const newImages: PendingImage[] = (data.images ?? []).map(
+          (img: { filename: string; content_type: string; data_base64: string }) => {
+            const file = base64ToFile(img.data_base64, img.filename, img.content_type);
+            return { file, previewUrl: URL.createObjectURL(file) };
+          },
+        );
+        if (newImages.length > 0) setPendingImages((prev) => [...prev, ...newImages]);
+      } catch {
+        // Worst case the user just re-shares or attaches manually.
+      } finally {
+        router.replace("/lore");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFeedback = useCallback(
     async (meme: MemeItem, rating: "up" | "down") => {
