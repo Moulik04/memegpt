@@ -12,6 +12,7 @@ own photo becomes the meme, not a catalog template) instead flows through
 _stream_canvas_batch, captioning each surviving photo directly.
 
 SSE event stream:
+  {"type": "plan",     "situations": [...], "total": N}   — only when N > 1
   {"type": "thinking", "stage": "analyzing",  "index": 0, "total": 1, "message": "..."}
   {"type": "thinking", "stage": "rendering",  "index": 0, "total": 1, "template_id": "...", "message": "..."}
   {"type": "done",     "index": 0, "total": 1, "conversation_id": "...", "message": {...}, "template_used": "..."}
@@ -128,6 +129,13 @@ async def _stream_batch(situations: list[str], conversation_id: str) -> AsyncGen
     for free), yielding every event as it happens so memes appear
     progressively rather than all at once at the end."""
     total = len(situations)
+    if total > 1:
+        # "Plan theater" for a single meme is pointless — only worth
+        # announcing when there's actually more than one situation to work
+        # through, regardless of whether that came from the zero-LLM fast
+        # path (which never returns more than one) or segmentation itself
+        # concluding there's only one distinct moment.
+        yield _sse({"type": "plan", "situations": situations, "total": total})
     succeeded = 0
     for i, situation in enumerate(situations):
         async for event in _stream_chat_turn(situation, conversation_id, index=i, total=total):

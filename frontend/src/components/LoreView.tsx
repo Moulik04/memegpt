@@ -39,7 +39,7 @@ export function LoreView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream();
+  const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream();
 
   const handleFeedback = useCallback(
     async (meme: MemeItem, rating: "up" | "down") => {
@@ -240,6 +240,30 @@ export function LoreView() {
                         rounded-xl px-3 py-2">
             {displayError}
           </p>
+        )}
+
+        {plan && plan.total > 1 && (
+          <div className="rounded-2xl bg-[#13131e] border border-gray-800/60 px-4 py-3">
+            <p className="text-[10px] text-gray-500 mb-2 uppercase tracking-wide">
+              Found {plan.total} moments worth memeing
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {plan.situations.map((situation, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs">
+                  <span
+                    className={
+                      plan.doneIndices.has(i) ? "text-brand-400" : "text-gray-600"
+                    }
+                  >
+                    {plan.doneIndices.has(i) ? "✓" : "○"}
+                  </span>
+                  <span className={plan.doneIndices.has(i) ? "text-gray-400" : "text-gray-600"}>
+                    {situation}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {thinking && <ThinkingBubble message={thinking.message} />}

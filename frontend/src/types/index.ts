@@ -47,6 +47,16 @@ export interface FeedbackRequest {
   user_message?: string;
 }
 
+// Announces the resolved situations up front — only sent when there's more
+// than one (see backend/routers/chat.py's _stream_batch). Lore renders this
+// as a checklist that ticks off as "done" events land, keyed by index;
+// Chat may ignore it or show a compact progress hint.
+export interface PlanEvent {
+  type: "plan";
+  situations: string[];
+  total: number;
+}
+
 export interface ThinkingEvent {
   type: "thinking";
   stage: string;
@@ -86,7 +96,7 @@ export interface ErrorEvent {
   message: string;
 }
 
-export type SSEEvent = ThinkingEvent | DoneEvent | BatchDoneEvent | ErrorEvent;
+export type SSEEvent = PlanEvent | ThinkingEvent | DoneEvent | BatchDoneEvent | ErrorEvent;
 
 export interface ImageChatOptions {
   message?: string;
