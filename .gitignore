@@ -58,3 +58,5 @@ memes_reference_data.tsv
 
 # sed backup files
 *.bak
+.vercel
+.env*
