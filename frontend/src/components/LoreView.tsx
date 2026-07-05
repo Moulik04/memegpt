@@ -20,7 +20,8 @@ function base64ToFile(dataBase64: string, filename: string, contentType: string)
 }
 
 const MEME_COUNT_OPTIONS = [2, 3, 4, 5];
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // client-side UX nicety only, see uploads/safe_ingest.py
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // matches config.py's max_image_bytes
+const MAX_IMAGES_PER_REQUEST = 6; // matches config.py's max_images_per_request
 // Matches config.py's max_dump_chars default — a UX nicety only, the real
 // clamp is server-side (routers/chat.py's _clamp_dump_text). Never blocks
 // submission, just sets expectations.
@@ -107,7 +108,11 @@ export function LoreView() {
     if (files.length === 0) return;
     const oversized = files.find((f) => f.size > MAX_IMAGE_BYTES);
     if (oversized) {
-      setLocalError("One of those images is over 10MB — try smaller ones.");
+      setLocalError(`That image is over ${MAX_IMAGE_BYTES / (1024 * 1024)}MB — try a smaller one.`);
+      return;
+    }
+    if (pendingImages.length + files.length > MAX_IMAGES_PER_REQUEST) {
+      setLocalError(`Up to ${MAX_IMAGES_PER_REQUEST} photos per message — remove some before adding more.`);
       return;
     }
     setPendingImages((prev) => [
@@ -332,8 +337,7 @@ export function LoreView() {
                 className="rounded-2xl bg-[#13131e] border border-gray-800/60 p-3 shadow-lg"
               >
                 <MemeDisplay url={entry.meme.url} alt={entry.meme.situationText} />
-                <p className="text-xs text-gray-400 mt-2 px-0.5">{entry.meme.situationText}</p>
-                <div className="flex items-center justify-between mt-1">
+                <div className="flex items-center justify-between mt-2">
                   <ShareButtons memeUrl={entry.meme.url} />
                   <FeedbackButtons onFeedback={(rating) => handleFeedback(entry.meme, rating)} />
                 </div>

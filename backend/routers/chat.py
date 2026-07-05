@@ -51,6 +51,25 @@ _DESCRIBE_IN_WORDS_PROMPT = (
 )
 
 
+def _upload_rejection_message(reason: str) -> str:
+    """Maps a non-safety UploadRejected.reason to specific, friendly text.
+
+    Safe to be specific here because these reasons (size/type/dimensions)
+    carry no adversarial signal — unlike ModerationRejected, whose category
+    is never echoed (see uploads/moderation.py) to avoid handing a probing
+    oracle to anyone testing the content classifier."""
+    settings = get_settings()
+    max_mb = settings.max_image_bytes // (1024 * 1024)
+    messages = {
+        "file_too_large": f"That image is over {max_mb}MB — try a smaller one.",
+        "unrecognized_file_type": "That file isn't a supported image format — try a JPEG, PNG, or WEBP.",
+        "decompression_bomb": "That image's dimensions are too large to process — try a smaller one.",
+        "dimensions_too_large": "That image's dimensions are too large to process — try a smaller one.",
+        "invalid_image": "That file couldn't be read as an image — it may be corrupted.",
+    }
+    return messages.get(reason, _GENERIC_UPLOAD_REFUSAL)
+
+
 def _clamp_dump_text(text: str | None) -> str | None:
     """Lore's big-paste ceiling (max_dump_chars) — truncates rather than
     rejects, since a partial highlight reel from the first N characters is
@@ -332,7 +351,13 @@ async def chat_with_image(
                 async for event in _stream_batch(contexts, conv_id):
                     yield event
                 return
-            yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
+            # No ModerationRejected made it this far (that check already
+            # returned early above), so every rejection here is a
+            # non-safety UploadRejected — safe to surface the specific reason.
+            upload_rejections = [r for r in ingest_results if isinstance(r, UploadRejected)]
+            reason = upload_rejections[0].reason if upload_rejections else None
+            message_to_show = _upload_rejection_message(reason) if reason else _GENERIC_UPLOAD_REFUSAL
+            yield _sse({"type": "error", "message": message_to_show})
             return
 
         if resolved_mode == "canvas":

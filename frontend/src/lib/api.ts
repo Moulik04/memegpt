@@ -8,6 +8,12 @@ import type {
 } from "@/types";
 
 const BASE = "/api";
+// Image uploads go straight to the backend, not through /api's Vercel proxy
+// route — Vercel serverless functions cap request bodies at 4.5MB, which
+// multiple photos blow past easily. The backend's CORS is already wide open
+// (CORS_ALLOW_ALL_ORIGINS) for exactly this, and NEXT_PUBLIC_API_BASE is
+// already browser-reachable in every deployment topology (see memeImageUrl).
+const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -97,12 +103,22 @@ export async function sendChatImageStream(
   if (options.conversationId) form.append("conversation_id", options.conversationId);
   if (options.memeCount) form.append("meme_count", String(options.memeCount));
 
-  const res = await fetch(`${BASE}/chat/image/`, {
-    method: "POST",
-    body: form,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BACKEND_BASE}/chat/image/`, {
+      method: "POST",
+      body: form,
+    });
+  } catch {
+    throw new Error(
+      "Couldn't reach the server to upload those photos — check your connection and try again."
+    );
+  }
 
   if (!res.ok) {
+    if (res.status === 413) {
+      throw new Error("Those photos are too large to upload together — try fewer or smaller images.");
+    }
     const err = await res.text();
     throw new Error(`${res.status} ${res.statusText}: ${err}`);
   }

@@ -115,11 +115,13 @@ async def test_all_images_upload_rejected_with_text_degrades_to_text_only():
     assert done_events[0]["template_used"] == "hide_the_pain_harold"
 
 
-async def test_all_images_upload_rejected_no_text_generic_refusal():
+async def test_all_images_upload_rejected_no_text_specific_reason():
+    # Non-safety UploadRejected reasons are safe to surface specifically —
+    # unlike ModerationRejected, whose category is never echoed.
     events = await _post_images([("bad_upload.jpg", _tiny_jpeg_bytes())])
     errors = [e for e in events if e.get("type") == "error"]
     assert len(errors) == 1
-    assert "couldn't be processed" in errors[0]["message"]
+    assert "10MB" in errors[0]["message"]
 
 
 async def test_explicit_meme_count_forces_n_memes(monkeypatch):

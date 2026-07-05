@@ -22,11 +22,26 @@ export function MessageBubble({ message, onFeedback }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   if (isUser) {
+    const images = message.userImages ?? [];
     return (
       <div className="flex justify-end mb-3">
         <div className="max-w-[80%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm leading-relaxed
                         bg-gradient-to-br from-brand-700 to-brand-600 text-white shadow-lg shadow-brand-900/30">
-          {message.content}
+          {images.length > 0 && (
+            <div className={`flex flex-wrap gap-1.5 ${message.content ? "mb-2" : ""}`}>
+              {images.map((src, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={src}
+                  alt="Your uploaded photo"
+                  className="rounded-xl max-h-48 object-cover"
+                  style={{ maxWidth: images.length > 1 ? "45%" : "100%" }}
+                />
+              ))}
+            </div>
+          )}
+          {message.content && <div>{message.content}</div>}
         </div>
       </div>
     );

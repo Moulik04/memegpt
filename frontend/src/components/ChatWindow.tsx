@@ -17,8 +17,9 @@ const EXAMPLE_PROMPTS = [
 ];
 
 // Client-side only — a fast-fail UX nicety, NOT a security control. The
-// real limit is enforced server-side by uploads/safe_ingest.py.
+// real limits are enforced server-side by uploads/safe_ingest.py / config.py.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGES_PER_REQUEST = 6; // matches config.py's max_images_per_request
 
 interface PendingImage {
   file: File;
@@ -35,18 +36,25 @@ export function ChatWindow() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream();
+  const pendingImagesRef = useRef<PendingImage[]>([]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinking]);
 
   useEffect(() => {
-    // Revoke every pending preview URL whenever the set changes or the
-    // component unmounts, so we don't leak blob URLs.
-    return () => {
-      pendingImages.forEach((p) => URL.revokeObjectURL(p.previewUrl));
-    };
+    pendingImagesRef.current = pendingImages;
   }, [pendingImages]);
+
+  useEffect(() => {
+    // Revoke whatever's still pending (never submitted) on unmount only —
+    // NOT on every pendingImages change, since a submitted message's
+    // userImages keep their preview URLs alive for the life of the
+    // conversation (see submit() below).
+    return () => {
+      pendingImagesRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    };
+  }, []);
 
   const handleFeedback = useCallback(
     async (meme: MemeItem, rating: "up" | "down") => {
@@ -66,12 +74,6 @@ export function ChatWindow() {
     [conversationId],
   );
 
-  function clearPendingImages() {
-    pendingImages.forEach((p) => URL.revokeObjectURL(p.previewUrl));
-    setPendingImages([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
   function removePendingImage(index: number) {
     setPendingImages((prev) => {
       const target = prev[index];
@@ -85,7 +87,12 @@ export function ChatWindow() {
     if (files.length === 0) return;
     const oversized = files.find((f) => f.size > MAX_IMAGE_BYTES);
     if (oversized) {
-      setLocalError("One of those images is over 10MB — try smaller ones.");
+      setLocalError(`That image is over ${MAX_IMAGE_BYTES / (1024 * 1024)}MB — try a smaller one.`);
+      e.target.value = "";
+      return;
+    }
+    if (pendingImages.length + files.length > MAX_IMAGES_PER_REQUEST) {
+      setLocalError(`Up to ${MAX_IMAGES_PER_REQUEST} photos per message — remove some before adding more.`);
       e.target.value = "";
       return;
     }
@@ -103,14 +110,16 @@ export function ChatWindow() {
 
     const userMsg: ChatMessage = {
       role: "user",
-      content:
-        text.trim() ||
-        (images.length ? `[${images.length} image${images.length > 1 ? "s" : ""} attached]` : ""),
+      content: text.trim(),
+      userImages: images.length > 0 ? images.map((p) => p.previewUrl) : undefined,
       timestamp: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    clearPendingImages();
+    // Ownership of these preview URLs transfers to userMsg above — reset the
+    // composer's pending state WITHOUT revoking them.
+    setPendingImages([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setLocalError(null);
 
     const { memes, plainReply } = images.length > 0

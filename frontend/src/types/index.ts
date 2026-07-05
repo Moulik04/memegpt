@@ -16,6 +16,10 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   memes?: MemeItem[];
+  // Preview URLs (blob:) for photos the user attached to this turn — kept
+  // alive for the life of the conversation, not revoked after sending, so
+  // the sent bubble can keep showing the actual photo (see ChatWindow.tsx).
+  userImages?: string[];
   timestamp: string;
 }
 
