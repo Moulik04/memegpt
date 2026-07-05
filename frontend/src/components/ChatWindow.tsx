@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { postFeedback, sendChatImageStream, sendChatStream } from "@/lib/api";
+import { postFeedback } from "@/lib/api";
+import { useMemeStream } from "@/hooks/useMemeStream";
 import { MessageBubble } from "./MessageBubble";
 import { ThinkingBubble } from "./ThinkingBubble";
-import type { ChatMessage, MemeItem, SSEEvent } from "@/types";
+import type { ChatMessage, MemeItem } from "@/types";
 
 const EXAMPLE_PROMPTS = [
   "waiting for my PR to get reviewed for 3 days",
@@ -18,9 +19,6 @@ const EXAMPLE_PROMPTS = [
 // Client-side only — a fast-fail UX nicety, NOT a security control. The
 // real limit is enforced server-side by uploads/safe_ingest.py.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MEME_COUNT_OPTIONS = [2, 3, 4, 5];
-
-interface ThinkingState { message: string }
 
 interface PendingImage {
   file: File;
@@ -30,15 +28,13 @@ interface PendingImage {
 export function ChatWindow() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [thinking, setThinking] = useState<ThinkingState | null>(null);
-  const [conversationId, setConversationId] = useState<string | undefined>();
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const [memeCount, setMemeCount] = useState<number | undefined>(undefined);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -89,7 +85,7 @@ export function ChatWindow() {
     if (files.length === 0) return;
     const oversized = files.find((f) => f.size > MAX_IMAGE_BYTES);
     if (oversized) {
-      setError("One of those images is over 10MB — try smaller ones.");
+      setLocalError("One of those images is over 10MB — try smaller ones.");
       e.target.value = "";
       return;
     }
@@ -97,7 +93,7 @@ export function ChatWindow() {
       ...prev,
       ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
     ]);
-    setError(null);
+    setLocalError(null);
     e.target.value = "";
   }
 
@@ -115,69 +111,22 @@ export function ChatWindow() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     clearPendingImages();
-    setLoading(true);
-    setError(null);
-    setThinking({ message: "Reading your vibe…" });
+    setLocalError(null);
 
-    // Accumulated locally (not React state) across the whole submission —
-    // the grouped multi-meme bubble is only pushed once, after the stream
-    // ends, rather than growing one meme at a time.
-    const collected: MemeItem[] = [];
-    let plainReply: string | null = null;
+    const { memes, plainReply } = images.length > 0
+      ? await submitImages(images.map((p) => p.file), text.trim() || undefined)
+      : await submitText(text.trim());
 
-    try {
-      const onEvent = (event: SSEEvent) => {
-        if (event.type === "thinking") {
-          const progress =
-            event.total && event.total > 1 ? ` (${(event.index ?? 0) + 1}/${event.total})` : "";
-          setThinking({ message: `${event.message}${progress}` });
-        } else if (event.type === "done") {
-          setConversationId(event.conversation_id);
-          if (event.message.meme_url) {
-            collected.push({
-              url: event.message.meme_url,
-              templateId: event.template_used,
-              situationText: event.message.content,
-            });
-          } else {
-            // A graceful text-only reply (e.g. vision unavailable) rather
-            // than a meme — still worth showing, just not as a carousel.
-            plainReply = event.message.content;
-          }
-        } else if (event.type === "error") {
-          setError(event.message);
-        }
-        // batch_done needs no handling here — finalization below runs once
-        // the stream itself ends, which covers every exit path (a full
-        // multi-meme batch, an early single-error abort, or a graceful
-        // degrade reply) the same way.
-      };
-
-      if (images.length > 0) {
-        await sendChatImageStream(
-          images.map((p) => p.file),
-          { message: text.trim() || undefined, conversationId, memeCount },
-          onEvent,
-        );
-      } else {
-        await sendChatStream(text.trim(), conversationId, onEvent, memeCount);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      if (collected.length > 0) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "", memes: collected, timestamp: new Date().toISOString() },
-        ]);
-      } else if (plainReply) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: plainReply as string, timestamp: new Date().toISOString() },
-        ]);
-      }
-      setLoading(false);
-      setThinking(null);
+    if (memes.length > 0) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "", memes, timestamp: new Date().toISOString() },
+      ]);
+    } else if (plainReply) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: plainReply, timestamp: new Date().toISOString() },
+      ]);
     }
   }
 
@@ -191,6 +140,8 @@ export function ChatWindow() {
     inputRef.current?.focus();
   }
 
+  const displayError = localError ?? error;
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Message list */}
@@ -198,9 +149,9 @@ export function ChatWindow() {
         {messages.length === 0 && !thinking && (
           <div className="flex flex-col items-center justify-center h-full gap-6 py-8">
             <div className="text-center">
-              <p className="text-gray-500 text-sm">Say anything — I&apos;ll reply in memes.</p>
+              <p className="text-gray-500 text-sm">Talk to it like any chatbot.</p>
               <p className="text-gray-600 text-xs mt-1">
-                Or pick a prompt below, attach photos, or paste a whole conversation ↓
+                It only speaks meme. Or pick a prompt below, or attach a photo ↓
               </p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center max-w-sm">
@@ -231,11 +182,11 @@ export function ChatWindow() {
 
         {thinking && <ThinkingBubble message={thinking.message} />}
 
-        {error && (
+        {displayError && (
           <div className="flex justify-start mb-3">
             <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/40
                           rounded-xl px-3 py-2 max-w-[80%]">
-              {error}
+              {displayError}
             </p>
           </div>
         )}
@@ -289,22 +240,6 @@ export function ChatWindow() {
           >
             📎
           </button>
-          <select
-            value={memeCount ?? ""}
-            onChange={(e) => setMemeCount(e.target.value ? Number(e.target.value) : undefined)}
-            disabled={loading}
-            title="Number of memes"
-            className="shrink-0 bg-[#13131e] border border-gray-800 rounded-xl px-2 py-2.5
-                       text-xs text-gray-400 focus:outline-none focus:border-brand-600
-                       disabled:opacity-40 transition-colors"
-          >
-            <option value="">Auto</option>
-            {MEME_COUNT_OPTIONS.map((n) => (
-              <option key={n} value={n}>
-                {n} memes
-              </option>
-            ))}
-          </select>
           <input
             ref={inputRef}
             type="text"
