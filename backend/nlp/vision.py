@@ -5,7 +5,9 @@ Describes an already-safety-checked image (a safe_ingest.CleanImage's
 .image) in plain language, phrased as if the user had typed it, so it can
 feed straight into the EXISTING parse_intent() unchanged.
 
-Mirrors nlp/intent_router.py's _call_groq/_call_ollama dispatch shape:
+Mirrors nlp/llm_client.py's call_groq/call_ollama dispatch shape (this
+module has its own Groq/Anthropic vision-specific callers below, separate
+from llm_client.py, since llm_client.py's callers are text-only):
 Groq is primary — qwen/qwen3.6-27b, the SAME model intent_router.py already
 uses for text routing, so this needs zero new provider account or API key.
 Anthropic (claude-sonnet-5) is an optional fallback if ANTHROPIC_API_KEY is

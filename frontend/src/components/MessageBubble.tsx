@@ -1,13 +1,14 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { MemeDisplay } from "./MemeDisplay";
 import { FeedbackButtons } from "./FeedbackButtons";
 import { ShareButtons } from "./ShareButtons";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, MemeItem } from "@/types";
 
 interface Props {
   message: ChatMessage;
-  onFeedback?: (rating: "up" | "down") => void;
+  onFeedback?: (meme: MemeItem, rating: "up" | "down") => void;
 }
 
 function templateLabel(id?: string) {
@@ -17,6 +18,8 @@ function templateLabel(id?: string) {
 
 export function MessageBubble({ message, onFeedback }: Props) {
   const isUser = message.role === "user";
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   if (isUser) {
     return (
@@ -29,33 +32,90 @@ export function MessageBubble({ message, onFeedback }: Props) {
     );
   }
 
+  const memes = message.memes ?? [];
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el || el.clientWidth === 0) return;
+    const index = Math.round(el.scrollLeft / el.clientWidth);
+    setActiveIndex(Math.max(0, Math.min(index, memes.length - 1)));
+  }
+
   return (
     <div className="flex justify-start mb-4">
       <div className="max-w-[85%] sm:max-w-[75%]">
-        {/* Meme card */}
-        {message.meme_url ? (
-          <div className="rounded-2xl rounded-bl-sm bg-[#13131e] border border-gray-800/60
-                          p-3 shadow-lg">
-            <MemeDisplay url={message.meme_url} alt={message.content} />
-
-            {/* Template badge */}
-            {message.template_id && (
-              <p className="text-[10px] text-gray-600 mt-2 px-0.5">
-                {templateLabel(message.template_id)}
-              </p>
-            )}
-
-            {/* Action row: share left, feedback right */}
-            <div className="flex items-center justify-between mt-1">
-              <ShareButtons memeUrl={message.meme_url} />
-              {onFeedback && <FeedbackButtons onFeedback={onFeedback} />}
-            </div>
-          </div>
-        ) : (
+        {memes.length === 0 && (
           /* Plain text bot message */
           <div className="rounded-2xl rounded-bl-sm bg-[#13131e] border border-gray-800/60
                           px-4 py-2.5 text-sm leading-relaxed text-gray-100 shadow">
             {message.content}
+          </div>
+        )}
+
+        {memes.length === 1 && (
+          /* Single meme — same layout as before multi-meme support existed */
+          <div className="rounded-2xl rounded-bl-sm bg-[#13131e] border border-gray-800/60
+                          p-3 shadow-lg">
+            <MemeDisplay url={memes[0].url} alt={memes[0].situationText} />
+
+            {memes[0].templateId && (
+              <p className="text-[10px] text-gray-600 mt-2 px-0.5">
+                {templateLabel(memes[0].templateId)}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between mt-1">
+              <ShareButtons memeUrl={memes[0].url} />
+              {onFeedback && (
+                <FeedbackButtons onFeedback={(rating) => onFeedback(memes[0], rating)} />
+              )}
+            </div>
+          </div>
+        )}
+
+        {memes.length > 1 && (
+          /* iMessage-style: several memes from one submission, one bubble,
+             swipe/scroll left-right through them */
+          <div className="rounded-2xl rounded-bl-sm bg-[#13131e] border border-gray-800/60
+                          p-3 shadow-lg">
+            <div
+              ref={scrollRef}
+              onScroll={handleScroll}
+              className="flex overflow-x-auto snap-x snap-mandatory gap-2 chat-scroll"
+            >
+              {memes.map((meme, i) => (
+                <div key={i} className="shrink-0 w-full snap-center">
+                  <MemeDisplay url={meme.url} alt={meme.situationText} />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-center gap-1 mt-2">
+              {memes.map((_, i) => (
+                <span
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full transition-colors ${
+                    i === activeIndex ? "bg-brand-500" : "bg-gray-700"
+                  }`}
+                />
+              ))}
+            </div>
+
+            {memes[activeIndex]?.templateId && (
+              <p className="text-[10px] text-gray-600 mt-1 px-0.5 text-center">
+                {templateLabel(memes[activeIndex].templateId)}
+              </p>
+            )}
+
+            <div className="flex items-center justify-between mt-1">
+              <ShareButtons memeUrl={memes[activeIndex].url} />
+              {onFeedback && (
+                <FeedbackButtons
+                  key={activeIndex}
+                  onFeedback={(rating) => onFeedback(memes[activeIndex], rating)}
+                />
+              )}
+            </div>
           </div>
         )}
       </div>

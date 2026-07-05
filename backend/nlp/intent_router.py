@@ -11,15 +11,14 @@ Features:
 
 from __future__ import annotations
 
-import asyncio
 import json
-import re
 
 import httpx
 from pydantic import ValidationError
 
 from config import get_settings
 from image_processing.template_configs import DEFAULT_BOX_DESCRIPTIONS, get_config
+from nlp.llm_client import call_llm, strip_markdown
 from schemas import IntentResponse
 from vector_db.chroma_client import list_template_ids, query_similar_memes
 from vector_db.examples_store import get_similar_examples
@@ -272,94 +271,6 @@ Output raw JSON only — no markdown, no explanation.\
 """
 
 
-async def _call_ollama(
-    client: httpx.AsyncClient,
-    settings,
-    messages: list[dict],
-    temperature: float = 0.75,
-) -> str:
-    payload = {
-        "model": settings.ollama_model,
-        "messages": messages,
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": temperature, "num_predict": 150},
-    }
-    try:
-        base = settings.ollama_host.rstrip("/")
-        response = await client.post(
-            f"{base}/api/chat",
-            json=payload,
-            headers={"ngrok-skip-browser-warning": "true"},
-            follow_redirects=True,
-            timeout=120.0,
-        )
-        response.raise_for_status()
-    except httpx.ConnectError:
-        raise httpx.ConnectError(
-            f"Cannot reach Ollama at {settings.ollama_host}. Run: ollama serve"
-        )
-    return response.json()["message"]["content"].strip()
-
-
-async def _call_groq(
-    client: httpx.AsyncClient,
-    settings,
-    messages: list[dict],
-    temperature: float = 0.75,
-) -> str:
-    """Groq cloud inference — free tier, ~400 t/s, no GPU required."""
-    for attempt in range(2):
-        payload: dict = {
-            "model": settings.groq_model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": 200,
-            "response_format": {"type": "json_object"},
-        }
-        # Qwen 3.x thinking mode emits reasoning tokens before JSON, breaking the parser.
-        # Disable it explicitly for any Qwen model on this endpoint.
-        if "qwen" in settings.groq_model.lower():
-            payload["reasoning_effort"] = "none"
-        response = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {settings.groq_api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=30.0,
-        )
-        if response.status_code == 429:
-            # Rate limited — respect Groq's retry-after (cap at 30s so we don't stall forever)
-            retry_after = int(response.headers.get("retry-after", "3"))
-            await asyncio.sleep(min(retry_after, 8))
-            continue
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"].strip()
-    # Both attempts hit 429 — return empty so parse_intent falls through to hard fallback
-    # rather than raising httpx.HTTPStatusError and bypassing the fallback entirely
-    return ""
-
-
-async def _call_llm(
-    client: httpx.AsyncClient,
-    settings,
-    messages: list[dict],
-    temperature: float = 0.75,
-) -> str:
-    """Route to Groq (cloud) or Ollama (local) based on LLM_PROVIDER config."""
-    if settings.llm_provider == "groq" and settings.groq_api_key:
-        return await _call_groq(client, settings, messages, temperature)
-    return await _call_ollama(client, settings, messages, temperature)
-
-
-def _strip_markdown(raw: str) -> str:
-    raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.MULTILINE)
-    raw = re.sub(r"\s*```$", "", raw, flags=re.MULTILINE)
-    return raw.strip()
-
-
 async def parse_intent(
     user_message: str,
     avoid_templates: list[str] | None = None,
@@ -407,11 +318,11 @@ async def parse_intent(
     async with httpx.AsyncClient() as client:
         # Attempt 1 — rich prompt with few-shot + avoid block
         try:
-            raw = await _call_llm(client, settings, [
+            raw = await call_llm(client, settings, [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ])
-            raw = _strip_markdown(raw)
+            raw = strip_markdown(raw)
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
             result = IntentResponse(**data)
@@ -427,10 +338,10 @@ async def parse_intent(
             template_ids=", ".join(template_ids[:14]),
         )
         try:
-            raw = await _call_llm(client, settings, [
+            raw = await call_llm(client, settings, [
                 {"role": "user", "content": retry_prompt},
             ], temperature=0.2)
-            raw = _strip_markdown(raw)
+            raw = strip_markdown(raw)
             data = json.loads(raw)
             data = _normalize_llm_response(data, known_id_set)
             result = IntentResponse(**data)

@@ -15,6 +15,10 @@ import { NextRequest } from "next/server";
 const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export const dynamic = "force-dynamic";
+// Multiple images (or an explicit meme_count) can generate several memes
+// sequentially — see routers/chat.py's _stream_batch — plausibly 15-40s
+// end-to-end, worse right after Render's ~30s free-tier cold start.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get("content-type") ?? "";

@@ -60,3 +60,13 @@ async def test_text_chat_streams_done_event_with_template():
     done = done_events[0]
     assert done["template_used"] == "hide_the_pain_harold"
     assert done["message"]["meme_url"].startswith("/static/generated/")
+    assert done["index"] == 0
+    assert done["total"] == 1
+
+    # Pins "the fast path is wire-identical to before, plus a trailing
+    # batch_done" as an actual regression check — a short message must take
+    # zero segmentation LLM calls and resolve to exactly one context.
+    batch_done_events = [e for e in events if e.get("type") == "batch_done"]
+    assert len(batch_done_events) == 1
+    assert batch_done_events[0]["total"] == 1
+    assert batch_done_events[0]["succeeded"] == 1

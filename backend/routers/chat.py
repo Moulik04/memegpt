@@ -1,14 +1,22 @@
 """
 POST /chat/       — main conversational endpoint (text), returns Server-Sent Events.
-POST /chat/image/ — Phase 1 multimodal endpoint (image as context), same SSE contract.
+POST /chat/image/ — Phase 1 multimodal endpoint (image-as-context, 1+ photos), same SSE contract.
+
+Both routes flow through the same batch pipeline (_stream_batch): a
+submission resolves into 1..N distinct "situations" (nlp/segmentation.py's
+resolve_contexts — a no-op fast path for the common case of one short
+message or one photo), and each situation is rendered into its own meme via
+_stream_chat_turn, sharing one HTTP response/SSE stream.
 
 SSE event stream:
-  {"type": "thinking", "stage": "analyzing",  "message": "..."}
-  {"type": "thinking", "stage": "rendering",  "template_id": "...", "message": "..."}
-  {"type": "done",     "conversation_id": "...", "message": {...}, "template_used": "..."}
-  {"type": "error",    "message": "..."}
+  {"type": "thinking", "stage": "analyzing",  "index": 0, "total": 1, "message": "..."}
+  {"type": "thinking", "stage": "rendering",  "index": 0, "total": 1, "template_id": "...", "message": "..."}
+  {"type": "done",     "index": 0, "total": 1, "conversation_id": "...", "message": {...}, "template_used": "..."}
+  {"type": "batch_done", "total": 1, "succeeded": 1}
+  {"type": "error",    "index": 0, "total": 1, "message": "..."}
 """
 
+import asyncio
 import json
 from typing import AsyncGenerator
 
@@ -19,10 +27,11 @@ from config import get_settings
 from image_processing.compositor import compose_meme
 from memory.conversation_store import add_turn, get_recent_templates
 from nlp.intent_router import parse_intent
-from nlp.vision import VisionUnavailable, describe_image
+from nlp.segmentation import resolve_contexts
+from nlp.vision import describe_image
 from rate_limit import limiter
-from schemas import ChatMessage, ChatRequest, ChatResponse
-from uploads.safe_ingest import ModerationRejected, UploadRejected, safe_ingest
+from schemas import ChatMessage, ChatRequest, ChatResponse, VisionDescription
+from uploads.safe_ingest import CleanImage, ModerationRejected, UploadRejected, safe_ingest
 from vector_db.chroma_client import log_usage
 
 router = APIRouter()
@@ -38,15 +47,26 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
-async def _stream_chat_turn(user_message: str, conversation_id: str) -> AsyncGenerator[str, None]:
+async def _stream_chat_turn(
+    user_message: str,
+    conversation_id: str,
+    index: int = 0,
+    total: int = 1,
+) -> AsyncGenerator[dict, None]:
     """The shared analyzing -> parse_intent -> rendering -> compose_meme ->
-    log_usage -> done sequence, used identically by both /chat/ and
-    /chat/image/ once each has produced a plain-text user_message."""
-    yield _sse({
+    log_usage -> done sequence for ONE situation. Yields raw event dicts —
+    the caller (_stream_batch) serializes them to SSE strings, so index/total
+    can be merged in centrally without every event constructor repeating it.
+    `content` on the reply carries the situation text itself (previously
+    always ""), which the frontend uses to key per-meme feedback correctly
+    when several memes in one batch share a single preceding user bubble."""
+    yield {
         "type": "thinking",
         "stage": "analyzing",
+        "index": index,
+        "total": total,
         "message": "Reading your vibe...",
-    })
+    }
 
     # Retrieve recent templates from this conversation to avoid repeats
     recent = get_recent_templates(conversation_id, n=5)
@@ -54,16 +74,18 @@ async def _stream_chat_turn(user_message: str, conversation_id: str) -> AsyncGen
     try:
         intent = await parse_intent(user_message, avoid_templates=recent)
     except Exception as exc:
-        yield _sse({"type": "error", "message": str(exc)})
+        yield {"type": "error", "index": index, "total": total, "message": str(exc)}
         return
 
     friendly_name = intent.template_id.replace("_", " ")
-    yield _sse({
+    yield {
         "type": "thinking",
         "stage": "rendering",
+        "index": index,
+        "total": total,
         "template_id": intent.template_id,
         "message": f"Crafting the perfect {friendly_name} meme...",
-    })
+    }
 
     try:
         meme_url = await compose_meme(
@@ -71,7 +93,7 @@ async def _stream_chat_turn(user_message: str, conversation_id: str) -> AsyncGen
             texts=intent.texts,
         )
     except FileNotFoundError as exc:
-        yield _sse({"type": "error", "message": f"Template not found: {exc}"})
+        yield {"type": "error", "index": index, "total": total, "message": f"Template not found: {exc}"}
         return
 
     add_turn(conversation_id, intent.template_id)
@@ -83,14 +105,31 @@ async def _stream_chat_turn(user_message: str, conversation_id: str) -> AsyncGen
         conversation_id=conversation_id,
     )
 
-    reply = ChatMessage(role="assistant", content="", meme_url=meme_url)
+    reply = ChatMessage(role="assistant", content=user_message, meme_url=meme_url)
     response = ChatResponse(
         conversation_id=conversation_id,
         message=reply,
         template_used=intent.template_id,
     )
 
-    yield _sse({"type": "done", **response.model_dump(mode="json")})
+    yield {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
+
+
+async def _stream_batch(situations: list[str], conversation_id: str) -> AsyncGenerator[str, None]:
+    """Runs each situation through _stream_chat_turn IN SEQUENCE (not
+    parallel — this lets each context's avoid_templates see the previous
+    context's just-picked template via conversation_store's recency
+    tracking, so repeated/padded situations naturally get diverse templates
+    for free), yielding every event as it happens so memes appear
+    progressively rather than all at once at the end."""
+    total = len(situations)
+    succeeded = 0
+    for i, situation in enumerate(situations):
+        async for event in _stream_chat_turn(situation, conversation_id, index=i, total=total):
+            if event.get("type") == "done":
+                succeeded += 1
+            yield _sse(event)
+    yield _sse({"type": "batch_done", "total": total, "succeeded": succeeded})
 
 
 def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
@@ -108,55 +147,84 @@ def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
 @router.post("/")
 async def chat(request: ChatRequest):
     """
-    Streams SSE events as the meme is being generated:
-      1. 'analyzing' — LLM is parsing the user message
-      2. 'rendering'  — compositor is drawing the meme
-      3. 'done'       — full ChatResponse payload
+    Streams SSE events as one or more memes are generated — resolve_contexts
+    decides (with zero added latency for a normal short message) whether
+    this is one situation or several.
     """
     conversation_id = request.conversation_id or ""
-    return _sse_response(_stream_chat_turn(request.message, conversation_id))
+    contexts = await resolve_contexts(request.message, None, request.meme_count)
+    return _sse_response(_stream_batch(contexts, conversation_id))
 
 
 @router.post("/image/")
 @limiter.limit(get_settings().upload_rate_limit)
 async def chat_with_image(
     request: Request,  # required by slowapi's key_func, unused otherwise
-    image: UploadFile = File(...),
+    images: list[UploadFile] = File(...),
     message: str | None = Form(None),
     conversation_id: str | None = Form(None),
+    meme_count: int | None = Form(None),
 ):
     """
-    Phase 1 (Mode 1: image as context) — uploads a photo, describes it via
-    the vision layer, merges the description with any user text, and feeds
-    the result into the EXACT SAME _stream_chat_turn() used by /chat/.
+    Phase 1 (Mode 1: image as context) — uploads 1+ photos, describes each
+    via the vision layer, resolves the descriptions (+ any user text) into
+    1..N situations, and feeds each into the EXACT SAME _stream_batch used
+    by /chat/.
 
     ALL uploaded images pass through uploads/safe_ingest.safe_ingest() —
-    never bypass it. Every failure path below returns a generic, content-
-    free refusal; category-only details are logged inside safe_ingest.py,
-    never the image bytes or a description of what was detected.
+    never bypass it. A content-moderation failure on ANY image aborts the
+    WHOLE request with today's generic refusal (a moderation hit is an
+    adversarial signal, unlike a size/type failure, and skip-and-continue
+    would leak a per-image "this one got silently dropped" signal that
+    uploads/moderation.py's category-never-echoed invariant exists to
+    prevent). A non-safety UploadRejected on one image in a batch just
+    drops that image and continues with the rest.
     """
     conv_id = conversation_id or ""
 
     async def event_stream() -> AsyncGenerator[str, None]:
-        try:
-            clean = await safe_ingest(image)
-        except (ModerationRejected, UploadRejected):
+        settings = get_settings()
+        capped_images = images[: settings.max_images_per_request]
+
+        ingest_results = await asyncio.gather(
+            *[safe_ingest(img) for img in capped_images],
+            return_exceptions=True,
+        )
+
+        if any(isinstance(r, ModerationRejected) for r in ingest_results):
             yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
             return
 
-        try:
-            description = await describe_image(clean.image, user_text=message)
-        except VisionUnavailable:
-            # Graceful degrade — a normal assistant reply, not a hard error.
+        clean_images = [r for r in ingest_results if isinstance(r, CleanImage)]
+
+        if not clean_images:
+            # All images failed non-safety validation (too big/wrong type).
+            # Degrade to a text-only turn if there's accompanying text,
+            # rather than hard-refusing when the user's words are still usable.
+            if message:
+                contexts = await resolve_contexts(message, None, meme_count)
+                async for event in _stream_batch(contexts, conv_id):
+                    yield event
+                return
+            yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
+            return
+
+        description_results = await asyncio.gather(
+            *[describe_image(ci.image, user_text=message) for ci in clean_images],
+            return_exceptions=True,
+        )
+        descriptions = [d.situation for d in description_results if isinstance(d, VisionDescription)]
+
+        if not descriptions:
+            # Every vision call failed (VisionUnavailable) — graceful
+            # degrade, a normal assistant reply, not a hard error.
             reply = ChatMessage(role="assistant", content=_DESCRIBE_IN_WORDS_PROMPT)
             response = ChatResponse(conversation_id=conv_id, message=reply)
             yield _sse({"type": "done", **response.model_dump(mode="json")})
             return
 
-        # Phase 2 (canvas mode) isn't built yet — degrade gracefully rather
-        # than half-implementing it or dead-ending the user.
-        merged = description.situation if not message else f"{description.situation} {message.strip()}"
-        async for event in _stream_chat_turn(merged, conv_id):
+        contexts = await resolve_contexts(message, descriptions, meme_count)
+        async for event in _stream_batch(contexts, conv_id):
             yield event
 
     return _sse_response(event_stream())

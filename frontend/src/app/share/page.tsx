@@ -5,7 +5,6 @@ import Link from "next/link";
 import { sendChatStream } from "@/lib/api";
 import { MemeDisplay } from "@/components/MemeDisplay";
 import { ShareButtons } from "@/components/ShareButtons";
-import type { ChatMessage } from "@/types";
 
 const EXAMPLES = [
   "my friend after 4 drinks saying he's totally fine",
@@ -14,11 +13,19 @@ const EXAMPLES = [
   "when autocorrect embarrasses you in a group chat",
 ];
 
+// Local to this page — never goes through the multi-meme batch path (no
+// meme-count control here), so it doesn't need the client-side ChatMessage
+// type from @/types, which now represents a whole accumulated carousel.
+interface SingleMemeResult {
+  memeUrl: string;
+  templateId?: string;
+}
+
 export default function SharePage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
-  const [result, setResult] = useState<ChatMessage | null>(null);
+  const [result, setResult] = useState<SingleMemeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function generate() {
@@ -31,8 +38,8 @@ export default function SharePage() {
     try {
       await sendChatStream(text, undefined, (event) => {
         if (event.type === "thinking") setStatus(event.message);
-        else if (event.type === "done") {
-          setResult({ ...event.message, template_id: event.template_used });
+        else if (event.type === "done" && event.message.meme_url) {
+          setResult({ memeUrl: event.message.meme_url, templateId: event.template_used });
           setStatus("");
         } else if (event.type === "error") {
           setError(event.message);
@@ -139,16 +146,16 @@ export default function SharePage() {
           /* ── Result state ── */
           <>
             <div className="rounded-2xl bg-[#13131e] border border-gray-800/60 p-4">
-              <MemeDisplay url={result.meme_url!} />
+              <MemeDisplay url={result.memeUrl} />
 
-              {result.template_id && (
+              {result.templateId && (
                 <p className="text-[10px] text-gray-600 mt-2">
-                  {result.template_id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                  {result.templateId.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                 </p>
               )}
 
               {/* Share buttons — large variant for the share page */}
-              <ShareButtons memeUrl={result.meme_url!} large />
+              <ShareButtons memeUrl={result.memeUrl} large />
             </div>
 
             {/* Try again */}

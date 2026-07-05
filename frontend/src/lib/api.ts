@@ -58,12 +58,17 @@ async function _consumeSSE(res: Response, onEvent: (event: SSEEvent) => void): P
 export async function sendChatStream(
   message: string,
   conversationId: string | undefined,
-  onEvent: (event: SSEEvent) => void
+  onEvent: (event: SSEEvent) => void,
+  memeCount?: number
 ): Promise<void> {
   const res = await fetch(`${BASE}/chat/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      meme_count: memeCount,
+    }),
   });
 
   if (!res.ok) {
@@ -75,18 +80,22 @@ export async function sendChatStream(
 }
 
 /**
- * Phase 1 (Mode 1: image as context) — uploads a photo (+ optional text) to
- * /chat/image/ and streams the same SSE event shape as sendChatStream.
+ * Phase 1 (Mode 1: image as context) — uploads one or more photos
+ * (+ optional text) to /chat/image/ and streams the same SSE event shape
+ * as sendChatStream. Multiple files (or a long message, or an explicit
+ * memeCount > 1) can produce more than one meme in the same stream — see
+ * nlp/segmentation.py on the backend.
  */
 export async function sendChatImageStream(
-  file: File,
+  files: File[],
   options: ImageChatOptions,
   onEvent: (event: SSEEvent) => void
 ): Promise<void> {
   const form = new FormData();
-  form.append("image", file);
+  for (const file of files) form.append("images", file);
   if (options.message) form.append("message", options.message);
   if (options.conversationId) form.append("conversation_id", options.conversationId);
+  if (options.memeCount) form.append("meme_count", String(options.memeCount));
 
   const res = await fetch(`${BASE}/chat/image/`, {
     method: "POST",

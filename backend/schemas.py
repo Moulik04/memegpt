@@ -62,6 +62,8 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+    meme_count: Optional[int] = None  # explicit override — forces exactly N memes, clamped to
+                                       # settings.max_memes_per_request; None = auto-detect
 
 
 class ChatResponse(BaseModel):
@@ -95,6 +97,19 @@ class VisionDescription(BaseModel):
     tone: Optional[str] = None           # reserved for future structured use
     visible_text: Optional[str] = None   # reserved for future structured use
     mode_hint: Literal["context", "canvas"] = "context"
+
+
+# ---------------------------------------------------------------------------
+# Segmentation layer (multi-context, multi-meme generation)
+# ---------------------------------------------------------------------------
+
+class SegmentedContext(BaseModel):
+    """One distinct meme-worthy moment identified by nlp/segmentation.py's
+    segment_contexts() out of a longer text dump and/or multiple photo
+    descriptions. Each situation string is fed independently into the
+    EXISTING parse_intent(), exactly like a single Phase 1 image description."""
+
+    situation: str
 
 
 # ---------------------------------------------------------------------------

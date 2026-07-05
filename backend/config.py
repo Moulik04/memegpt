@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     upload_rate_limit: str = "5/minute"
     upload_retention_seconds: int = 3600
 
+    # Multi-context, multi-meme generation — see nlp/segmentation.py
+    max_memes_per_request: int = 5     # requested_count is clamped to this, never rejected
+    max_images_per_request: int = 6    # independent of the above — bounds moderation/vision cost
+    segmentation_text_threshold_chars: int = 240  # longer text triggers segmentation
+
     # ChromaDB — empty string = embedded PersistentClient (local dev)
     #            set to service name (e.g. "vector-db") → HttpClient (Docker)
     chroma_host: str = ""
