@@ -24,7 +24,8 @@ RUN pip install --no-cache-dir \
     "python-multipart>=0.0.9" \
     "aiofiles>=23.2.1" \
     "python-dotenv>=1.0.1" \
-    "httpx>=0.27.0"
+    "httpx>=0.27.0" \
+    "slowapi>=0.1.9"
 
 # Copy source code
 COPY backend/ .

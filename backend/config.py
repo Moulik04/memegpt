@@ -15,6 +15,17 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_model: str = "qwen/qwen3.6-27b"
 
+    # Multimodal — image uploads (Phase 0 safety gate + Phase 1 vision)
+    max_image_bytes: int = 10 * 1024 * 1024   # 10MB
+    max_image_dimension_px: int = 8000
+    moderation_model: str = "qwen/qwen3.6-27b"  # vision model + safety rubric — see uploads/moderation.py
+    vision_provider: str = "groq"
+    vision_model: str = "qwen/qwen3.6-27b"       # same model already used for text routing
+    anthropic_api_key: str = ""                    # optional vision fallback — see nlp/vision.py
+    anthropic_model: str = "claude-sonnet-5"
+    upload_rate_limit: str = "5/minute"
+    upload_retention_seconds: int = 3600
+
     # ChromaDB — empty string = embedded PersistentClient (local dev)
     #            set to service name (e.g. "vector-db") → HttpClient (Docker)
     chroma_host: str = ""

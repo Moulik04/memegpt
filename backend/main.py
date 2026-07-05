@@ -6,10 +6,14 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from config import get_settings
 from nlp.intent_router import USE_WHEN
+from rate_limit import limiter
 from routers import chat, explain, feedback, generate
+from uploads.retention import periodic_purge_loop
 from vector_db.chroma_client import init_chroma, list_template_ids, upsert_templates_batch
 from vector_db.examples_store import _get_collection as _init_examples, seed_examples
 
@@ -71,6 +75,10 @@ async def lifespan(app: FastAPI):
         seed_examples()
 
     asyncio.create_task(asyncio.to_thread(_sequential_seed))
+    # Upload retention sweep — Phase 0/1 never write uploads to disk, so this
+    # registry stays empty today, but the sweep runs regardless so it's
+    # proven working before Phase 3 (video) actually needs it.
+    asyncio.create_task(periodic_purge_loop())
     yield
 
 
@@ -80,6 +88,9 @@ app = FastAPI(
     version="0.2.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
