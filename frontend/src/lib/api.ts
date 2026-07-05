@@ -1,6 +1,7 @@
 import type {
   ExplainResponse,
   FeedbackRequest,
+  ImageChatOptions,
   MemeGenerationRequest,
   MemeGenerationResponse,
   SSEEvent,
@@ -22,25 +23,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 /**
- * Open an SSE stream to /chat/ and call `onEvent` for each parsed event.
- * Returns when the stream ends or an error occurs.
+ * Read an SSE Response body, calling `onEvent` for each parsed event.
+ * Shared by sendChatStream and sendChatImageStream.
  */
-export async function sendChatStream(
-  message: string,
-  conversationId: string | undefined,
-  onEvent: (event: SSEEvent) => void
-): Promise<void> {
-  const res = await fetch(`${BASE}/chat/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, conversation_id: conversationId }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
-  }
-
+async function _consumeSSE(res: Response, onEvent: (event: SSEEvent) => void): Promise<void> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -63,6 +49,56 @@ export async function sendChatStream(
       }
     }
   }
+}
+
+/**
+ * Open an SSE stream to /chat/ and call `onEvent` for each parsed event.
+ * Returns when the stream ends or an error occurs.
+ */
+export async function sendChatStream(
+  message: string,
+  conversationId: string | undefined,
+  onEvent: (event: SSEEvent) => void
+): Promise<void> {
+  const res = await fetch(`${BASE}/chat/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, conversation_id: conversationId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+  }
+
+  await _consumeSSE(res, onEvent);
+}
+
+/**
+ * Phase 1 (Mode 1: image as context) — uploads a photo (+ optional text) to
+ * /chat/image/ and streams the same SSE event shape as sendChatStream.
+ */
+export async function sendChatImageStream(
+  file: File,
+  options: ImageChatOptions,
+  onEvent: (event: SSEEvent) => void
+): Promise<void> {
+  const form = new FormData();
+  form.append("image", file);
+  if (options.message) form.append("message", options.message);
+  if (options.conversationId) form.append("conversation_id", options.conversationId);
+
+  const res = await fetch(`${BASE}/chat/image/`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+  }
+
+  await _consumeSSE(res, onEvent);
 }
 
 export async function postFeedback(req: FeedbackRequest): Promise<void> {

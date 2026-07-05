@@ -2,7 +2,9 @@
 
 ## Overview
 
-MemeGPT is a chatbot that communicates exclusively through memes. A user sends a plain-English message; the system routes it through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over ~110 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result back to a React/Next.js chat interface via SSE.
+MemeGPT is a chatbot that communicates exclusively through memes. A user sends a plain-English message (or, as of Phase 1 of multimodal input, a photo); the system routes it through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over ~110 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result back to a React/Next.js chat interface via SSE.
+
+**Multimodal input invariant: ALL uploaded media enters through `backend/uploads/safe_ingest.py`'s `safe_ingest()` — never bypass it.** See `docs/UPLOADS.md` for the full pipeline and the "NLP / Vision & Uploads" section below for implementation details.
 
 **Live demo:** frontend on Vercel (`memegpt-six.vercel.app`), backend on Render (`memegpt-backend.onrender.com`).
 
@@ -19,7 +21,7 @@ memegpt/
 │   ├── pyproject.toml        All Python dependencies + dev tooling config
 │   │
 │   ├── routers/
-│   │   ├── chat.py           POST /chat/     — main conversational endpoint, SSE stream
+│   │   ├── chat.py           POST /chat/ (text) + POST /chat/image/ (Phase 1 multimodal) — SSE stream
 │   │   ├── explain.py        POST /explain/  — template metadata & history
 │   │   ├── generate.py       POST /generate/ — on-demand meme generation
 │   │   └── feedback.py       POST /feedback/ — thumbs up/down logging to ChromaDB
@@ -33,11 +35,19 @@ memegpt/
 │   │   └── examples_store.py Few-shot (prompt → meme) example collection
 │   │
 │   ├── nlp/
-│   │   └── intent_router.py  _call_llm() dispatches to Ollama (local) or Groq (cloud) → IntentResponse JSON
+│   │   ├── intent_router.py  _call_llm() dispatches to Ollama (local) or Groq (cloud) → IntentResponse JSON
+│   │   └── vision.py         Phase 1: describe_image() — Groq (primary) / Anthropic (fallback) vision call
+│   │
+│   ├── uploads/               Phase 0 safety gate — see docs/UPLOADS.md
+│   │   ├── safe_ingest.py     safe_ingest() — the ONLY entry point for any uploaded image
+│   │   ├── moderation.py      Content-safety check (reuses nlp/vision.py's Groq call + a safety rubric)
+│   │   └── retention.py        TTL-tracked temp-file cleanup (forward-looking; not yet exercised)
 │   │
 │   ├── memory/
 │   │   └── conversation_store.py  In-memory per-conversation template history (anti-repetition)
 │   │
+│   ├── rate_limit.py          Shared slowapi Limiter instance (own module to avoid a main.py<->routers cycle)
+│   ├── tests/                 pytest suite — Phase 0 safety tests + a /chat/ text-flow regression test
 │   ├── templates/            ~122 base meme images (JPG/PNG), named by template_id
 │   ├── fonts/                Anton-Regular.ttf (downloaded at build time — free Impact equivalent)
 │   ├── static/generated/     Runtime output — compositor writes PNGs here (ephemeral on Render)
@@ -56,6 +66,9 @@ memegpt/
 │       │   │                          streaming — next.config.js `rewrites()` alone buffers the
 │       │   │                          whole response and breaks SSE, so this route (checked
 │       │   │                          before rewrites) takes precedence for this one path
+│       │   ├── api/chat/image/route.ts  Same idea, but passes the multipart body through RAW
+│       │   │                            (not req.json()) — forwards req.body + Content-Type with
+│       │   │                            duplex:"half" straight to POST /chat/image/
 │       │   ├── api/feedback/route.ts  Proxies POST /feedback/
 │       │   └── globals.css   Tailwind directives + scrollbar + fadeIn animation
 │       ├── components/
@@ -141,6 +154,15 @@ Frontend resolves meme_url via memeImageUrl() → NEXT_PUBLIC_API_BASE + relativ
 - Hard fallback (`hide_the_pain_harold`) guarantees `parse_intent` never raises to the caller.
 - `USE_WHEN` dict: each template_id maps to a terse description including NOT-FOR language naming specific alternatives — prevents common confusion clusters (drake/evil_kermit/two_buttons, distracted_boyfriend/left_exit_12/uno_draw_25_cards, etc.).
 
+### Vision & Uploads (`nlp/vision.py`, `uploads/`) — Phase 0 + Phase 1 of multimodal input
+- **Invariant: `uploads/safe_ingest.py`'s `safe_ingest()` is the only entry point for any uploaded image.** Pipeline in order: streamed size cap (10MB, doesn't trust `Content-Length`) → magic-byte type sniffing (hand-rolled signature dict, never trusts the extension or client-supplied MIME type — deliberately skips `python-magic` to avoid a new system `libmagic` dependency Render's native build has no precedent for) → Pillow decompression-bomb guard (`Image.MAX_IMAGE_PIXELS` + an explicit >8000px-per-side check) → metadata stripping (rebuilds a fresh `Image` via `Image.frombytes()`, guaranteeing an empty `.info` dict — no EXIF/GPS can survive) → content moderation.
+- **Never writes the original upload to disk** — everything happens in memory. `uploads/retention.py` ships a TTL-tracked cleanup utility (`tracked_temp_file()`, `purge_expired()`, a periodic sweep started in `main.py`'s lifespan) as forward-looking infrastructure for Phase 3 (video), which will need a real file for ffmpeg; it's not exercised by anything today.
+- **Moderation (`uploads/moderation.py`) deliberately does NOT use a dedicated Llama-Guard-style model.** Its exact request/response contract on Groq couldn't be live-verified (no `GROQ_API_KEY` available at implementation time), and shipping against an unverified contract risks silently failing *open*. Instead it reuses `nlp/vision.py`'s already-verified Groq vision call with a strict safety rubric — exactly the master prompt's documented fallback. Fails **closed** (rejects) on any provider error or missing config — an inability to moderate is treated as a failed moderation check, never a pass-through.
+- **`nlp/vision.py`'s `describe_image()`** mirrors `intent_router.py`'s `_call_groq`/`_call_ollama` dispatch shape. Primary: Groq `qwen/qwen3.6-27b` — the *same model* `intent_router.py` already uses for text routing, so this needs zero new provider account. Optional fallback: Anthropic `claude-sonnet-5` via raw `httpx` (no SDK, matching this repo's existing style), gated on `ANTHROPIC_API_KEY` being set. Raises `VisionUnavailable` if both fail — unlike `parse_intent()`, there's no safe hardcoded fallback description, so the caller degrades to asking the user to describe the photo in words.
+- **`POST /chat/image/`** (in `routers/chat.py`) is a sibling route to `POST /chat/`, not a retrofit of it — FastAPI routes bind to one body type, and this keeps the existing JSON `/chat/` contract provably unchanged. Both routes share a single extracted `_stream_chat_turn()` generator for the analyzing → `parse_intent` → rendering → `compose_meme` → `log_usage` → done sequence. **`parse_intent()` and `compositor.py` needed zero changes** — the vision-derived description is just a plain string fed into the same `parse_intent(user_message, ...)` call `/chat/` already makes.
+- Rate-limited via `slowapi` (`backend/rate_limit.py` holds the shared `Limiter` instance in its own module specifically to avoid a `main.py` ↔ `routers/chat.py` circular import) — currently scoped to `/chat/image/` only, not yet applied to `/chat/`.
+- Phase 2 (canvas mode — captioning the user's own photo) and Phase 3 (video) are not yet implemented; see `memegpt-multimodal-master-prompt.md` and the plan history for scope.
+
 ### Vector DB (`vector_db/chroma_client.py`)
 - ChromaDB uses its default embedding model (`all-MiniLM-L6-v2`) — no external embedding API key required.
 - Dual-mode client: `PersistentClient` for local dev / Render (embedded, no `CHROMA_HOST`), `HttpClient` when `CHROMA_HOST` is set (Docker Compose).
@@ -158,9 +180,10 @@ Frontend resolves meme_url via memeImageUrl() → NEXT_PUBLIC_API_BASE + relativ
 - Conversation state (`conversationId`) is held in `ChatWindow` component state — intentionally ephemeral, resets on page refresh.
 - Backend-side conversation memory (`backend/memory/conversation_store.py`) tracks the last 5 template ids per `conversation_id` and feeds them to `parse_intent(..., avoid_templates=...)` so the LLM is nudged away from repeating the same template within a session.
 - `/share` page + `ShareButtons.tsx` + `manifest.json` implement a basic PWA share flow (Web Share API with a copy-link fallback).
+- `ChatWindow.tsx` has a hidden file input behind an attach button; `lib/api.ts`'s `sendChatImageStream()` posts a `FormData` (never sets `Content-Type` manually — the browser fills in the multipart boundary) to `/api/chat/image/` and shares the same SSE-consuming loop as `sendChatStream()`. The 10MB client-side size check here is a UX nicety only — `uploads/safe_ingest.py` is the real gate.
 
 ### Deployment
-- **Backend (Render):** native Python runtime (`env: python` in `render.yaml`), not Docker — the service must be configured this way in Settings if created manually through the dashboard, since render.yaml service-type changes don't apply retroactively to manually-created services. Build command installs deps + downloads Anton font. `LLM_PROVIDER=groq` + `GROQ_API_KEY` env var for cloud inference (Render's CPU-only free tier can't run Ollama at usable speed).
+- **Backend (Render):** native Python runtime (`env: python` in `render.yaml`), not Docker — the service must be configured this way in Settings if created manually through the dashboard, since render.yaml service-type changes don't apply retroactively to manually-created services. Build command installs deps + downloads Anton font. `LLM_PROVIDER=groq` + `GROQ_API_KEY` env var for cloud inference (Render's CPU-only free tier can't run Ollama at usable speed). The same `GROQ_API_KEY` also powers Phase 1 vision + moderation calls — no new required env var for the multimodal feature to work; `ANTHROPIC_API_KEY` is optional (vision fallback only).
 - **Frontend (Vercel):** needs `BACKEND_URL` (server-side rewrites) and `NEXT_PUBLIC_API_BASE` (client-side image URLs) pointed at the Render backend URL.
 - Render free tier spins down after 15 min idle — first request after idle takes ~30s to wake up.
 
@@ -174,8 +197,9 @@ Frontend resolves meme_url via memeImageUrl() → NEXT_PUBLIC_API_BASE + relativ
 - [ ] **Fine-tuned model**: scripts for LoRA fine-tuning on the Imgflip 100k dataset exist (`scripts/finetune_unsloth.py`) but training hasn't been run.
 
 ### Low Priority / Polish
-- [ ] **Rate limiting** (`slowapi`): guard `/chat/` against spam, especially since the deployed instance is publicly shared.
-- [ ] **Tests**: pytest suite for `compositor.py` (golden-image diff), `intent_router.py` (mock Ollama/Groq), and router integration tests using `httpx.AsyncClient`.
+- [x] **Rate limiting** (`slowapi`): implemented, but currently scoped only to `/chat/image/` (the upload path). Extending it to plain-text `/chat/` is still pending.
+- [x] **Tests**: `backend/tests/` now exists (first test suite in the repo) — Phase 0 upload safety-gate tests and a `/chat/` text-flow regression test via `httpx.AsyncClient`. Still missing: `compositor.py` golden-image-diff tests and `intent_router.py` Groq/Ollama mock tests.
+- [ ] **Multimodal Phase 2/3**: canvas mode (caption the user's own photo) and video support — see `memegpt-multimodal-master-prompt.md`.
 - [ ] **Generated image persistence**: Render's filesystem is ephemeral — `static/generated/` PNGs are lost on restart/redeploy. Fine for live chat, not for durable sharing of past memes.
 
 ---

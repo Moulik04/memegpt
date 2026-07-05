@@ -83,6 +83,21 @@ class IntentResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Vision layer (multimodal input — Phase 1: image as context)
+# ---------------------------------------------------------------------------
+
+class VisionDescription(BaseModel):
+    """Output of nlp/vision.py's describe_image() — a plain-language
+    description of an uploaded photo, phrased as if the user had typed it,
+    fed straight into the existing parse_intent() as the user_message."""
+
+    situation: str
+    tone: Optional[str] = None           # reserved for future structured use
+    visible_text: Optional[str] = None   # reserved for future structured use
+    mode_hint: Literal["context", "canvas"] = "context"
+
+
+# ---------------------------------------------------------------------------
 # Generation layer
 # ---------------------------------------------------------------------------
 

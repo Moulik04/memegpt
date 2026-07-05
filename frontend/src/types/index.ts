@@ -60,3 +60,8 @@ export interface ErrorEvent {
 }
 
 export type SSEEvent = ThinkingEvent | DoneEvent | ErrorEvent;
+
+export interface ImageChatOptions {
+  message?: string;
+  conversationId?: string;
+}
