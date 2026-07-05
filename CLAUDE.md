@@ -2,7 +2,9 @@
 
 ## Overview
 
-MemeGPT is a chatbot that communicates exclusively through memes. A user sends a plain-English message, one or more photos, or both — and if that submission actually contains several distinct meme-worthy moments (a long text dump, multiple photos), the system can generate more than one meme for it instead of flattening everything into one. A photo either informs which catalog template gets picked (Mode 1, the default) or becomes the meme itself, captioned directly (Mode 2: canvas — "make this a meme"). Each situation routes through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over ~110 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result(s) back to a React/Next.js chat interface via SSE.
+MemeGPT is a chatbot that communicates exclusively through memes. There are two public frontend surfaces sharing one backend: **Chat** (`/`) — a normal chatbot, the catch is it only replies in memes — and **Lore** (`/lore`) — for big context dumps: paste a whole group-chat thread, upload a stack of screenshots, get several memes back, with explicit controls (meme count, drag-and-drop) that Chat deliberately doesn't expose. "Lore" is a purely public-facing/UI name; internally everything still runs through the same segmentation → batch → SSE machinery described below, and the master-prompt-era "Phase 1/Phase 2" language for image-as-context vs. canvas mode is unchanged.
+
+A submission (text, photos, or both) either informs which catalog template gets picked (Mode 1: context, the default) or becomes the meme itself, captioned directly (Mode 2: canvas — "make this a meme"). If it actually contains several distinct meme-worthy moments (a long text dump, multiple photos), the system generates more than one meme instead of flattening everything into one. Each situation routes through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over ~110 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result(s) back via SSE.
 
 **Multimodal input invariant: ALL uploaded media enters through `backend/uploads/safe_ingest.py`'s `safe_ingest()` — never bypass it.** See `docs/UPLOADS.md` for the full pipeline and the "NLP / Vision & Uploads" section below for implementation details.
 
@@ -24,7 +26,9 @@ memegpt/
 │   │   ├── chat.py           POST /chat/ (text) + POST /chat/image/ (Mode 1 context / Mode 2 canvas) — SSE stream
 │   │   ├── explain.py        POST /explain/  — template metadata & history
 │   │   ├── generate.py       POST /generate/ — on-demand meme generation
-│   │   └── feedback.py       POST /feedback/ — thumbs up/down logging to ChromaDB
+│   │   ├── feedback.py       POST /feedback/ — thumbs up/down logging to ChromaDB
+│   │   └── share_intake.py   POST /share-intake/ + GET /share-intake/{token}/ — PWA share-target
+│   │                          stash/retrieve, see "Lore mode" below
 │   │
 │   ├── image_processing/
 │   │   ├── compositor.py     Pillow text compositor (font loading, wrap, stroke)
@@ -67,26 +71,42 @@ memegpt/
 │   └── src/
 │       ├── app/
 │       │   ├── layout.tsx    Root layout, dark theme, Inter font, PWA manifest link
-│       │   ├── page.tsx      Single-page entry — renders <ChatWindow />
-│       │   ├── share/page.tsx  Share-target landing page (PWA `manifest.json` + Web Share API)
+│       │   ├── page.tsx      Chat surface — <ModeTabs active="chat" /> + <ChatWindow />
+│       │   ├── lore/page.tsx Lore surface — <ModeTabs active="lore" /> + <LoreView />; also the
+│       │   │                  redirect target for share-target intake (?intake=<token>)
+│       │   ├── share/route.ts  POST-only PWA share-target intake (NOT a page — Next.js disallows
+│       │   │                    page.tsx + route.ts at the same segment). Relays the OS share
+│       │   │                    sheet's multipart POST to the backend's /share-intake/, then
+│       │   │                    303-redirects into /lore?intake=<token>. A stray GET redirects
+│       │   │                    to /lore instead of erroring.
 │       │   ├── api/chat/route.ts      App Router handler that proxies POST /chat/ with true SSE
 │       │   │                          streaming — next.config.js `rewrites()` alone buffers the
 │       │   │                          whole response and breaks SSE, so this route (checked
-│       │   │                          before rewrites) takes precedence for this one path
+│       │   │                          before rewrites) takes precedence for this one path.
+│       │   │                          export const maxDuration = 60 (multi-meme batches can run long)
 │       │   ├── api/chat/image/route.ts  Same idea, but passes the multipart body through RAW
 │       │   │                            (not req.json()) — forwards req.body + Content-Type with
 │       │   │                            duplex:"half" straight to POST /chat/image/
 │       │   ├── api/feedback/route.ts  Proxies POST /feedback/
 │       │   └── globals.css   Tailwind directives + scrollbar + fadeIn animation
+│       ├── hooks/
+│       │   └── useMemeStream.ts  Shared SSE-accumulation logic (thinking/error/plan/loading state +
+│       │                          submitText()/submitImages() returning {memes, plainReply}) — used
+│       │                          by both ChatWindow and LoreView, presentation stays with the caller
 │       ├── components/
-│       │   ├── ChatWindow.tsx    Stateful chat container, SSE consumer, conversation ID
-│       │   ├── MessageBubble.tsx Per-message bubble (user right, bot left)
+│       │   ├── ModeTabs.tsx      Shared header + Chat|Lore tab toggle (URL is the source of truth
+│       │   │                      for which surface is active, not client state)
+│       │   ├── ChatWindow.tsx    Chat surface — flat running conversation, grouped chat bubbles
+│       │   ├── LoreView.tsx      Lore surface — composer (textarea/drag-drop/count select) + a flat
+│       │   │                      vertical feed where every meme gets its own permanently-visible card
+│       │   ├── MessageBubble.tsx Per-message bubble (user right, bot left) — Chat only
 │       │   ├── FeedbackButtons.tsx  Thumbs up/down, posts to /feedback/
 │       │   ├── ShareButtons.tsx     Web Share API / copy-link for a generated meme
 │       │   ├── ThinkingBubble.tsx   Renders the `thinking` SSE stage messages
 │       │   └── MemeDisplay.tsx   next/image wrapper for rendered memes
 │       ├── lib/
-│       │   └── api.ts         Typed fetch helpers: sendChatStream, generateMeme, explainMeme, memeImageUrl
+│       │   └── api.ts         Typed fetch helpers: sendChatStream, sendChatImageStream, postFeedback,
+│       │                       generateMeme, explainMeme, memeImageUrl
 │       └── types/
 │           └── index.ts       Shared TypeScript interfaces mirroring backend schemas
 │
@@ -121,7 +141,12 @@ POST /chat/ or /chat/image/  (routers/chat.py)
       │     └─ Otherwise: segment_contexts() finds 1..max_memes_per_request distinct situations
       │     └─ Returns: a plain list of situation strings, one per meme to generate
       │
-      └─► _stream_batch(situations, conversation_id) — SEQUENTIALLY, for each situation:
+      └─► _stream_batch(situations, conversation_id):
+            │
+            ├─► if len(situations) > 1: yield {"type": "plan", "situations": [...], "total": N}
+            │     (skipped for a single situation — no "plan theater" for one meme)
+            │
+            SEQUENTIALLY, for each situation:
             │
             ├─► vector_db/chroma_client.query_similar_memes()
             │     └─ RAG pre-filter: top 8 semantically similar templates (keeps prompt ~1300 tokens)
@@ -143,9 +168,10 @@ SSE events per situation: {"done", index, total, conversation_id, message: {cont
 followed by one trailing {"batch_done", total, succeeded} once every situation has been attempted
       │
       ▼
-Frontend accumulates all "done" events from one submission into one grouped ChatMessage
-(memes: MemeItem[]) once the stream ends — 1 meme renders as today's single card,
-2+ renders as a swipeable carousel (MessageBubble.tsx)
+Frontend (useMemeStream hook) accumulates all "done" events from one submission into
+one {memes: MemeItem[], plainReply} result once the stream ends — Chat groups them into
+one ChatMessage (1 meme = single card, 2+ = swipeable carousel); Lore appends each meme
+as its own permanently-visible card to a flat feed instead
 ```
 
 ---
@@ -180,6 +206,8 @@ Frontend accumulates all "done" events from one submission into one grouped Chat
 - If `requested_count` is set and the LLM finds fewer distinct moments than asked for, the dominant one is **repeated** to pad out the count — deliberately, rather than inventing synthetic variations. This works because `_stream_batch` (below) runs situations **sequentially**: each repeat's `parse_intent(..., avoid_templates=recent)` sees the *previous* repeat's just-picked template via `conversation_store`'s existing recency tracking, so repeats naturally land on different templates/captions for free, with zero new plumbing.
 - **`routers/chat.py`'s `_stream_batch()`** runs `_stream_chat_turn()` once per resolved situation, in sequence (not parallel — deliberately, for the diversity-via-avoid_templates property above), yielding every event as it happens so memes appear progressively. A failure on one situation (`parse_intent`/`compose_meme` raising) only ends that situation's sub-stream; the batch continues to the next one. A trailing `{"type": "batch_done", "total": N, "succeeded": M}` event closes every stream, whether it ran one situation or several.
 - **`chat_with_image()`** now accepts `images: list[UploadFile]` (capped at `max_images_per_request`, default 6). Each image is safety-checked independently (`asyncio.gather`); a **content-moderation failure on ANY image aborts the whole request** with the existing generic refusal (a moderation hit is an adversarial signal, and skip-and-continue would leak a per-image "this one got silently dropped" signal that `uploads/moderation.py`'s category-never-echoed invariant exists to prevent) — but a non-safety `UploadRejected` (too big, wrong type) on one image just drops that image and continues with the survivors. If every image is dropped this way but text was also provided, the request degrades to a text-only turn rather than hard-refusing.
+- **`_stream_batch()` emits a `{"type": "plan", "situations": [...], "total": N}` event** immediately before rendering the first situation, but only when `N > 1` — decided entirely inside `_stream_batch` (`len(situations) <= 1` suppresses it), no signal needed from `resolve_contexts` itself. Fires identically for `/chat/` and `/chat/image/`'s context-mode path since both funnel through this one function; `_stream_canvas_batch` (canvas mode) is untouched, since the plan event is a segmentation-path concept. Lore renders this as a checklist ticking off as `"done"` events land (keyed by `index`); Chat ignores it (minimal chrome).
+- **`max_dump_chars` (default 20000, `config.py`)** bounds pasted text — `_clamp_dump_text()` truncates (never rejects) `message` in both routes before it ever reaches `resolve_contexts`, logging a debug-level note (lengths only, never the text) when clamping actually fires. Lore's composer shows a matching client-side notice past the same threshold; the real enforcement is server-side.
 
 ### Vision & Uploads (`nlp/vision.py`, `uploads/`) — Phase 0 + Phase 1 of multimodal input
 - **Invariant: `uploads/safe_ingest.py`'s `safe_ingest()` is the only entry point for any uploaded image.** Pipeline in order: streamed size cap (10MB, doesn't trust `Content-Length`) → magic-byte type sniffing (hand-rolled signature dict, never trusts the extension or client-supplied MIME type — deliberately skips `python-magic` to avoid a new system `libmagic` dependency Render's native build has no precedent for) → Pillow decompression-bomb guard (`Image.MAX_IMAGE_PIXELS` + an explicit >8000px-per-side check) → metadata stripping (rebuilds a fresh `Image` via `Image.frombytes()`, guaranteeing an empty `.info` dict — no EXIF/GPS can survive) → content moderation.
@@ -211,12 +239,18 @@ Frontend accumulates all "done" events from one submission into one grouped Chat
 - **`app/api/chat/route.ts` overrides the generic rewrite for `/chat/`** — Next.js checks the filesystem for a matching route before applying `rewrites()`, and `rewrites()` buffers the entire upstream response before forwarding, which breaks SSE. The route handler pipes the backend's `ReadableStream` straight through instead.
 - Tailwind brand color palette uses shades 50–900 (all must be defined; missing shades like 400 cause Vercel build failures if referenced in CSS).
 - `memeImageUrl()` in `lib/api.ts` prefixes relative meme URLs with `process.env.NEXT_PUBLIC_API_BASE` (must be set in Vercel for production; falls back to `localhost:8000` for local dev).
-- Conversation state (`conversationId`) is held in `ChatWindow` component state — intentionally ephemeral, resets on page refresh.
+- Conversation state (`conversationId`) is held in `useMemeStream`'s state — intentionally ephemeral, resets on page refresh.
 - Backend-side conversation memory (`backend/memory/conversation_store.py`) tracks the last 5 template ids per `conversation_id` and feeds them to `parse_intent(..., avoid_templates=...)` so the LLM is nudged away from repeating the same template within a session.
-- `/share` page + `ShareButtons.tsx` + `manifest.json` implement a basic PWA share flow (Web Share API with a copy-link fallback).
-- `ChatWindow.tsx` has a hidden multi-file input behind an attach button (thumbnail strip with per-image removal), a meme-count `<select>` ("Auto"/2-5), and a per-submission `MemeItem[]` accumulator: every `done` event's meme gets collected locally (not React state) and pushed as ONE grouped `ChatMessage` once the SSE stream ends — not one message per `done` event. `lib/api.ts`'s `sendChatImageStream()` posts a `FormData` with one `images` field per file (never sets `Content-Type` manually — the browser fills in the multipart boundary) to `/api/chat/image/` and shares the same SSE-consuming loop as `sendChatStream()`. The 10MB-per-file client-side size check here is a UX nicety only — `uploads/safe_ingest.py` is the real gate.
-- **`ChatMessage.memes?: MemeItem[]`** replaced the old singular `meme_url`/`template_id` fields — one array, always, rather than bolting plural fields on alongside the singular ones (which would let code checking only the singular field silently render a multi-meme reply as if it had none). `MessageBubble.tsx` renders `memes.length === 1` exactly like the old single-meme layout, and `2+` as an `overflow-x-auto snap-x snap-mandatory` horizontal carousel (no new npm dependency — native touch-swipe/scroll) with a dot indicator and one `FeedbackButtons` docked to the in-view card (`activeIndex`, tracked via a scroll handler). `frontend/src/app/share/page.tsx` was decoupled from `ChatMessage` entirely (its own local `{memeUrl, templateId?}` type) since it never goes through the multi-meme path.
-- **Each `MemeItem.situationText`** carries the specific segmented context that produced that meme (the backend now populates `ChatMessage.content` with the situation text instead of always `""`). `ChatWindow.tsx`'s `handleFeedback` uses this — not the shared original user submission — as the few-shot example key, because `vector_db/examples_store.py`'s `upsert_example` hashes purely on message text: without this, two different memes from the same multi-meme batch would collide on the same ChromaDB doc id and silently overwrite each other's feedback.
+- **`ChatMessage.memes?: MemeItem[]`** — one array, always, rather than a singular `meme_url`/`template_id` (which would let code checking only the singular field silently render a multi-meme reply as if it had none). `MessageBubble.tsx` (Chat only) renders `memes.length === 1` as a single card, `2+` as an `overflow-x-auto snap-x snap-mandatory` horizontal carousel (no new npm dependency — native touch-swipe/scroll) with a dot indicator and one `FeedbackButtons` docked to the in-view card (`activeIndex`, tracked via a scroll handler).
+- **Each `MemeItem.situationText`** carries the specific segmented context that produced that meme (the backend populates `ChatMessage.content` with the situation text instead of always `""`). Both surfaces' `handleFeedback` use this — not the shared original user submission — as the few-shot example key, because `vector_db/examples_store.py`'s `upsert_example` hashes purely on message text: without this, two different memes from the same multi-meme batch would collide on the same ChromaDB doc id and silently overwrite each other's feedback.
+
+### Lore mode — two-surface restructure (`hooks/useMemeStream.ts`, `LoreView.tsx`, `ModeTabs.tsx`, share-target)
+- **Naming map:** "Chat" and "Lore" are public-facing names only. Internally, both surfaces call the exact same `/chat/`/`/chat/image/` endpoints and the exact same segmentation/batch/canvas machinery documented above — there is no separate backend for Lore. The one place "Lore" leaks into backend code at all is `max_dump_chars` (a Lore-composer-sized paste ceiling, enforced for both routes regardless of which surface sent the request).
+- **`useMemeStream()`** (new shared hook) owns the transient SSE-submission state (`thinking`/`error`/`plan`/`loading`/`conversationId`) and the accumulation logic — every `"done"` event's meme collects locally across the stream, and `submitText()`/`submitImages()` return `{memes, plainReply}` once the stream ends. It does **not** own a message/feed list: Chat groups a submission's memes into one `ChatMessage` bubble; Lore appends each meme as its own permanently-visible card to a flat feed. This is a deliberate difference — Lore's feed shows every meme from a submission simultaneously (no swiping needed to reach any of them, and giving feedback on one never hides the others), unlike Chat's carousel.
+- **`ModeTabs.tsx`** — the URL (`/` vs `/lore`) is the source of truth for which surface is active, not client state; this is what makes `/lore` a genuine bookmarkable/shareable deep link.
+- **Chat is intentionally simplified UI-only**: no meme-count `<select>` (always auto-detect) — but the `/chat/`/`/chat/image/` API contracts keep every capability; a Chat user who pastes something long still gets auto-segmented into multiple memes, just without an explicit override control. The count `<select>` (Auto/2-5), the auto-growing textarea, and the drag-and-drop zone all live in `LoreView.tsx` instead.
+- **PWA share-target**: `manifest.json`'s `share_target` (`action: "/share"`, `method: "POST"`, `enctype: "multipart/form-data"`) lets the OS share sheet (primarily Android Chrome) hand MemeGPT shared images/text directly. `app/share/route.ts` is a **route handler, not a page** (Next.js disallows both at one segment) — it relays the multipart POST server-to-server to the backend's new `POST /share-intake/`, which stashes the payload in memory keyed by a single-use token (same "no locks needed, one persistent event loop" precedent as `memory/conversation_store.py`) and responds with the token; the route then 303-redirects to `/lore?intake=<token>` per the Web Share Target spec (a redirect, not a body, avoids a duplicate POST on refresh). **The stash deliberately lives on the backend (Render, one persistent instance), not in the Vercel-hosted frontend's route handler** — Vercel gives no guarantee that two requests moments apart hit the same serverless instance/module scope, so an in-memory `Map` there would be unreliable in a way it isn't on Render. `LoreView.tsx` reads `?intake=` from `window.location.search` on mount (not `next/navigation`'s `useSearchParams()`, which would force this otherwise-statically-prerendered page into a Suspense boundary), fetches `GET /share-intake/{token}/` once, decodes each image's base64 back into a `File`, and pre-fills the composer — **never auto-submits** — then strips the query param. Stashed images are **not** moderated/sanitized at stash time; that stays exactly at real `/chat/image/` submission time, so a user can remove a shared image before ever paying that cost.
+- **iOS Safari has more limited PWA share-target support** than Android Chrome (which is why the primary verification target is Android Chrome) — not fought here; if iOS share-target support matters later, revisit then rather than blocking this feature on it now.
 
 ### Deployment
 - **Backend (Render):** native Python runtime (`env: python` in `render.yaml`), not Docker — the service must be configured this way in Settings if created manually through the dashboard, since render.yaml service-type changes don't apply retroactively to manually-created services. Build command installs deps + downloads Anton font. `LLM_PROVIDER=groq` + `GROQ_API_KEY` env var for cloud inference (Render's CPU-only free tier can't run Ollama at usable speed). The same `GROQ_API_KEY` also powers Phase 1 vision + moderation calls and segmentation — no new required env var for the multimodal or multi-meme features to work; `ANTHROPIC_API_KEY` is optional (vision fallback only).
@@ -238,6 +272,7 @@ Frontend accumulates all "done" events from one submission into one grouped Chat
 - [x] **Multi-context, multi-meme generation**: a long text dump or several photos can now produce more than one meme per submission (`nlp/segmentation.py`, `_stream_batch` in `routers/chat.py`), with an explicit `meme_count` override. Generation is deliberately sequential, not parallel — see the Segmentation design-decision note above for why; parallelizing while preserving the avoid-templates diversity property is a valid future optimization if latency on large batches becomes a real complaint.
 - [x] **Multimodal Phase 2 (canvas mode)**: the user's own photo can become the meme directly (top/bottom captions) instead of always matching a catalog template — see "Canvas mode" above. v2 stretch (face-detection-aware placement) not started.
 - [ ] **Multimodal Phase 3 (video)**: blocked — see `FEASIBILITY.md`. ffmpeg availability on Render's native runtime is confirmed; whether the app can process a video within a request's realistic time budget on the free tier (vs. needing a background-job architecture nothing in this codebase uses yet) is not, and needs either a timing probe against the live deployment or an upfront architecture decision before design resumes.
+- [x] **Lore mode (two-surface restructure)**: Chat and Lore now split minimal-chrome chatbot vs. explicit-controls big-context-dump into two public surfaces sharing one backend — see "Lore mode" above. Covers the mode toggle, a shared `useMemeStream` hook, a "plan" SSE event, PWA share-target intake, and a paste-size guard (`max_dump_chars`). Skipped as an explicit stretch: a "use my photos as the memes" (canvas) toggle in Lore's composer — still reachable only via the `mode` API form field, no UI control yet.
 - [ ] **Generated image persistence**: Render's filesystem is ephemeral — `static/generated/` PNGs are lost on restart/redeploy. Fine for live chat, not for durable sharing of past memes.
 
 ---
