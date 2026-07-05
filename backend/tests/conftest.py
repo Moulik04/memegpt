@@ -11,9 +11,37 @@ import pytest
 from fastapi import UploadFile
 from PIL import Image
 
+from image_processing.compositor import OUTPUT_DIR
+from rate_limit import limiter
+
 
 def _upload(data: bytes, filename: str = "photo.jpg") -> UploadFile:
     return UploadFile(file=io.BytesIO(data), filename=filename)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """/chat/image/ is rate-limited (5/minute per client IP). Every test in
+    this suite hits it from the same in-process ASGI transport, so without
+    resetting between tests, later tests in a run get 429'd by earlier
+    ones' request counts — reset the shared in-memory limiter state before
+    each test rather than exhausting a real per-minute budget across a full
+    test run."""
+    limiter.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_generated_files():
+    """Several tests exercise the real (unmocked) compose_meme()/
+    compose_meme_on_image(), which write actual PNGs to
+    backend/static/generated/ — clean up anything a test creates so repeated
+    runs don't accumulate stray files in the repo."""
+    before = set(OUTPUT_DIR.glob("*"))
+    yield
+    after = set(OUTPUT_DIR.glob("*"))
+    for path in after - before:
+        path.unlink(missing_ok=True)
 
 
 @pytest.fixture

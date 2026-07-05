@@ -20,7 +20,7 @@ from typing import Union
 
 from PIL import Image, ImageDraw, ImageFont
 
-from image_processing.template_configs import TextBoxConfig, get_config
+from image_processing.template_configs import DEFAULT_BOXES, TextBoxConfig, get_config
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 FONTS_DIR = BACKEND_ROOT / "fonts"
@@ -162,6 +162,49 @@ async def compose_meme(
         _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
 
     output_name = f"{template_id}_{uuid.uuid4().hex[:8]}.png"
+    output_path = OUTPUT_DIR / output_name
+    img.save(str(output_path), format="PNG")
+
+    if return_path:
+        return output_path
+
+    return f"/static/generated/{output_name}"
+
+
+async def compose_meme_on_image(
+    image: Image.Image,
+    texts: dict[str, str],
+    return_path: bool = False,
+) -> Union[str, Path]:
+    """
+    Phase 2 canvas mode — captions the user's OWN photo directly using the
+    generic top/bottom DEFAULT_BOXES layout, rather than looking up a fixed
+    template_id in TEMPLATES_DIR.
+
+    Draws a translucent dark scrim behind each box before the stroke+fill
+    text pass — arbitrary user photos have no hand-tuned safe zone the way
+    catalog templates do (nearly every non-DEFAULT_BOXES entry in
+    template_configs.py exists specifically because generic placement
+    doesn't work for that image's composition); the scrim guarantees
+    legibility regardless of what's underneath, at effectively zero cost,
+    without waiting on a future face-detection pass. Reuses
+    _resolve_font/_draw_text_in_box unchanged — both are already generic
+    over arbitrary image dimensions.
+    """
+    img = image.convert("RGBA")
+    img_w, img_h = img.size
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    for box_cfg in DEFAULT_BOXES:
+        text = texts.get(box_cfg.label, "")
+        if not text.strip():
+            continue
+        pixel_box = box_cfg.to_pixels(img_w, img_h)
+        x, y, w, h = pixel_box["x"], pixel_box["y"], pixel_box["width"], pixel_box["height"]
+        draw.rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 120))
+        _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
+
+    output_name = f"canvas_{uuid.uuid4().hex[:8]}.png"
     output_path = OUTPUT_DIR / output_name
     img.save(str(output_path), format="PNG")
 

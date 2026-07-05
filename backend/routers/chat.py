@@ -1,12 +1,15 @@
 """
 POST /chat/       — main conversational endpoint (text), returns Server-Sent Events.
-POST /chat/image/ — Phase 1 multimodal endpoint (image-as-context, 1+ photos), same SSE contract.
+POST /chat/image/ — multimodal endpoint (image-as-context or canvas mode, 1+ photos), same SSE contract.
 
-Both routes flow through the same batch pipeline (_stream_batch): a
-submission resolves into 1..N distinct "situations" (nlp/segmentation.py's
-resolve_contexts — a no-op fast path for the common case of one short
-message or one photo), and each situation is rendered into its own meme via
-_stream_chat_turn, sharing one HTTP response/SSE stream.
+/chat/ and /chat/image/'s context-mode path both flow through the same
+batch pipeline (_stream_batch): a submission resolves into 1..N distinct
+"situations" (nlp/segmentation.py's resolve_contexts — a no-op fast path
+for the common case of one short message or one photo), and each situation
+is rendered into its own meme via _stream_chat_turn, sharing one HTTP
+response/SSE stream. /chat/image/'s canvas-mode path (Mode 2 — the user's
+own photo becomes the meme, not a catalog template) instead flows through
+_stream_canvas_batch, captioning each surviving photo directly.
 
 SSE event stream:
   {"type": "thinking", "stage": "analyzing",  "index": 0, "total": 1, "message": "..."}
@@ -22,13 +25,14 @@ from typing import AsyncGenerator
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from PIL import Image
 
 from config import get_settings
-from image_processing.compositor import compose_meme
+from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
 from nlp.intent_router import parse_intent
 from nlp.segmentation import resolve_contexts
-from nlp.vision import describe_image
+from nlp.vision import describe_image, generate_canvas_captions, infer_mode
 from rate_limit import limiter
 from schemas import ChatMessage, ChatRequest, ChatResponse, VisionDescription
 from uploads.safe_ingest import CleanImage, ModerationRejected, UploadRejected, safe_ingest
@@ -54,12 +58,13 @@ async def _stream_chat_turn(
     total: int = 1,
 ) -> AsyncGenerator[dict, None]:
     """The shared analyzing -> parse_intent -> rendering -> compose_meme ->
-    log_usage -> done sequence for ONE situation. Yields raw event dicts —
-    the caller (_stream_batch) serializes them to SSE strings, so index/total
-    can be merged in centrally without every event constructor repeating it.
-    `content` on the reply carries the situation text itself (previously
-    always ""), which the frontend uses to key per-meme feedback correctly
-    when several memes in one batch share a single preceding user bubble."""
+    log_usage -> done sequence for ONE situation (Mode 1: context). Yields
+    raw event dicts — the caller (_stream_batch) serializes them to SSE
+    strings, so index/total can be merged in centrally without every event
+    constructor repeating it. `content` on the reply carries the situation
+    text itself (previously always ""), which the frontend uses to key
+    per-meme feedback correctly when several memes in one batch share a
+    single preceding user bubble."""
     yield {
         "type": "thinking",
         "stage": "analyzing",
@@ -132,6 +137,86 @@ async def _stream_batch(situations: list[str], conversation_id: str) -> AsyncGen
     yield _sse({"type": "batch_done", "total": total, "succeeded": succeeded})
 
 
+async def _stream_canvas_turn(
+    image: Image.Image,
+    texts: dict[str, str],
+    conversation_id: str,
+    index: int = 0,
+    total: int = 1,
+) -> AsyncGenerator[dict, None]:
+    """Mode 2 (canvas) — mirrors _stream_chat_turn's shape but skips RAG,
+    parse_intent, add_turn, and log_usage entirely: there's no template_id
+    (the user's own photo IS the meme), no repetition to avoid (each meme
+    is on a unique photo), and log_usage is keyed by catalog template_id in
+    ChromaDB, which a custom photo isn't part of. template_used stays None."""
+    yield {
+        "type": "thinking",
+        "stage": "rendering",
+        "index": index,
+        "total": total,
+        "message": "Captioning your photo...",
+    }
+
+    try:
+        meme_url = await compose_meme_on_image(image, texts)
+    except Exception as exc:
+        yield {"type": "error", "index": index, "total": total, "message": str(exc)}
+        return
+
+    # The captions themselves are this meme's "situation" for feedback-
+    # keying purposes (examples_store.upsert_example hashes on this text) —
+    # distinct captions per photo avoid the same collision fixed for Mode 1.
+    situation_text = f"{texts.get('top_text', '')} {texts.get('bottom_text', '')}".strip()
+    reply = ChatMessage(role="assistant", content=situation_text, meme_url=meme_url)
+    response = ChatResponse(
+        conversation_id=conversation_id,
+        message=reply,
+        template_used=None,
+    )
+
+    yield {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
+
+
+async def _stream_canvas_batch(
+    clean_images: list[CleanImage],
+    message: str | None,
+    conversation_id: str,
+) -> AsyncGenerator[str, None]:
+    """Mode 2 (canvas) batch — captions each surviving photo directly via
+    generate_canvas_captions(), never touching resolve_contexts/parse_intent
+    at all (there's no template to pick). generate_canvas_captions() never
+    raises, so no return_exceptions=True needed here — it returns None on
+    failure, filtered out below. meme_count is intentionally ignored: its
+    semantics don't transfer (segmentation splits one input into N
+    synthetic situations; canvas mode's count is already fixed by how many
+    photos survived ingestion)."""
+    caption_results = await asyncio.gather(
+        *[generate_canvas_captions(ci.image, message) for ci in clean_images]
+    )
+    pairs = [
+        (ci, captions) for ci, captions in zip(clean_images, caption_results) if captions is not None
+    ]
+
+    if not pairs:
+        # Every canvas-caption call failed — graceful degrade, a normal
+        # assistant reply, not a hard error.
+        reply = ChatMessage(role="assistant", content=_DESCRIBE_IN_WORDS_PROMPT)
+        response = ChatResponse(conversation_id=conversation_id, message=reply)
+        yield _sse({"type": "done", **response.model_dump(mode="json")})
+        return
+
+    total = len(pairs)
+    succeeded = 0
+    for i, (clean_image, captions) in enumerate(pairs):
+        async for event in _stream_canvas_turn(
+            clean_image.image, captions, conversation_id, index=i, total=total
+        ):
+            if event.get("type") == "done":
+                succeeded += 1
+            yield _sse(event)
+    yield _sse({"type": "batch_done", "total": total, "succeeded": succeeded})
+
+
 def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
     return StreamingResponse(
         generator,
@@ -164,12 +249,20 @@ async def chat_with_image(
     message: str | None = Form(None),
     conversation_id: str | None = Form(None),
     meme_count: int | None = Form(None),
+    mode: str | None = Form(None),
 ):
     """
-    Phase 1 (Mode 1: image as context) — uploads 1+ photos, describes each
-    via the vision layer, resolves the descriptions (+ any user text) into
-    1..N situations, and feeds each into the EXACT SAME _stream_batch used
-    by /chat/.
+    Uploads 1+ photos and generates memes from them, in one of two modes:
+
+    Mode 1 (context, default): describes each photo via the vision layer,
+    resolves the descriptions (+ any user text) into 1..N situations, and
+    feeds each into the same _stream_batch used by /chat/ — the photo
+    informs which CATALOG template gets picked.
+
+    Mode 2 (canvas): the user's own photo becomes the meme directly,
+    captioned top/bottom, no catalog template involved. Selected via
+    keyword inference on `message` (nlp.vision.infer_mode — e.g. "make
+    this a meme") or the explicit `mode` override below.
 
     ALL uploaded images pass through uploads/safe_ingest.safe_ingest() —
     never bypass it. A content-moderation failure on ANY image aborts the
@@ -178,9 +271,13 @@ async def chat_with_image(
     would leak a per-image "this one got silently dropped" signal that
     uploads/moderation.py's category-never-echoed invariant exists to
     prevent). A non-safety UploadRejected on one image in a batch just
-    drops that image and continues with the rest.
+    drops that image and continues with the rest. This gate is identical
+    for both modes.
     """
     conv_id = conversation_id or ""
+    if mode not in ("context", "canvas"):
+        mode = None
+    resolved_mode = mode or infer_mode(message)
 
     async def event_stream() -> AsyncGenerator[str, None]:
         settings = get_settings()
@@ -207,6 +304,11 @@ async def chat_with_image(
                     yield event
                 return
             yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
+            return
+
+        if resolved_mode == "canvas":
+            async for event in _stream_canvas_batch(clean_images, message, conv_id):
+                yield event
             return
 
         description_results = await asyncio.gather(

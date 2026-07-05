@@ -96,7 +96,6 @@ class VisionDescription(BaseModel):
     situation: str
     tone: Optional[str] = None           # reserved for future structured use
     visible_text: Optional[str] = None   # reserved for future structured use
-    mode_hint: Literal["context", "canvas"] = "context"
 
 
 # ---------------------------------------------------------------------------
