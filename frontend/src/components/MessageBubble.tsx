@@ -11,11 +11,6 @@ interface Props {
   onFeedback?: (meme: MemeItem, rating: "up" | "down") => void;
 }
 
-function templateLabel(id?: string) {
-  if (!id) return null;
-  return id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
 export function MessageBubble({ message, onFeedback }: Props) {
   const isUser = message.role === "user";
   const [activeIndex, setActiveIndex] = useState(0);
@@ -73,13 +68,7 @@ export function MessageBubble({ message, onFeedback }: Props) {
                           p-3 shadow-lg">
             <MemeDisplay url={memes[0].url} alt={memes[0].situationText} />
 
-            {memes[0].templateId && (
-              <p className="text-[10px] text-gray-600 mt-2 px-0.5">
-                {templateLabel(memes[0].templateId)}
-              </p>
-            )}
-
-            <div className="flex items-center justify-between mt-1">
+            <div className="flex items-center justify-between mt-2">
               <ShareButtons memeUrl={memes[0].url} />
               {onFeedback && (
                 <FeedbackButtons onFeedback={(rating) => onFeedback(memes[0], rating)} />
@@ -116,13 +105,7 @@ export function MessageBubble({ message, onFeedback }: Props) {
               ))}
             </div>
 
-            {memes[activeIndex]?.templateId && (
-              <p className="text-[10px] text-gray-600 mt-1 px-0.5 text-center">
-                {templateLabel(memes[activeIndex].templateId)}
-              </p>
-            )}
-
-            <div className="flex items-center justify-between mt-1">
+            <div className="flex items-center justify-between mt-2">
               <ShareButtons memeUrl={memes[activeIndex].url} />
               {onFeedback && (
                 <FeedbackButtons

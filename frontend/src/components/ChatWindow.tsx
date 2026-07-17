@@ -3,18 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
+import { pickRandomPrompts } from "@/lib/examplePrompts";
 import { MessageBubble } from "./MessageBubble";
 import { ThinkingBubble } from "./ThinkingBubble";
 import type { ChatMessage, MemeItem } from "@/types";
-
-const EXAMPLE_PROMPTS = [
-  "waiting for my PR to get reviewed for 3 days",
-  "my plan was going great then suddenly it wasn't",
-  "me vs my alarm clock at 7am",
-  "when the deploy finally works on first try",
-  "my friend after 4 drinks claiming he's sober",
-  "my manager asking who broke production",
-];
 
 // Client-side only — a fast-fail UX nicety, NOT a security control. The
 // real limits are enforced server-side by uploads/safe_ingest.py / config.py.
@@ -27,6 +19,9 @@ interface PendingImage {
 }
 
 export function ChatWindow() {
+  // Drawn once per mount (i.e. once per page load), not on every re-render
+  // — see pickRandomPrompts' pool for the full set this samples from.
+  const [examplePrompts] = useState(() => pickRandomPrompts(6));
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -164,7 +159,7 @@ export function ChatWindow() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2 justify-center max-w-sm">
-              {EXAMPLE_PROMPTS.map((p) => (
+              {examplePrompts.map((p) => (
                 <button
                   key={p}
                   onClick={() => handlePromptChip(p)}
