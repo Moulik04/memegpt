@@ -8,15 +8,16 @@ interface Props {
 
 /**
  * Shared header + Chat|Lore tab toggle. The URL is the source of truth for
- * which surface is active (/ = Chat, /lore = Lore) rather than internal
+ * which surface is active (/chat = Chat, /lore = Lore) rather than internal
  * client state — this is what makes /lore a genuine, refreshable,
  * bookmarkable deep link, and what Phase 3's share-target redirect lands on.
+ * / is the public marketing landing page, not one of these two tabs.
  */
 export function ModeTabs({ active }: Props) {
   return (
     <header className="shrink-0 flex items-center justify-between px-4 py-3
                        border-b border-gray-800/60 bg-gray-950/80 backdrop-blur-sm">
-      <div>
+      <Link href="/" className="block">
         <h1 className="text-xl font-extrabold tracking-tight gradient-text leading-none">
           MemeGPT
         </h1>
@@ -25,10 +26,10 @@ export function ModeTabs({ active }: Props) {
             ? "Talk to it like any chatbot. It only speaks meme."
             : "Drop the lore. Get the highlight reel."}
         </p>
-      </div>
+      </Link>
       <nav className="flex items-center gap-1 bg-[#13131e] border border-gray-800 rounded-full p-1">
         <Link
-          href="/"
+          href="/chat"
           className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
             active === "chat"
               ? "bg-brand-600 text-white"

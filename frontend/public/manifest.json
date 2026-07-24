@@ -1,8 +1,8 @@
 {
   "name": "MemeGPT",
   "short_name": "MemeGPT",
-  "description": "A chatbot that only replies in memes — chat with it, or drop a whole conversation into Lore mode for the highlight reel",
-  "start_url": "/",
+  "description": "A chatbot that only replies in memes. Chat with it, or drop a whole conversation into Lore mode for the highlight reel.",
+  "start_url": "/chat",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#030712",
