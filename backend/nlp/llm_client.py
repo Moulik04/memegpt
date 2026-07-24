@@ -70,6 +70,12 @@ async def call_groq(
         # Disable it explicitly for any Qwen model on this endpoint.
         if "qwen" in settings.groq_model.lower():
             payload["reasoning_effort"] = "none"
+        # gpt-oss models don't support "none" (400s: must be low/medium/high) and,
+        # left unset, spend the whole max_tokens budget on hidden reasoning before
+        # ever emitting content — the response comes back empty. "low" leaves
+        # enough of the 200-token budget for the actual JSON.
+        elif "gpt-oss" in settings.groq_model.lower():
+            payload["reasoning_effort"] = "low"
         response = await client.post(
             "https://api.groq.com/openai/v1/chat/completions",
             json=payload,

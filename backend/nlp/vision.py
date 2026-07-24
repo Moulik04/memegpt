@@ -14,9 +14,14 @@ module has its own Groq/Anthropic vision-specific callers below, separate
 from llm_client.py, since llm_client.py's callers are text-only):
 Groq is primary — qwen/qwen3.6-27b, the SAME model intent_router.py already
 uses for text routing, so this needs zero new provider account or API key.
-Anthropic (claude-sonnet-5) is an optional fallback if ANTHROPIC_API_KEY is
-configured, called via raw httpx to match this repo's existing style (no
-SDK — intent_router.py's Groq/Ollama calls are both raw httpx too).
+It's currently the ONLY vision-capable model on Groq's API (verified live —
+groq/compound, groq/compound-mini, and llama-3.3-70b-versatile are all
+text-only, and meta-llama/llama-4-maverick/-scout both 404 as of this
+writing), so there is no same-provider fallback to add today; Anthropic
+(claude-sonnet-5) remains the only fallback tier, gated on
+ANTHROPIC_API_KEY being configured, called via raw httpx to match this
+repo's existing style (no SDK — intent_router.py's Groq/Ollama calls are
+both raw httpx too).
 
 call_groq_vision() is also reused by uploads/moderation.py for the content-
 safety check, since that's the same kind of call (image in, short
