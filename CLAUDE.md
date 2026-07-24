@@ -2,9 +2,9 @@
 
 ## Overview
 
-MemeGPT is a chatbot that communicates exclusively through memes. There are two public frontend surfaces sharing one backend: **Chat** (`/`) — a normal chatbot, the catch is it only replies in memes — and **Lore** (`/lore`) — for big context dumps: paste a whole group-chat thread, upload a stack of screenshots, get several memes back, with explicit controls (meme count, drag-and-drop) that Chat deliberately doesn't expose. "Lore" is a purely public-facing/UI name; internally everything still runs through the same segmentation → batch → SSE machinery described below, and the master-prompt-era "Phase 1/Phase 2" language for image-as-context vs. canvas mode is unchanged.
+MemeGPT is a chatbot that communicates exclusively through memes. `/` is a public marketing landing page, not the app itself — it explains the product and links into the two actual app surfaces: **Chat** (`/chat`) — a normal chatbot, the catch is it only replies in memes — and **Lore** (`/lore`) — for big context dumps: paste a whole group-chat thread, upload a stack of screenshots, get several memes back, with explicit controls (meme count, drag-and-drop) that Chat deliberately doesn't expose. "Lore" is a purely public-facing/UI name; internally everything still runs through the same segmentation → batch → SSE machinery described below, and the master-prompt-era "Phase 1/Phase 2" language for image-as-context vs. canvas mode is unchanged.
 
-A submission (text, photos, or both) either informs which catalog template gets picked (Mode 1: context, the default) or becomes the meme itself, captioned directly (Mode 2: canvas — "make this a meme"). If it actually contains several distinct meme-worthy moments (a long text dump, multiple photos), the system generates more than one meme instead of flattening everything into one. Each situation routes through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over ~110 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result(s) back via SSE.
+A submission (text, photos, or both) either informs which catalog template gets picked (Mode 1: context, the default) or becomes the meme itself, captioned directly (Mode 2: canvas — "make this a meme"). If it actually contains several distinct meme-worthy moments (a long text dump, multiple photos), the system generates more than one meme instead of flattening everything into one. Each situation routes through an LLM intent-parsing layer (Ollama locally, Groq in production), does a RAG pre-filter over ~122 templates via ChromaDB, picks the best meme template, renders caption text onto the image using Pillow, and streams the result(s) back via SSE.
 
 **Multimodal input invariant: ALL uploaded media enters through `backend/uploads/safe_ingest.py`'s `safe_ingest()` — never bypass it.** See `docs/UPLOADS.md` for the full pipeline and the "NLP / Vision & Uploads" section below for implementation details.
 
@@ -32,7 +32,8 @@ memegpt/
 │   │
 │   ├── image_processing/
 │   │   ├── compositor.py     Pillow text compositor (font loading, wrap, stroke)
-│   │   └── template_configs.py  Per-template TextBoxConfig layouts (100 templates)
+│   │   └── template_configs.py  Per-template TextBoxConfig layouts (29 explicit configs; the
+│   │                              other ~93 of 122 templates fall back to DEFAULT_BOXES)
 │   │
 │   ├── vector_db/
 │   │   ├── chroma_client.py  ChromaDB singleton — upsert, query, log_usage, dual-mode (local/HTTP)
@@ -57,6 +58,9 @@ memegpt/
 │   │   └── conversation_store.py  In-memory per-conversation template history (anti-repetition)
 │   │
 │   ├── rate_limit.py          Shared slowapi Limiter instance (own module to avoid a main.py<->routers cycle)
+│   ├── scripts/
+│   │   └── eval_intent_models.py  Live A/B harness comparing Groq text models on JSON-parse
+│   │                                reliability — see NLP / Intent Router below
 │   ├── tests/                 pytest suite — Phase 0 safety tests, segmentation tests, multi-image
 │   │                           batch tests, and a /chat/ text-flow regression test
 │   ├── templates/            ~122 base meme images (JPG/PNG), named by template_id
@@ -106,8 +110,10 @@ memegpt/
 │       │   ├── ThinkingBubble.tsx   Renders the `thinking` SSE stage messages
 │       │   └── MemeDisplay.tsx   next/image wrapper for rendered memes
 │       ├── lib/
-│       │   └── api.ts         Typed fetch helpers: sendChatStream, sendChatImageStream, postFeedback,
-│       │                       generateMeme, explainMeme, memeImageUrl
+│       │   ├── api.ts         Typed fetch helpers: sendChatStream, sendChatImageStream, postFeedback,
+│       │   │                   generateMeme, explainMeme, memeImageUrl
+│       │   └── examplePrompts.ts  Pool of ~167 example prompts; pickRandomPrompts() draws 6 fresh
+│       │                           per page load for Chat's empty-state chips
 │       └── types/
 │           └── index.ts       Shared TypeScript interfaces mirroring backend schemas
 │
@@ -275,6 +281,7 @@ as its own permanently-visible card to a flat feed instead
 ### Medium Priority
 - [ ] **User-uploaded templates**: `POST /templates/upload` endpoint — accept an image, extract dominant color palette, generate a `template_id`, write to `backend/templates/`, upsert into ChromaDB.
 - [x] **Conversation history**: `backend/memory/conversation_store.py` tracks recent template ids per conversation and passes them to `parse_intent` as `avoid_templates` to reduce repetition. (Full prior-message context, not just template ids, is still not passed back.)
+- [ ] **Durable chatbot memory**: raised 2026-07-24, zero-cost constraint — something that persists across sessions/conversations, not just the existing ephemeral per-conversation template tracking above. Not started.
 - [ ] **Fine-tuned model**: scripts for LoRA fine-tuning on the Imgflip 100k dataset exist (`scripts/finetune_unsloth.py`) but training hasn't been run.
 
 ### Low Priority / Polish
@@ -284,6 +291,8 @@ as its own permanently-visible card to a flat feed instead
 - [x] **Multimodal Phase 2 (canvas mode)**: the user's own photo can become the meme directly (top/bottom captions) instead of always matching a catalog template — see "Canvas mode" above. v2 stretch (face-detection-aware placement) not started.
 - [ ] **Multimodal Phase 3 (video)**: blocked — see `FEASIBILITY.md`. ffmpeg availability on Render's native runtime is confirmed; whether the app can process a video within a request's realistic time budget on the free tier (vs. needing a background-job architecture nothing in this codebase uses yet) is not, and needs either a timing probe against the live deployment or an upfront architecture decision before design resumes.
 - [x] **Lore mode (two-surface restructure)**: Chat and Lore now split minimal-chrome chatbot vs. explicit-controls big-context-dump into two public surfaces sharing one backend — see "Lore mode" above. Covers the mode toggle, a shared `useMemeStream` hook, a "plan" SSE event, PWA share-target intake, and a paste-size guard (`max_dump_chars`). Skipped as an explicit stretch: a "use my photos as the memes" (canvas) toggle in Lore's composer — still reachable only via the `mode` API form field, no UI control yet.
+- [x] **Public landing page**: `/` no longer drops visitors straight into the chat UI — see "Landing page" above. Chat moved to `/chat`.
+- [x] **Model evaluation tooling**: `scripts/eval_intent_models.py` is a live A/B harness for comparing Groq text models — see "NLP / Intent Router" above for the qwen3.6-27b vs gpt-oss-120b findings. Also investigated (and ruled out for now) a same-provider vision fallback and HF-based image-embedding retrieval — see "Vision & Uploads" and "Vector DB" above.
 - [ ] **Generated image persistence**: Render's filesystem is ephemeral — `static/generated/` PNGs are lost on restart/redeploy. Fine for live chat, not for durable sharing of past memes.
 
 ---
