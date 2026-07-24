@@ -1,34 +1,60 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "motion/react";
 
-interface FloatCard {
-  src: string;
-  alt: string;
-  className: string;
-  rotate: number;
-  duration: number;
-  delay: number;
+// Every image here is a real template MemeGPT can actually pick for you.
+// A random 6 fill the hero's floating slots below on each page load, drawn
+// fresh from this pool instead of always showing the same six.
+const FLOAT_POOL = [
+  "drake", "woman_yelling_at_cat", "hide_the_pain_harold", "two_buttons", "this_is_fine",
+  "surprised_pikachu", "distracted_boyfriend", "buff_doge_vs_cheems", "expanding_brain",
+  "mocking_spongebob", "change_my_mind", "epic_handshake", "batman_slapping_robin",
+  "evil_kermit", "disaster_girl", "chill_guy", "disappointed_black_guy", "futurama_fry",
+  "ancient_aliens", "flex_tape", "always_has_been", "boardroom_meeting_suggestion",
+  "bell_curve", "drunk_friend_caught", "mr_incredible_uncanny", "panik_kalm_panik",
+  "is_this_a_pigeon", "one_does_not_simply", "trade_offer", "oprah", "monkey_puppet",
+  "kiss_cam_caught",
+];
+
+function templateLabel(id: string) {
+  return id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const FLOAT_CARDS: FloatCard[] = [
-  { src: "/landing/drake.jpg", alt: "Drake meme template", className: "left-[3%] top-[12%] w-24 sm:w-32", rotate: -8, duration: 6, delay: 0 },
-  { src: "/landing/woman_yelling_at_cat.jpg", alt: "Woman yelling at cat meme template", className: "right-[4%] top-[8%] w-28 sm:w-36", rotate: 6, duration: 7, delay: 0.4 },
-  { src: "/landing/hide_the_pain_harold.jpg", alt: "Hide the pain Harold meme template", className: "left-[10%] bottom-[14%] w-20 sm:w-28", rotate: 5, duration: 6.5, delay: 0.8 },
-  { src: "/landing/two_buttons.jpg", alt: "Two buttons meme template", className: "right-[10%] bottom-[10%] w-24 sm:w-32", rotate: -6, duration: 5.5, delay: 0.2 },
-  { src: "/landing/this_is_fine.jpg", alt: "This is fine meme template", className: "left-[22%] top-[4%] w-16 sm:w-24 hidden sm:block", rotate: -4, duration: 7.5, delay: 1.1 },
-  { src: "/landing/surprised_pikachu.jpg", alt: "Surprised Pikachu meme template", className: "right-[22%] bottom-[4%] w-16 sm:w-24 hidden sm:block", rotate: 8, duration: 6.2, delay: 0.6 },
+function templateSrc(id: string) {
+  const png = new Set(["buff_doge_vs_cheems", "chill_guy", "flex_tape", "always_has_been", "bell_curve", "drunk_friend_caught", "mr_incredible_uncanny", "panik_kalm_panik", "kiss_cam_caught"]);
+  return `/landing/${id}.${png.has(id) ? "png" : "jpg"}`;
+}
+
+function pickRandomTemplates(count: number): string[] {
+  const shuffled = [...FLOAT_POOL];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.slice(0, count);
+}
+
+// Fixed positions and motion timing, the actual image in each slot is
+// randomized per page load (see pickRandomTemplates above).
+const FLOAT_SLOTS = [
+  { className: "left-[3%] top-[12%] w-24 sm:w-32", rotate: -8, duration: 6, delay: 0 },
+  { className: "right-[4%] top-[8%] w-28 sm:w-36", rotate: 6, duration: 7, delay: 0.4 },
+  { className: "left-[10%] bottom-[14%] w-20 sm:w-28", rotate: 5, duration: 6.5, delay: 0.8 },
+  { className: "right-[10%] bottom-[10%] w-24 sm:w-32", rotate: -6, duration: 5.5, delay: 0.2 },
+  { className: "left-[22%] top-[4%] w-16 sm:w-24 hidden sm:block", rotate: -4, duration: 7.5, delay: 1.1 },
+  { className: "right-[22%] bottom-[4%] w-16 sm:w-24 hidden sm:block", rotate: 8, duration: 6.2, delay: 0.6 },
 ];
 
 const STEPS = [
   {
-    title: "Tell it what is going on",
+    title: "Tell MemeGPT what's going on",
     body: "Type a message, paste a whole group chat, or drop in a screenshot. Whatever mood you are in, that is the input.",
   },
   {
-    title: "It reads the room",
+    title: "MemeGPT reads the room",
     body: "An AI matches your situation against a library of over a hundred meme templates and picks the one that actually fits.",
   },
   {
@@ -43,6 +69,10 @@ const fadeUp = {
 };
 
 export function LandingPage() {
+  // Drawn once per mount (i.e. once per page load), so the six floating
+  // templates in the hero are different every time someone opens the page.
+  const [floatIds] = useState(() => pickRandomTemplates(FLOAT_SLOTS.length));
+
   return (
     <div className="relative min-h-dvh overflow-x-hidden bg-gray-950">
       {/* Ambient background blobs */}
@@ -84,26 +114,35 @@ export function LandingPage() {
       {/* Hero */}
       <section className="relative z-10 px-6 pt-16 pb-28 sm:pt-24 sm:pb-36">
         <div aria-hidden className="absolute inset-0 -z-10">
-          {FLOAT_CARDS.map((card) => (
-            <motion.div
-              key={card.src}
-              className={`absolute ${card.className} rounded-xl overflow-hidden border border-white/10
-                         shadow-2xl shadow-black/50 opacity-60 sm:opacity-80`}
-              initial={{ opacity: 0, rotate: card.rotate, y: 10 }}
-              animate={{
-                opacity: [0, 0.8, 0.8],
-                y: [10, -14, 10],
-                rotate: [card.rotate, card.rotate + 3, card.rotate],
-              }}
-              transition={{
-                opacity: { duration: 1, delay: card.delay },
-                y: { duration: card.duration, repeat: Infinity, ease: "easeInOut", delay: card.delay },
-                rotate: { duration: card.duration, repeat: Infinity, ease: "easeInOut", delay: card.delay },
-              }}
-            >
-              <Image src={card.src} alt={card.alt} width={200} height={200} className="w-full h-auto" />
-            </motion.div>
-          ))}
+          {FLOAT_SLOTS.map((slot, i) => {
+            const id = floatIds[i];
+            return (
+              <motion.div
+                key={id}
+                className={`absolute ${slot.className} rounded-xl overflow-hidden border border-white/10
+                           shadow-2xl shadow-black/50 opacity-60 sm:opacity-80`}
+                initial={{ opacity: 0, rotate: slot.rotate, y: 10 }}
+                animate={{
+                  opacity: [0, 0.8, 0.8],
+                  y: [10, -14, 10],
+                  rotate: [slot.rotate, slot.rotate + 3, slot.rotate],
+                }}
+                transition={{
+                  opacity: { duration: 1, delay: slot.delay },
+                  y: { duration: slot.duration, repeat: Infinity, ease: "easeInOut", delay: slot.delay },
+                  rotate: { duration: slot.duration, repeat: Infinity, ease: "easeInOut", delay: slot.delay },
+                }}
+              >
+                <Image
+                  src={templateSrc(id)}
+                  alt={`${templateLabel(id)} meme template`}
+                  width={200}
+                  height={200}
+                  className="w-full h-auto"
+                />
+              </motion.div>
+            );
+          })}
         </div>
 
         <div className="max-w-2xl mx-auto text-center">
@@ -177,7 +216,7 @@ export function LandingPage() {
           transition={{ duration: 0.6 }}
           className="max-w-2xl mx-auto text-center mb-16"
         >
-          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">How it actually works</h2>
+          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">How MemeGPT actually works</h2>
           <p className="mt-3 text-gray-500">Three steps. No template scrolling required.</p>
         </motion.div>
 
@@ -213,7 +252,7 @@ export function LandingPage() {
           transition={{ duration: 0.6 }}
           className="max-w-2xl mx-auto text-center mb-16"
         >
-          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">Two ways to use it</h2>
+          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">Two ways to use MemeGPT</h2>
           <p className="mt-3 text-gray-500">Same brain underneath, different amount of chaos.</p>
         </motion.div>
 
@@ -227,10 +266,10 @@ export function LandingPage() {
             className="rounded-2xl bg-gradient-to-br from-brand-900/40 to-[#13131e] border border-brand-800/40 p-8"
           >
             <span className="text-xs font-semibold text-brand-400 uppercase tracking-wide">Chat</span>
-            <h3 className="text-xl font-bold mt-2 mb-3">Talk to it like any chatbot</h3>
+            <h3 className="text-xl font-bold mt-2 mb-3">Talk to MemeGPT like any chatbot</h3>
             <p className="text-sm text-gray-400 leading-relaxed">
               Type a thought, attach a photo if you want, and get a meme back.
-              The catch is it never breaks character. It only replies in memes.
+              MemeGPT never breaks character, every reply comes back as a meme.
             </p>
           </motion.div>
 
@@ -263,7 +302,7 @@ export function LandingPage() {
           className="max-w-xl mx-auto text-center"
         >
           <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">
-            Ready to see what it makes of your day?
+            Ready to see what MemeGPT makes of your day?
           </h2>
           <Link
             href="/chat"
