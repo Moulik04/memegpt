@@ -11,6 +11,7 @@ Features:
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -271,6 +272,9 @@ Output raw JSON only — no markdown, no explanation.\
 """
 
 
+_OVERALL_TIMEOUT_SECONDS = 45.0
+
+
 async def parse_intent(
     user_message: str,
     avoid_templates: list[str] | None = None,
@@ -280,7 +284,34 @@ async def parse_intent(
 
     avoid_templates: list of recently used template IDs in this conversation —
     injected into the prompt to prevent repetition.
+
+    Bounded to _OVERALL_TIMEOUT_SECONDS total — the two attempts inside
+    _parse_intent_inner() each carry their own per-call timeout, but a
+    pathological run (429s on both the primary AND retry attempts, each
+    internally retrying once inside call_groq()) can compound past 90s with
+    zero events reaching the caller. A hang with no fallback is strictly
+    worse than the existing hard fallback below arriving a little late, so
+    this outer boundary guarantees SOME response within a fixed ceiling.
     """
+    try:
+        return await asyncio.wait_for(
+            _parse_intent_inner(user_message, avoid_templates), timeout=_OVERALL_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        return IntentResponse(
+            template_id="hide_the_pain_harold",
+            texts={
+                "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
+                "bottom_text": "This is fine.",
+            },
+            reasoning="Fallback: timed out before producing a result",
+        )
+
+
+async def _parse_intent_inner(
+    user_message: str,
+    avoid_templates: list[str] | None = None,
+) -> IntentResponse:
     settings = get_settings()
 
     # All known IDs (used for validation only — NOT sent wholesale to the LLM)

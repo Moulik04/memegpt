@@ -18,6 +18,7 @@ added latency or cost.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -26,6 +27,8 @@ from pydantic import ValidationError
 from config import get_settings
 from nlp.llm_client import call_llm, strip_markdown
 from schemas import SegmentedContext
+
+_OVERALL_TIMEOUT_SECONDS = 45.0
 
 _SEGMENTATION_SYSTEM_PROMPT = """\
 You split a message (and/or photo descriptions) into distinct meme-worthy
@@ -101,10 +104,13 @@ async def segment_contexts(
     contexts: list[SegmentedContext] = []
     async with httpx.AsyncClient() as client:
         try:
-            raw = await call_llm(client, settings, [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": material},
-            ])
+            raw = await asyncio.wait_for(
+                call_llm(client, settings, [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": material},
+                ]),
+                timeout=_OVERALL_TIMEOUT_SECONDS,
+            )
             raw = strip_markdown(raw)
             data = json.loads(raw)
             contexts = [SegmentedContext(**c) for c in data["contexts"]]
@@ -113,9 +119,10 @@ async def segment_contexts(
         except Exception:
             # Broad on purpose — this function must NEVER raise to the
             # caller (same "never raises" invariant as parse_intent), so any
-            # failure mode (network, malformed JSON, an unexpected bug) all
-            # degrade to the same single-context fallback rather than
-            # bringing down the whole request.
+            # failure mode (network, malformed JSON, an unexpected bug, or a
+            # timeout from the asyncio.wait_for above) all degrade to the
+            # same single-context fallback rather than hanging or bringing
+            # down the whole request.
             return fallback
 
     contexts = contexts[:max_count]

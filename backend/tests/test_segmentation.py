@@ -6,8 +6,11 @@ must degrade to a single combined context if the LLM call fails.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
+import nlp.segmentation as segmentation
 from nlp.segmentation import resolve_contexts, segment_contexts
 from schemas import SegmentedContext
 
@@ -77,6 +80,26 @@ async def test_segmentation_malformed_json_falls_back(monkeypatch):
     contexts = await segment_contexts("some long text " * 20, None, None)
     assert len(contexts) == 1
     assert isinstance(contexts[0], SegmentedContext)
+
+
+async def test_segmentation_call_hanging_past_the_ceiling_falls_back(monkeypatch):
+    """A pathological hang (e.g. compounding 429 backoff) must degrade to
+    the same single-context fallback within a bounded time, not stall the
+    request indefinitely — see nlp/intent_router.py's parse_intent for the
+    matching fix and the bug this was modeled on."""
+    monkeypatch.setattr(segmentation, "_OVERALL_TIMEOUT_SECONDS", 0.05)
+
+    async def hanging_call_llm(client, settings, messages, temperature=0.75):
+        await asyncio.sleep(10)
+        return '{"contexts": [{"situation": "should never get here"}]}'
+
+    monkeypatch.setattr(segmentation, "call_llm", hanging_call_llm)
+    long_text = "this is a very long message. " * 20
+
+    result = await asyncio.wait_for(resolve_contexts(long_text, None, None), timeout=2.0)
+
+    assert len(result) == 1
+    assert long_text.strip() in result[0]
 
 
 async def test_requested_count_pads_by_repeating_dominant_context(monkeypatch):
