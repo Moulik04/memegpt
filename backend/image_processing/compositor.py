@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import Union
 
 from PIL import Image, ImageDraw, ImageFont
+from PIL.PngImagePlugin import PngInfo
 
+from config import get_settings
 from image_processing.template_configs import DEFAULT_BOXES, TextBoxConfig, get_config
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -119,6 +121,47 @@ def _draw_text_in_box(
         draw.text((line_x, line_y), line, font=font, fill=box_cfg.font_color)
 
 
+def _draw_watermark(img: Image.Image) -> None:
+    """Small brand mark, bottom-right, drawn AFTER captions and independent
+    of the TextBoxConfig layout system — it must never reposition or shrink
+    a caption box. Uses its own RGBA-mode ImageDraw regardless of how the
+    caller's own draw object was constructed, so semi-transparent alpha
+    actually blends instead of being drawn opaque."""
+    settings = get_settings()
+    if not settings.watermark_enabled:
+        return
+
+    img_w, img_h = img.size
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    font_size = max(12, int(img_h * 0.035))
+    font = _resolve_font(font_size)
+    stroke_width = max(1, font_size // 14)
+    text = settings.watermark_text
+
+    text_w = font.getlength(text)
+    padding = max(6, int(img_h * 0.02))
+    x = img_w - int(text_w) - padding
+    y = img_h - font_size - padding
+
+    for dx in range(-stroke_width, stroke_width + 1):
+        for dy in range(-stroke_width, stroke_width + 1):
+            if dx != 0 or dy != 0:
+                draw.text((x + dx, y + dy), text, font=font, fill=(0, 0, 0, 130))
+    draw.text((x, y), text, font=font, fill=(255, 255, 255, 170))
+
+
+def _provenance_pnginfo(meme_id: str) -> PngInfo:
+    """A PNG tEXt chunk carrying a per-render id. Best-effort — most
+    platforms strip metadata on re-encode/screenshot, so this is a nice-to-
+    have alongside the visible watermark, not a substitute for it. Uses the
+    same random id already in the output filename until Phase B introduces
+    real durable meme ids."""
+    info = PngInfo()
+    info.add_text("memegpt_id", meme_id)
+    return info
+
+
 async def compose_meme(
     template_id: str,
     texts: dict[str, str],
@@ -161,9 +204,11 @@ async def compose_meme(
         pixel_box = box_cfg.to_pixels(img_w, img_h)
         _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
 
-    output_name = f"{template_id}_{uuid.uuid4().hex[:8]}.png"
+    meme_id = uuid.uuid4().hex[:8]
+    output_name = f"{template_id}_{meme_id}.png"
     output_path = OUTPUT_DIR / output_name
-    img.save(str(output_path), format="PNG")
+    _draw_watermark(img)
+    img.save(str(output_path), format="PNG", pnginfo=_provenance_pnginfo(meme_id))
 
     if return_path:
         return output_path
@@ -204,9 +249,11 @@ async def compose_meme_on_image(
         draw.rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 120))
         _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
 
-    output_name = f"canvas_{uuid.uuid4().hex[:8]}.png"
+    meme_id = uuid.uuid4().hex[:8]
+    output_name = f"canvas_{meme_id}.png"
     output_path = OUTPUT_DIR / output_name
-    img.save(str(output_path), format="PNG")
+    _draw_watermark(img)
+    img.save(str(output_path), format="PNG", pnginfo=_provenance_pnginfo(meme_id))
 
     if return_path:
         return output_path

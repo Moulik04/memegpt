@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     segmentation_text_threshold_chars: int = 240  # longer text triggers segmentation
     max_dump_chars: int = 20000  # Lore mode's big-paste ceiling — clamped, never rejected
 
+    # Watermark — see image_processing/compositor.py's _draw_watermark()
+    watermark_enabled: bool = True
+    watermark_text: str = "memegpt"
+
     # ChromaDB — empty string = embedded PersistentClient (local dev)
     #            set to service name (e.g. "vector-db") → HttpClient (Docker)
     chroma_host: str = ""
