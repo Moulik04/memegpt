@@ -31,6 +31,9 @@ dependencies = [
 
     # Upload rate limiting (Phase 0 safety gate)
     "slowapi>=0.1.9",
+
+    # Durable storage (Growth Phase B) — S3-compatible client for Cloudflare R2
+    "boto3>=1.34.0",
 ]
 
 [project.optional-dependencies]
@@ -43,7 +46,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["routers*", "nlp*", "vector_db*", "image_processing*", "memory*", "uploads*"]
+include = ["routers*", "nlp*", "vector_db*", "image_processing*", "memory*", "uploads*", "storage*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

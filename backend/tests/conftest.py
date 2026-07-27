@@ -11,12 +11,34 @@ import pytest
 from fastapi import UploadFile
 from PIL import Image
 
-from image_processing.compositor import OUTPUT_DIR
+from config import Settings, get_settings
 from rate_limit import limiter
+from storage import OUTPUT_DIR
 
 
 def _upload(data: bytes, filename: str = "photo.jpg") -> UploadFile:
     return UploadFile(file=io.BytesIO(data), filename=filename)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_settings_from_real_dot_env():
+    """The growth spec requires the full suite to pass with zero new env
+    vars — but this developer's own backend/.env has real DATABASE_URL/R2
+    credentials configured for actual Phase B usage. Without this, every
+    test that doesn't explicitly monkeypatch get_settings would silently
+    pick up those real credentials (pydantic-settings reads env_file by
+    default) and could write real test data to the real R2 bucket/Postgres
+    database. Settings.model_config is a class attribute shared by every
+    `from config import Settings`/`get_settings()` reference across the
+    whole codebase (they all point at the one class object), so mutating
+    it here — rather than monkeypatching each module's own bound
+    get_settings name individually — reaches all of them at once."""
+    original_env_file = Settings.model_config.get("env_file")
+    Settings.model_config["env_file"] = None
+    get_settings.cache_clear()
+    yield
+    Settings.model_config["env_file"] = original_env_file
+    get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)

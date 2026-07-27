@@ -132,7 +132,7 @@ async def _stream_chat_turn(
     }
 
     try:
-        meme_url = await compose_meme(
+        saved = await compose_meme(
             template_id=intent.template_id,
             texts=intent.texts,
         )
@@ -149,7 +149,7 @@ async def _stream_chat_turn(
         conversation_id=conversation_id,
     )
 
-    reply = ChatMessage(role="assistant", content=user_message, meme_url=meme_url)
+    reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
     response = ChatResponse(
         conversation_id=conversation_id,
         message=reply,
@@ -204,7 +204,7 @@ async def _stream_canvas_turn(
     }
 
     try:
-        meme_url = await compose_meme_on_image(image, texts)
+        saved = await compose_meme_on_image(image, texts)
     except Exception as exc:
         yield {"type": "error", "index": index, "total": total, "message": str(exc)}
         return
@@ -213,7 +213,7 @@ async def _stream_canvas_turn(
     # keying purposes (examples_store.upsert_example hashes on this text) —
     # distinct captions per photo avoid the same collision fixed for Mode 1.
     situation_text = f"{texts.get('top_text', '')} {texts.get('bottom_text', '')}".strip()
-    reply = ChatMessage(role="assistant", content=situation_text, meme_url=meme_url)
+    reply = ChatMessage(role="assistant", content=situation_text, meme_url=saved.url, meme_id=saved.meme_id)
     response = ChatResponse(
         conversation_id=conversation_id,
         message=reply,

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from image_processing.compositor import OUTPUT_DIR
+from storage import OUTPUT_DIR
 from uploads.moderation import ModerationResult
 from uploads.safe_ingest import ModerationRejected, UploadRejected, safe_ingest
 

@@ -36,9 +36,9 @@ async def test_compose_meme_on_image_handles_any_aspect_ratio(size):
     without crashing — arbitrary user photos have no guaranteed shape,
     unlike the hand-picked catalog templates compose_meme() works with."""
     image = Image.new("RGB", size, color="green")
-    url = await compose_meme_on_image(image, {"top_text": "TOP CAPTION", "bottom_text": "BOTTOM CAPTION"})
-    assert url.startswith("/static/generated/canvas_")
-    assert url.endswith(".png")
+    saved = await compose_meme_on_image(image, {"top_text": "TOP CAPTION", "bottom_text": "BOTTOM CAPTION"})
+    assert saved.url.startswith("/static/generated/")
+    assert saved.url.endswith(".png")
 
 
 def _tiny_jpeg_bytes() -> bytes:
@@ -104,7 +104,7 @@ async def test_canvas_mode_produces_meme_with_null_template(monkeypatch):
     batch_done = [e for e in events if e.get("type") == "batch_done"]
     assert len(done_events) == 1
     assert done_events[0]["template_used"] is None
-    assert done_events[0]["message"]["meme_url"].startswith("/static/generated/canvas_")
+    assert done_events[0]["message"]["meme_url"].startswith("/static/generated/")
     assert batch_done[0]["total"] == 1
     assert batch_done[0]["succeeded"] == 1
 

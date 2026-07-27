@@ -56,6 +56,7 @@ class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
     meme_url: Optional[str] = None  # populated on assistant turns
+    meme_id: Optional[str] = None  # Growth Phase B — links feedback to a durable memes row
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

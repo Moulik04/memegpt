@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     watermark_enabled: bool = True
     watermark_text: str = "memegpt"
 
+    # Durable storage (Growth Phase B) — see storage/ and db/.
+    # All empty by default: local disk + no Postgres is the fully-functional
+    # zero-cost fallback, not a degraded mode. Setting these switches
+    # storage.save_meme() to Cloudflare R2 and enables the Postgres layer.
+    database_url: str = ""
+    r2_account_id: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket: str = ""
+    r2_public_base_url: str = ""
+
     # ChromaDB — empty string = embedded PersistentClient (local dev)
     #            set to service name (e.g. "vector-db") → HttpClient (Docker)
     chroma_host: str = ""

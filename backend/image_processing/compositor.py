@@ -11,25 +11,22 @@ Pillow-based meme text compositor.
 
 from __future__ import annotations
 
+import io
 import os
 import textwrap
-import uuid
 from functools import lru_cache
 from pathlib import Path
-from typing import Union
 
 from PIL import Image, ImageDraw, ImageFont
 from PIL.PngImagePlugin import PngInfo
 
 from config import get_settings
 from image_processing.template_configs import DEFAULT_BOXES, TextBoxConfig, get_config
+from storage import SavedMeme, generate_meme_id, save_meme
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 FONTS_DIR = BACKEND_ROOT / "fonts"
 TEMPLATES_DIR = BACKEND_ROOT / "templates"
-OUTPUT_DIR = BACKEND_ROOT / "static" / "generated"
-
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 _FONT_CANDIDATES = [
     "Anton-Regular.ttf",          # downloaded in Render build / drop in backend/fonts/
@@ -151,22 +148,29 @@ def _draw_watermark(img: Image.Image) -> None:
     draw.text((x, y), text, font=font, fill=(255, 255, 255, 170))
 
 
-def _provenance_pnginfo(meme_id: str) -> PngInfo:
-    """A PNG tEXt chunk carrying a per-render id. Best-effort — most
-    platforms strip metadata on re-encode/screenshot, so this is a nice-to-
-    have alongside the visible watermark, not a substitute for it. Uses the
-    same random id already in the output filename until Phase B introduces
-    real durable meme ids."""
+async def _finalize_and_save(img: Image.Image) -> SavedMeme:
+    """Shared tail for both compose functions: draw the watermark, encode
+    to PNG bytes in memory (never touches disk directly — storage.save_meme
+    decides local-disk vs R2), embed the provenance tEXt tag (best-effort —
+    most platforms strip PNG metadata on re-encode, so the visible
+    watermark is the durable mark), and persist. meme_id is generated here
+    (not inside storage.save_meme) specifically so it can be embedded in
+    the PNG bytes before they're handed off."""
+    meme_id = generate_meme_id()
+    _draw_watermark(img)
+
     info = PngInfo()
     info.add_text("memegpt_id", meme_id)
-    return info
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", pnginfo=info)
+
+    return await save_meme(buf.getvalue(), meme_id=meme_id)
 
 
 async def compose_meme(
     template_id: str,
     texts: dict[str, str],
-    return_path: bool = False,
-) -> Union[str, Path]:
+) -> SavedMeme:
     """
     Compose a meme from `template_id`, placing each entry in `texts`
     into its named text box according to the template's layout config.
@@ -175,8 +179,8 @@ async def compose_meme(
         {"rejected_option": "Python 2", "approved_option": "Python 3"}
         {"other_woman": "new framework", "boyfriend": "me", "girlfriend": "deadline"}
 
-    Returns a URL string (for the /static/generated/ mount) by default,
-    or an absolute Path when return_path=True.
+    Returns a SavedMeme (meme_id, url, path) — path is None when stored on
+    R2 rather than local disk.
     """
     # Resolve template image
     template_path: Path | None = None
@@ -204,23 +208,13 @@ async def compose_meme(
         pixel_box = box_cfg.to_pixels(img_w, img_h)
         _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
 
-    meme_id = uuid.uuid4().hex[:8]
-    output_name = f"{template_id}_{meme_id}.png"
-    output_path = OUTPUT_DIR / output_name
-    _draw_watermark(img)
-    img.save(str(output_path), format="PNG", pnginfo=_provenance_pnginfo(meme_id))
-
-    if return_path:
-        return output_path
-
-    return f"/static/generated/{output_name}"
+    return await _finalize_and_save(img)
 
 
 async def compose_meme_on_image(
     image: Image.Image,
     texts: dict[str, str],
-    return_path: bool = False,
-) -> Union[str, Path]:
+) -> SavedMeme:
     """
     Phase 2 canvas mode — captions the user's OWN photo directly using the
     generic top/bottom DEFAULT_BOXES layout, rather than looking up a fixed
@@ -249,13 +243,4 @@ async def compose_meme_on_image(
         draw.rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 120))
         _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
 
-    meme_id = uuid.uuid4().hex[:8]
-    output_name = f"canvas_{meme_id}.png"
-    output_path = OUTPUT_DIR / output_name
-    _draw_watermark(img)
-    img.save(str(output_path), format="PNG", pnginfo=_provenance_pnginfo(meme_id))
-
-    if return_path:
-        return output_path
-
-    return f"/static/generated/{output_name}"
+    return await _finalize_and_save(img)

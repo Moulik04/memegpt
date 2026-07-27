@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from image_processing.compositor import compose_meme
 from schemas import MemeGenerationRequest, MemeGenerationResponse
@@ -16,7 +16,7 @@ async def generate(request: MemeGenerationRequest) -> MemeGenerationResponse:
     the template's TextBoxConfig labels (e.g. {"rejected_option": "...", "approved_option": "..."}).
     """
     try:
-        meme_url = await compose_meme(
+        saved = await compose_meme(
             template_id=request.template_id,
             texts=request.texts,
         )
@@ -24,7 +24,7 @@ async def generate(request: MemeGenerationRequest) -> MemeGenerationResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return MemeGenerationResponse(
-        meme_url=meme_url,
+        meme_url=saved.url,
         template_id=request.template_id,
         texts=request.texts,
     )
@@ -35,15 +35,20 @@ async def generate_file(
     template_id: str,
     top: str = "",
     bottom: str = "",
-) -> FileResponse:
-    """Convenience GET — renders with top/bottom text and returns the raw image file."""
+):
+    """Convenience GET — renders with top/bottom text and returns the raw
+    image. Serves the file directly when storage is local-disk (true in
+    every test environment and any deployment without R2 creds); redirects
+    to the public URL when storage is R2 (saved.path is None — nothing
+    local to serve)."""
     try:
-        meme_path = await compose_meme(
+        saved = await compose_meme(
             template_id=template_id,
             texts={"top_text": top, "bottom_text": bottom},
-            return_path=True,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    return FileResponse(str(meme_path), media_type="image/png")
+    if saved.path is not None:
+        return FileResponse(str(saved.path), media_type="image/png")
+    return RedirectResponse(saved.url)
