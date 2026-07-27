@@ -6,6 +6,7 @@ Run once (or re-run to refresh) before starting the server:
   python3 ../scripts/seed_examples.py
 """
 
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -17,7 +18,7 @@ from vector_db.examples_store import example_count, upsert_example
 EXAMPLES_PATH = Path(__file__).resolve().parent.parent / "backend" / "data" / "curated_examples.jsonl"
 
 
-def main() -> None:
+async def main() -> None:
     if not EXAMPLES_PATH.exists():
         print(f"Examples file not found: {EXAMPLES_PATH}")
         sys.exit(1)
@@ -26,7 +27,7 @@ def main() -> None:
     count = 0
     for line in lines:
         ex = json.loads(line)
-        upsert_example(
+        await upsert_example(
             user_message=ex["user_message"],
             template_id=ex["template_id"],
             texts=ex["texts"],
@@ -38,4 +39,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -16,6 +16,7 @@ from typing import Any
 import chromadb
 from chromadb import Collection
 
+import db
 from config import get_settings
 
 _DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chroma"
@@ -47,14 +48,22 @@ def _get_collection() -> Collection:
     return _collection
 
 
-def upsert_example(
+def _example_id(user_message: str) -> str:
+    return hashlib.sha256(user_message.lower().strip().encode()).hexdigest()[:16]
+
+
+async def upsert_example(
     user_message: str,
     template_id: str,
     texts: dict[str, str],
 ) -> None:
-    """Add or update a few-shot example. Idempotent — keyed by message hash."""
+    """Add or update a few-shot example — writes ChromaDB (used for
+    semantic retrieval at request time) and Postgres (Growth Phase B
+    source of truth, rehydrated into Chroma on every startup) using the
+    same id, so both stores address the same example consistently.
+    Idempotent — keyed by a hash of the normalized message."""
+    example_id = _example_id(user_message)
     col = _get_collection()
-    example_id = hashlib.sha256(user_message.lower().strip().encode()).hexdigest()[:16]
     col.upsert(
         ids=[example_id],
         documents=[user_message],
@@ -63,6 +72,7 @@ def upsert_example(
             "texts": json.dumps(texts),
         }],
     )
+    await db.insert_few_shot_example(example_id, user_message, template_id, texts)
 
 
 def get_similar_examples(query: str, n_results: int = 3) -> list[dict[str, Any]]:
@@ -170,12 +180,30 @@ _SEED_EXAMPLES: list[tuple[str, str, dict]] = [
 ]
 
 
-def seed_examples() -> None:
-    """Seed curated few-shot examples if the collection is empty."""
+async def seed_examples() -> None:
+    """Seed few-shot examples if the collection is empty. Postgres rows
+    (Growth Phase B source of truth) take priority when present — a fresh
+    empty Postgres bootstraps from the curated set below (which also
+    populates Postgres via upsert_example's dual-write), but once real
+    feedback-derived examples exist in Postgres, those are what gets
+    rehydrated into Chroma on every subsequent restart, not the static
+    seed list."""
     col = _get_collection()
     if col.count() > 0:
         return
-    print("Seeding few-shot meme examples...", flush=True)
+
+    postgres_rows = await db.fetch_few_shot_examples()
+    if postgres_rows:
+        print(f"Rehydrating {len(postgres_rows)} few-shot examples from Postgres...", flush=True)
+        for row in postgres_rows:
+            col.upsert(
+                ids=[row["id"]],
+                documents=[row["user_message"]],
+                metadatas=[{"template_id": row["template_id"], "texts": json.dumps(row["texts"])}],
+            )
+        return
+
+    print("Seeding curated few-shot meme examples...", flush=True)
     for user_msg, template_id, texts in _SEED_EXAMPLES:
-        upsert_example(user_msg, template_id, texts)
+        await upsert_example(user_msg, template_id, texts)
     print(f"Seeded {len(_SEED_EXAMPLES)} few-shot examples.", flush=True)

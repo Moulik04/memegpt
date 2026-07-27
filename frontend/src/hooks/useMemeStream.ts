@@ -56,6 +56,7 @@ export function useMemeStream() {
           url: event.message.meme_url,
           templateId: event.template_used,
           situationText: event.message.content,
+          memeId: event.message.meme_id,
         });
       } else {
         // A graceful text-only reply (e.g. vision unavailable) rather than

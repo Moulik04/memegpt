@@ -29,6 +29,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image
 
+import db
 from config import get_settings
 from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
@@ -148,6 +149,12 @@ async def _stream_chat_turn(
         bottom_text=list(intent.texts.values())[-1] if len(intent.texts) > 1 else "",
         conversation_id=conversation_id,
     )
+    await db.insert_meme(
+        meme_id=saved.meme_id,
+        url=saved.url,
+        template_id=intent.template_id,
+        mode="context",
+    )
 
     reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
     response = ChatResponse(
@@ -194,7 +201,10 @@ async def _stream_canvas_turn(
     parse_intent, add_turn, and log_usage entirely: there's no template_id
     (the user's own photo IS the meme), no repetition to avoid (each meme
     is on a unique photo), and log_usage is keyed by catalog template_id in
-    ChromaDB, which a custom photo isn't part of. template_used stays None."""
+    ChromaDB, which a custom photo isn't part of. template_used stays None.
+    db.insert_meme() (Growth Phase B) is NOT skipped, unlike the above —
+    the durable memes table tracks every meme regardless of mode, since
+    canvas-mode memes get /m/{id} share pages too."""
     yield {
         "type": "thinking",
         "stage": "rendering",
@@ -208,6 +218,13 @@ async def _stream_canvas_turn(
     except Exception as exc:
         yield {"type": "error", "index": index, "total": total, "message": str(exc)}
         return
+
+    await db.insert_meme(
+        meme_id=saved.meme_id,
+        url=saved.url,
+        template_id=None,
+        mode="canvas",
+    )
 
     # The captions themselves are this meme's "situation" for feedback-
     # keying purposes (examples_store.upsert_example hashes on this text) —

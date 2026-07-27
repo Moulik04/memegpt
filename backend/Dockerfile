@@ -26,7 +26,8 @@ RUN pip install --no-cache-dir \
     "python-dotenv>=1.0.1" \
     "httpx>=0.27.0" \
     "slowapi>=0.1.9" \
-    "boto3>=1.34.0"
+    "boto3>=1.34.0" \
+    "asyncpg>=0.29.0"
 
 # Copy source code
 COPY backend/ .

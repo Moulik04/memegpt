@@ -155,6 +155,7 @@ class FeedbackRequest(BaseModel):
     texts: dict[str, str] = {}
     conversation_id: Optional[str] = None
     user_message: Optional[str] = None  # used to create positive few-shot example on 👍
+    meme_id: Optional[str] = None  # Growth Phase B — links this rating to a durable memes row
 
 
 class FeedbackResponse(BaseModel):

@@ -72,7 +72,12 @@ async def lifespan(app: FastAPI):
         # Run template seeding first, then examples — never concurrently.
         # Concurrent ChromaDB embedding model loads can spike past Render's 512MB limit.
         _auto_seed_if_empty()
-        seed_examples()
+        # seed_examples() is async (Growth Phase B — it may fetch rehydration
+        # rows from Postgres before writing to Chroma) but this whole function
+        # runs inside asyncio.to_thread, a plain thread with no event loop of
+        # its own — asyncio.run() gives it one just for this call, then the
+        # thread carries on synchronously as before.
+        asyncio.run(seed_examples())
 
     asyncio.create_task(asyncio.to_thread(_sequential_seed))
     # Upload retention sweep — Phase 0/1 never write uploads to disk, so this

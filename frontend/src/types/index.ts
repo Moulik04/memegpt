@@ -1,11 +1,14 @@
 // One rendered meme within a chat turn. `situationText` is the specific
 // segmented context that produced THIS meme — used to key per-meme
 // feedback correctly when a batch produces several memes sharing one
-// preceding user bubble (see ChatWindow.tsx's handleFeedback).
+// preceding user bubble (see ChatWindow.tsx's handleFeedback). `memeId`
+// (Growth Phase B) links this meme to its durable Postgres row — used to
+// attribute feedback and to build /m/{id} share links.
 export interface MemeItem {
   url: string;
   templateId?: string;
   situationText: string;
+  memeId?: string;
 }
 
 // Client-side rendering type for the `messages` list. A user turn never
@@ -49,6 +52,7 @@ export interface FeedbackRequest {
   texts?: Record<string, string>;
   conversation_id?: string;
   user_message?: string;
+  meme_id?: string;
 }
 
 // Announces the resolved situations up front — only sent when there's more
@@ -82,6 +86,7 @@ export interface DoneEvent {
     role: "assistant";
     content: string; // the situation text that produced this meme
     meme_url?: string;
+    meme_id?: string;
     timestamp: string;
   };
   template_used?: string;

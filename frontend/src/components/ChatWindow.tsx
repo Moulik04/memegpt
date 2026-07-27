@@ -64,6 +64,7 @@ export function ChatWindow() {
         texts: {},
         rating,
         user_message: meme.situationText,
+        meme_id: meme.memeId,
       }).catch(() => {});
     },
     [conversationId],
