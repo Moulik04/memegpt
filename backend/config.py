@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     watermark_enabled: bool = True
     watermark_text: str = "memegpt"
 
+    # Gemini embeddings (fixes Render's 512MB OOM — replaces ChromaDB's
+    # default in-process local embedding model with a hosted API call).
+    # Empty = local embedding fallback, the zero-cost/zero-config default
+    # for local dev. See vector_db/gemini_embedding_function.py.
+    gemini_api_key: str = ""
+    gemini_embedding_model: str = "gemini-embedding-2"
+
     # Durable storage (Growth Phase B) — see storage/ and db/.
     # All empty by default: local disk + no Postgres is the fully-functional
     # zero-cost fallback, not a degraded mode. Setting these switches

@@ -17,6 +17,10 @@ services:
         sync: false          # add this manually in Render dashboard → Environment
       - key: GROQ_MODEL
         value: qwen/qwen3.6-27b
+      - key: GEMINI_API_KEY
+        sync: false          # add this manually in Render dashboard → Environment
+      - key: GEMINI_EMBEDDING_MODEL
+        value: gemini-embedding-2
       - key: CORS_ALLOW_ALL_ORIGINS
         value: "true"
       - key: PYTHON_VERSION

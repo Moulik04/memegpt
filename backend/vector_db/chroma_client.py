@@ -4,9 +4,14 @@ ChromaDB client — singleton wrapper used throughout the backend.
 Collections:
   meme_templates  — one document per template; queried for RAG context.
 
-Each document is a natural-language description of the template so that
-ChromaDB's default embedding model (all-MiniLM-L6-v2 via sentence-transformers)
-can surface semantically relevant results from plain-English user messages.
+Each document is a natural-language description of the template so semantic
+search can surface relevant results from plain-English user messages.
+Embedding model: Gemini's `gemini-embedding-2` API (via
+gemini_embedding_function.py) when GEMINI_API_KEY is set — offloads the
+memory-heavy local embedding model that was previously OOM-crashing
+Render's 512MB free tier. Falls back to ChromaDB's default local embedding
+model (all-MiniLM-L6-v2) with zero config when no key is set — the
+zero-cost local dev path.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import chromadb
 from chromadb import Collection
 
 from config import get_settings
+from vector_db.gemini_embedding_function import get_embedding_function
 
 _DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chroma"
 
@@ -46,10 +52,18 @@ def init_chroma() -> None:
         # Local dev mode — embedded persistent store
         _DB_PATH.mkdir(parents=True, exist_ok=True)
         _client = chromadb.PersistentClient(path=str(_DB_PATH))
-    _collection = _client.get_or_create_collection(
-        name=COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"},
-    )
+
+    # embedding_function is omitted (not passed as None) when Gemini isn't
+    # configured, so ChromaDB's own default local embedding function param
+    # takes over exactly as before — zero-config local dev stays unchanged.
+    collection_kwargs: dict[str, Any] = {
+        "name": COLLECTION_NAME,
+        "metadata": {"hnsw:space": "cosine"},
+    }
+    embedding_function = get_embedding_function(settings)
+    if embedding_function is not None:
+        collection_kwargs["embedding_function"] = embedding_function
+    _collection = _client.get_or_create_collection(**collection_kwargs)
 
 
 def _get_collection() -> Collection:
@@ -159,16 +173,26 @@ def log_usage(
 # ---------------------------------------------------------------------------
 
 def query_similar_memes(query: str, n_results: int = 3) -> list[dict[str, Any]]:
-    """Semantic search over template documents. Returns ranked results."""
+    """Semantic search over template documents. Returns ranked results.
+
+    Never raises — the embedding call (Gemini API, when configured) is a
+    network call that can fail independently of everything else in
+    parse_intent()'s fallback chain; an empty list here degrades RAG
+    quality for one request rather than breaking the documented
+    "parse_intent never raises" invariant."""
     col = _get_collection()
     count = col.count()
     if count == 0:
         return []
 
-    results = col.query(
-        query_texts=[query],
-        n_results=min(n_results, count),
-    )
+    try:
+        results = col.query(
+            query_texts=[query],
+            n_results=min(n_results, count),
+        )
+    except Exception as e:
+        print(f"[chroma_client] query_similar_memes embedding call failed: {e}", flush=True)
+        return []
 
     return [
         {

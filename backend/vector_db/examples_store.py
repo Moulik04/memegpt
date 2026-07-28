@@ -18,6 +18,7 @@ from chromadb import Collection
 
 import db
 from config import get_settings
+from vector_db.gemini_embedding_function import get_embedding_function
 
 _DB_PATH = Path(__file__).resolve().parent.parent / "data" / "chroma"
 _EXAMPLES_COLLECTION = "meme_examples"
@@ -41,10 +42,17 @@ def _get_collection() -> Collection:
         # Local dev mode — embedded persistent store
         _DB_PATH.mkdir(parents=True, exist_ok=True)
         _client = chromadb.PersistentClient(path=str(_DB_PATH))
-    _collection = _client.get_or_create_collection(
-        name=_EXAMPLES_COLLECTION,
-        metadata={"hnsw:space": "cosine"},
-    )
+
+    # embedding_function omitted (not passed as None) when Gemini isn't
+    # configured — see chroma_client.py::init_chroma() for the same pattern.
+    collection_kwargs: dict[str, Any] = {
+        "name": _EXAMPLES_COLLECTION,
+        "metadata": {"hnsw:space": "cosine"},
+    }
+    embedding_function = get_embedding_function(settings)
+    if embedding_function is not None:
+        collection_kwargs["embedding_function"] = embedding_function
+    _collection = _client.get_or_create_collection(**collection_kwargs)
     return _collection
 
 
@@ -76,15 +84,23 @@ async def upsert_example(
 
 
 def get_similar_examples(query: str, n_results: int = 3) -> list[dict[str, Any]]:
-    """Retrieve the N most semantically similar examples for a user message."""
+    """Retrieve the N most semantically similar examples for a user message.
+
+    Never raises — see query_similar_memes()'s docstring in chroma_client.py
+    for why (the embedding call is now a network call that can fail
+    independently of parse_intent()'s own fallback chain)."""
     col = _get_collection()
     count = col.count()
     if count == 0:
         return []
-    results = col.query(
-        query_texts=[query],
-        n_results=min(n_results, count),
-    )
+    try:
+        results = col.query(
+            query_texts=[query],
+            n_results=min(n_results, count),
+        )
+    except Exception as e:
+        print(f"[examples_store] get_similar_examples embedding call failed: {e}", flush=True)
+        return []
     out = []
     for msg, meta in zip(results["documents"][0], results["metadatas"][0]):
         out.append({

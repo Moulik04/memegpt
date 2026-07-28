@@ -318,8 +318,13 @@ async def _parse_intent_inner(
     all_ids = list_template_ids() or _FALLBACK_TEMPLATES
     known_id_set = set(all_ids)
 
-    # RAG pre-filter: find the 8 most semantically relevant templates for this message
-    rag_results = query_similar_memes(user_message, n_results=8)
+    # RAG pre-filter: find the 8 most semantically relevant templates for this message.
+    # query_similar_memes/get_similar_examples are sync (ChromaDB's
+    # EmbeddingFunction protocol requires it) and, with Gemini configured,
+    # now make a real network call — run in a thread so a slow/stalled
+    # Gemini round-trip doesn't block the event loop for other concurrent
+    # requests being served by this same process.
+    rag_results = await asyncio.to_thread(query_similar_memes, user_message, n_results=8)
     rag_ids = [r["id"] for r in rag_results if r.get("id") in known_id_set]
 
     # Core templates always come first (guaranteed in prompt); unique RAG extras appended after.
@@ -330,7 +335,7 @@ async def _parse_intent_inner(
     template_ids = prompt_ids  # used in retry prompt below
     catalog = _build_template_catalog(prompt_ids)
 
-    examples = get_similar_examples(user_message, n_results=3)
+    examples = await asyncio.to_thread(get_similar_examples, user_message, n_results=3)
     few_shot_block = _format_few_shot(examples)
 
     avoid_block = ""
