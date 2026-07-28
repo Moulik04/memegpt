@@ -26,18 +26,26 @@ memegpt/
 │   │   ├── chat.py           POST /chat/ (text) + POST /chat/image/ (Mode 1 context / Mode 2 canvas) — SSE stream
 │   │   ├── explain.py        POST /explain/  — template metadata & history
 │   │   ├── generate.py       POST /generate/ — on-demand meme generation
-│   │   ├── feedback.py       POST /feedback/ — thumbs up/down logging to ChromaDB
+│   │   ├── feedback.py       POST /feedback/ — thumbs up/down, now recorded in Postgres (Growth Phase B)
+│   │   ├── memes.py          GET /memes/{id} — share-page lookup, see "Growth Phase B" below
 │   │   └── share_intake.py   POST /share-intake/ + GET /share-intake/{token}/ — PWA share-target
 │   │                          stash/retrieve, see "Lore mode" below
 │   │
 │   ├── image_processing/
-│   │   ├── compositor.py     Pillow text compositor (font loading, wrap, stroke)
+│   │   ├── compositor.py     Pillow text compositor (font loading, wrap, stroke) — renders to an
+│   │   │                      in-memory buffer and hands off to storage/, doesn't touch disk directly
 │   │   └── template_configs.py  Per-template TextBoxConfig layouts (29 explicit configs; the
 │   │                              other ~93 of 122 templates fall back to DEFAULT_BOXES)
 │   │
+│   ├── storage/               Growth Phase B — save_meme() writes to R2 when configured, local
+│   │                            static/generated/ disk otherwise. See "Growth Phase B" below.
+│   ├── db/                    Growth Phase B — Postgres layer (memes/feedback/few_shot_examples),
+│   │                            lazy asyncpg pool, schema.sql. See "Growth Phase B" below.
+│   │
 │   ├── vector_db/
 │   │   ├── chroma_client.py  ChromaDB singleton — upsert, query, log_usage, dual-mode (local/HTTP)
-│   │   └── examples_store.py Few-shot (prompt → meme) example collection
+│   │   └── examples_store.py Few-shot (prompt → meme) example collection — Postgres is now the
+│   │                          source of truth (Growth Phase B), Chroma rehydrated from it on startup
 │   │
 │   ├── nlp/
 │   │   ├── llm_client.py     call_llm() dispatches to Ollama (local) or Groq (cloud) — shared by
@@ -80,6 +88,8 @@ memegpt/
 │       │   ├── chat/page.tsx Chat surface — <ModeTabs active="chat" /> + <ChatWindow />
 │       │   ├── lore/page.tsx Lore surface — <ModeTabs active="lore" /> + <LoreView />; also the
 │       │   │                  redirect target for share-target intake (?intake=<token>)
+│       │   ├── m/[id]/page.tsx  Growth Phase B share page — generateMetadata for og:image/twitter:card,
+│       │   │                     fetches GET /memes/{id} server-side, 404s via notFound() if unresolved
 │       │   ├── share/route.ts  POST-only PWA share-target intake (NOT a page — Next.js disallows
 │       │   │                    page.tsx + route.ts at the same segment). Relays the OS share
 │       │   │                    sheet's multipart POST to the backend's /share-intake/, then
@@ -272,8 +282,33 @@ as its own permanently-visible card to a flat feed instead
 - **Copy is deliberately written without em dashes** — a specific ask, followed throughout the page's actual visible text (code comments are unaffected).
 - `manifest.json`'s `start_url` points at `/chat`, not `/` — an installed PWA should open straight into the app on subsequent launches, not the marketing page every time.
 
+### Growth Phase B — durable storage + share pages (`storage/`, `db/`, `routers/memes.py`, `app/m/[id]/page.tsx`)
+`memegpt-growth-master-prompt.md` (repo root) is a 7-phase growth roadmap (A–G: watermark, durable storage, anonymous memory, Wrapped, trend pipeline, fine-tune prep, Discord distribution). Phase A (watermark) and Phase B (this section) are done; C–G are not started. The spec requires a written plan per phase, approved before code, and "ask for exactly the credentials that phase needs, not all upfront" — Phase B needed Supabase (`DATABASE_URL`) and Cloudflare R2 creds, gathered at that point, not before.
+
+- **The problem this solves:** before Phase B, generated memes lived only on Render's ephemeral disk (`static/generated/`, gone on every restart/redeploy) and feedback/few-shot examples lived only in ChromaDB, treated as rebuildable-from-seed — meaning real user feedback was silently lost on every redeploy. Zero-cost constraint held throughout: R2's free tier (10GB, no egress fees) and Supabase's free Postgres tier, both feature-flagged with graceful absence — unset creds mean local disk + no persistence, the fully-functional default, never a crash.
+
+- **`storage/`'s `save_meme(png_bytes, meme_id=None) -> SavedMeme`** picks R2 (boto3 S3-compatible client, `_r2_configured()` requires ALL five R2 settings present, never a partial fallback) or local disk (writes into the same `static/generated/` directory as before) based on config alone. `SavedMeme(meme_id, url, path)` — `path` is `None` exactly when stored on R2 (nothing local to serve). `meme_id` generation lives here too: `secrets.choice()` (CSPRNG, not `random`) over base62, 10 chars — replacing Phase A's temporary `uuid.uuid4().hex[:8]`, exactly as Phase A's own docstring promised. One id now serves three purposes: the storage object key, the PNG provenance `tEXt` tag, and the Postgres `memes.id` primary key.
+
+- **`compositor.py`'s `compose_meme()`/`compose_meme_on_image()` now render into an in-memory `io.BytesIO()` buffer** instead of saving straight to disk, and return `SavedMeme` instead of the old `Union[str, Path]` + `return_path: bool` toggle — a deliberate breaking change to the internal return type. The external HTTP/SSE wire contract (`meme_url: str` in JSON responses) is unchanged, so this needed zero frontend changes on its own. `generate.py`'s `GET /generate/file/{template_id}` (a debug convenience endpoint, not part of the product surface) switches from `FileResponse` to a redirect when `SavedMeme.path` is `None` (R2 active) — `FileResponse` only when local disk is active, which is true in every test environment and any deployment without R2 creds.
+
+- **`db/`'s `get_pool()`** (asyncpg, raw SQL, no ORM — matches this repo's established minimalism of raw `httpx` over SDKs everywhere else) returns `None` when `settings.database_url` is empty; every read/write function in `db/__init__.py` checks this and no-ops gracefully. Schema (`db/schema.sql`, three tables: `memes`, `feedback`, `few_shot_examples`) is applied idempotently (`CREATE TABLE IF NOT EXISTS`) on first real connection — no Alembic, matching the "no redesign, keep it simple" pattern for a 3-table schema.
+
+- **PRIVACY RULE (confirmed with user, since the spec's own wording was ambiguous):** `memes` and `feedback` never store situation text, dump text, or captions — ids and metadata only. `few_shot_examples` is the deliberate exception: storing `(user_message, template_id, texts)` is its entire purpose, and it's replacing an already-existing ChromaDB store with the same content, not new exposure. The two other tables' schemas reflect this literally — `memes` has no text column beyond `url`/`template_id`, `feedback` has no `user_message`/`texts` columns at all.
+
+- **`log_usage()`'s call site in `chat.py`** (both `_stream_chat_turn` and `_stream_canvas_turn`) also calls `db.insert_meme()` now — canvas mode included, since canvas-mode memes need `/m/{id}` share pages too, even though it still skips `log_usage`/`add_turn` (those are Chroma-specific, keyed by catalog `template_id`, which canvas mode has none of).
+
+- **`feedback.py` now records EVERY rating unconditionally** (`db.insert_feedback`, both up and down) — fixing a real pre-existing gap where 👎 was silently discarded entirely (the docstring said "logged but not stored" but nothing was even logged). 👍 with a message still additionally calls `upsert_example()` for the few-shot store, unchanged in spirit. `meme_id` now flows end-to-end: compositor → SSE `done` event → `ChatMessage.meme_id` → frontend `MemeItem.memeId` → `FeedbackButtons` → `FeedbackRequest.meme_id`, so feedback attributes to a specific durable meme instead of fuzzy `template_id` + `user_message` matching.
+
+- **`examples_store.py`'s `upsert_example()` is now async** and dual-writes ChromaDB (semantic retrieval at request time) and Postgres (source of truth, survives redeploys) using the same id (`_example_id()` — sha256 of the normalized message, extracted as a shared helper). **`seed_examples()`** checks Postgres first: real rows there (meaning real usage has occurred and persisted) get rehydrated into Chroma, taking priority over the 15-item hardcoded seed list, which only bootstraps a genuinely fresh/empty Postgres. Both callers (`routers/feedback.py`, the standalone `scripts/seed_examples.py`) updated for the signature change.
+
+- **`main.py`'s `_sequential_seed()`** (the existing background-thread seeding function, deliberately sequential with template seeding to avoid concurrent Chroma embedding-model memory spikes on Render's free tier) now wraps `seed_examples()` in `asyncio.run(...)` — `seed_examples()` is async (it may fetch Postgres rehydration rows before writing to Chroma) but the thread itself has no event loop of its own, so this gives it one just for that call, then the thread continues synchronously as before.
+
+- **`GET /memes/{id}` (`routers/memes.py`)** returns `{url, template_name}` only — `response_model=SharedMemeResponse` structurally prevents anything else from leaking even if `db.fetch_meme()` somehow returned more. 404s whenever `db.fetch_meme()` returns `None` — which is the same response whether `DATABASE_URL` is unset or the id genuinely doesn't exist, no distinction leaked to the caller. Rate-limited (`"30/minute"`, generous vs. the upload path's `"5/minute"` since this is a cheap read) using the exact `@limiter.limit` + `request: Request` pattern already established in `chat.py`. **No listing endpoint exists anywhere in this app, ever** — this is a single lookup by a specific, unguessable (base62, CSPRNG) id, the only way in.
+
+- **`app/m/[id]/page.tsx`** is the first use of Next.js's async `generateMetadata` in this repo (previously only `layout.tsx`'s static `metadata` export existed). Fetches `GET {BACKEND_URL}/memes/{id}` server-side (matching the existing `route.ts` convention — `BACKEND_URL` may be a Docker-internal/localhost address) for both `generateMetadata` (og/twitter tags) and the page body — Next.js automatically dedupes identical `fetch()` calls within one render pass, so this is one real network call per request despite two call sites. The `og:image`/`twitter:image` URL embedded in the HTML is whatever `save_meme()` returned (already a public R2 URL or Render's public `/static/` URL) — crawlers fetch `og:image` directly and aren't subject to `next.config.js`'s `remotePatterns` restriction at all (that only gates `next/image`'s optimizer, which this page also bypasses via `unoptimized`, matching `MemeDisplay.tsx`'s existing pattern). 404s via `notFound()` when the backend returns 404. Minimal page chrome deliberately (logo, meme, one "Make your own" CTA into `/chat`) rather than the Chat/Lore nav — this page is for external visitors arriving from a shared link, not app navigation. Verified end-to-end against real R2 + Supabase: generated a real meme, confirmed the row landed in Postgres via direct query, confirmed `curl`'d raw HTML contains correct `og:image`/`og:title`/`twitter:card` tags pointing at the real public R2 URL, visually confirmed the served image renders correctly with the watermark.
+
 ### Deployment
-- **Backend (Render):** native Python runtime (`env: python` in `render.yaml`), not Docker — the service must be configured this way in Settings if created manually through the dashboard, since render.yaml service-type changes don't apply retroactively to manually-created services. Build command installs deps + downloads Anton font. `LLM_PROVIDER=groq` + `GROQ_API_KEY` env var for cloud inference (Render's CPU-only free tier can't run Ollama at usable speed). The same `GROQ_API_KEY` also powers Phase 1 vision + moderation calls and segmentation — no new required env var for the multimodal or multi-meme features to work; `ANTHROPIC_API_KEY` is optional (vision fallback only).
+- **Backend (Render):** native Python runtime (`env: python` in `render.yaml`), not Docker — the service must be configured this way in Settings if created manually through the dashboard, since render.yaml service-type changes don't apply retroactively to manually-created services. Build command installs deps + downloads Anton font. `LLM_PROVIDER=groq` + `GROQ_API_KEY` env var for cloud inference (Render's CPU-only free tier can't run Ollama at usable speed). The same `GROQ_API_KEY` also powers Phase 1 vision + moderation calls and segmentation — no new required env var for the multimodal or multi-meme features to work; `ANTHROPIC_API_KEY` is optional (vision fallback only). **Growth Phase B's `DATABASE_URL` + 5 `R2_*` vars are also optional** — unset means local disk storage and no Postgres persistence, not a broken deployment; `render.yaml` doesn't declare them since they're meant to be added manually in the dashboard when/if durable storage is wanted, same `sync: false` pattern as `GROQ_API_KEY`. When setting `DATABASE_URL` from Supabase, use the **Connection String** (starts `postgresql://`), not the **Project URL** (starts `https://`) — easy to mix up, and pydantic-settings' strict validation will reject a stray non-matching env var name if the placeholder text gets pasted as its own line instead of substituted into the connection string.
 - **Frontend (Vercel):** needs `BACKEND_URL` (server-side rewrites) and `NEXT_PUBLIC_API_BASE` (client-side image URLs **and** direct image-upload POSTs, see above) pointed at the Render backend URL. `app/api/chat/route.ts` sets `export const maxDuration = 60` — a multi-meme batch generates sequentially and can plausibly take 15-40s end-to-end, worse right after Render's cold-start. Image uploads aren't subject to this at all since they never touch a Vercel function.
 - Render free tier spins down after 15 min idle — first request after idle takes ~30s to wake up.
 
@@ -284,7 +319,7 @@ as its own permanently-visible card to a flat feed instead
 ### Medium Priority
 - [ ] **User-uploaded templates**: `POST /templates/upload` endpoint — accept an image, extract dominant color palette, generate a `template_id`, write to `backend/templates/`, upsert into ChromaDB.
 - [x] **Conversation history**: `backend/memory/conversation_store.py` tracks recent template ids per conversation and passes them to `parse_intent` as `avoid_templates` to reduce repetition. (Full prior-message context, not just template ids, is still not passed back.)
-- [ ] **Durable chatbot memory**: raised 2026-07-24, zero-cost constraint — something that persists across sessions/conversations, not just the existing ephemeral per-conversation template tracking above. Not started.
+- [ ] **Durable chatbot memory**: raised 2026-07-24, zero-cost constraint — something that persists across sessions/conversations, not just the existing ephemeral per-conversation template tracking above. This is Growth master prompt Phase C ("anonymous identity + memory v1") — anon UUID header, a humor profile fed into `parse_intent`, an opt-in Lore lexicon, a `DELETE /me` endpoint. Depends on Phase B (done) for the Postgres tables it reads/writes. Not started — needs its own written plan per the master prompt's process.
 - [ ] **Fine-tuned model**: scripts for LoRA fine-tuning on the Imgflip 100k dataset exist (`scripts/finetune_unsloth.py`) but training hasn't been run.
 
 ### Low Priority / Polish
@@ -296,6 +331,8 @@ as its own permanently-visible card to a flat feed instead
 - [x] **Lore mode (two-surface restructure)**: Chat and Lore now split minimal-chrome chatbot vs. explicit-controls big-context-dump into two public surfaces sharing one backend — see "Lore mode" above. Covers the mode toggle, a shared `useMemeStream` hook, a "plan" SSE event, PWA share-target intake, and a paste-size guard (`max_dump_chars`). Skipped as an explicit stretch: a "use my photos as the memes" (canvas) toggle in Lore's composer — still reachable only via the `mode` API form field, no UI control yet.
 - [x] **Public landing page**: `/` no longer drops visitors straight into the chat UI — see "Landing page" above. Chat moved to `/chat`.
 - [x] **Model evaluation tooling**: `scripts/eval_intent_models.py` is a live A/B harness for comparing Groq text models — see "NLP / Intent Router" above for the qwen3.6-27b vs gpt-oss-120b findings. Also investigated (and ruled out for now) a same-provider vision fallback and HF-based image-embedding retrieval — see "Vision & Uploads" and "Vector DB" above.
+- [x] **Growth master prompt Phase A (watermark)**: every generated meme gets a small brand mark + PNG provenance tag — see "Image Compositor" above.
+- [x] **Growth master prompt Phase B (durable storage + share pages)**: R2 object storage with local-disk fallback, Postgres as source of truth for memes/feedback/few-shot examples (fixing real data loss on every Render redeploy), `/m/{id}` share pages with Open Graph tags — see "Growth Phase B" above. Verified end-to-end against the real Supabase + R2 instances, not just mocked tests. Phases C–G (anonymous memory, Wrapped, trend pipeline, fine-tune prep, Discord distribution) not started — C is next, needs its own written plan per the master prompt's own process.
 - [ ] **Generated image persistence**: Render's filesystem is ephemeral — `static/generated/` PNGs are lost on restart/redeploy. Fine for live chat, not for durable sharing of past memes.
 
 ---

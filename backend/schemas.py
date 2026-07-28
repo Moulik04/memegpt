@@ -161,3 +161,17 @@ class FeedbackRequest(BaseModel):
 class FeedbackResponse(BaseModel):
     status: str
     rating: Literal["up", "down"]
+
+
+# ---------------------------------------------------------------------------
+# Share pages (Growth Phase B)
+# ---------------------------------------------------------------------------
+
+class SharedMemeResponse(BaseModel):
+    """GET /memes/{id}'s response — url + template display name ONLY.
+    Never situation text, dump text, or captions (same privacy rule as
+    the memes table itself). No listing endpoint exists anywhere, ever —
+    this is reachable only via a specific, unguessable id."""
+
+    url: str
+    template_name: Optional[str] = None
