@@ -12,6 +12,7 @@ import asyncio
 import secrets
 import string
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import boto3
@@ -51,15 +52,28 @@ def _r2_configured(settings: Settings) -> bool:
     )
 
 
-def _r2_client(settings: Settings):
-    """Not cached — settings can change between calls in tests (monkeypatch),
-    and constructing a boto3 client is cheap enough at this traffic volume
-    that caching isn't worth the staleness risk."""
+@lru_cache(maxsize=4)
+def _cached_r2_client(account_id: str, access_key_id: str, secret_access_key: str):
+    """boto3.client() construction is real, avoidable overhead on every
+    call (it loads the S3 service model) — on Render's 512MB free tier,
+    already dominated by ChromaDB's embedding model at baseline, doing
+    this on every single meme save is exactly the kind of avoidable
+    per-request cost that tips a tight ceiling over. Cached by the actual
+    credential values (not the whole Settings object, which isn't stably
+    hashable) — production has one fixed set of creds so this caches once
+    for the process lifetime; a genuine credential rotation would need a
+    process restart to pick up, which redeploys already do."""
     return boto3.client(
         "s3",
-        endpoint_url=f"https://{settings.r2_account_id}.r2.cloudflarestorage.com",
-        aws_access_key_id=settings.r2_access_key_id,
-        aws_secret_access_key=settings.r2_secret_access_key,
+        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+    )
+
+
+def _r2_client(settings: Settings):
+    return _cached_r2_client(
+        settings.r2_account_id, settings.r2_access_key_id, settings.r2_secret_access_key
     )
 
 
