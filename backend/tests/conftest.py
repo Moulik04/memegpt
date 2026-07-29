@@ -14,6 +14,7 @@ from PIL import Image
 from config import Settings, get_settings
 from rate_limit import limiter
 from storage import OUTPUT_DIR
+from vector_db import chroma_client, examples_store
 
 
 def _upload(data: bytes, filename: str = "photo.jpg") -> UploadFile:
@@ -39,6 +40,31 @@ def _isolate_settings_from_real_dot_env():
     yield
     Settings.model_config["env_file"] = original_env_file
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _isolate_chroma_from_real_local_data(tmp_path_factory):
+    """Found empirically: with no isolation, tests share the real
+    backend/data/chroma/ directory with local dev. _isolate_settings_from_
+    real_dot_env above nulls GEMINI_API_KEY during tests, so a test that
+    exercises the real (lazy, module-global-cached) _get_collection() path
+    — e.g. test_intent_router.py's timeout test — creates/touches that
+    real on-disk collection using ChromaDB's default *local* embedding
+    function. Run the real dev server afterward (with GEMINI_API_KEY set)
+    and get_or_create_collection() hard-crashes: ChromaDB refuses to open
+    an existing collection whose persisted embedding-function config
+    doesn't match the one just requested ("embedding function conflict:
+    new: gemini_embedding_2 vs persisted: default"). Point both ChromaDB
+    modules' _DB_PATH at a session-scoped temp dir instead, so the test
+    suite never reads or writes the developer's real local ChromaDB data
+    at all, in either direction."""
+    # Both modules point at the same on-disk PersistentClient directory in
+    # real usage too (meme_templates and meme_examples are two collections
+    # within one client, not two separate directories) — mirror that here.
+    tmp_dir = tmp_path_factory.mktemp("chroma_test_data")
+    chroma_client._DB_PATH = tmp_dir
+    examples_store._DB_PATH = tmp_dir
+    yield
 
 
 @pytest.fixture(autouse=True)

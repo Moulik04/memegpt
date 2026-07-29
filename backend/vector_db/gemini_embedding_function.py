@@ -16,6 +16,16 @@ using submitted content to improve products and allow human review (unlike
 Groq, whose no-training policy is account-wide); this tradeoff was
 disclosed to and accepted by the project owner. See CLAUDE.md's Vector DB
 section.
+
+Free-tier quota, confirmed live: 100 requests/minute AND a separate 1000
+requests/day cap — the daily cap got fully exhausted during this session's
+RAG/USE_WHEN eval work (repeated 118-template reseeds + 48-case eval runs,
+several times over in one day). Unlike the per-minute limit, there's no
+short retry that gets past an exhausted daily quota; it needs real time to
+reset. Local dev can route around it entirely by unsetting GEMINI_API_KEY
+(falls back to ChromaDB's local embedding model, zero Gemini calls) —
+useful specifically when iterating on USE_WHEN wording, since that
+question is independent of which embedding backend is active.
 """
 
 from __future__ import annotations
@@ -36,14 +46,35 @@ _TIMEOUT_SECONDS = 15.0
 # immediately even right after a 20-text batchEmbedContents call gets
 # 429'd — consistent with each item in a batch counting individually
 # against that 100/minute budget, so one _SEED_CHUNK_SIZE=20 chunk can
-# burn a fifth of the window by itself. Retries are cheap here — this only
-# runs in a background seeding thread or via asyncio.to_thread, never
-# blocking a live request — so the schedule is sized to comfortably
-# outlast a full 60s rate-limit window rather than give up early: capped
-# exponential backoff (1, 2, 4, 8, 16, 30s = 61s total across 6 retries).
-_MAX_429_RETRIES = 6
+# burn a fifth of the window by itself.
+#
+# Two different retry budgets, not one — found via a real production-shaped
+# bug, not speculation: __call__ (documents — startup seeding, upsert on
+# feedback) only ever runs in a background thread or via asyncio.to_thread,
+# never blocking a live request, so it can afford to be patient: capped
+# exponential backoff sized to outlast a full 60s rate-limit window (1, 2,
+# 4, 8, 16, 30s = 61s total across 6 retries). embed_query (the live RAG
+# lookup inside a real /chat/ request) must NOT reuse that budget —
+# intent_router.py's parse_intent() has its own _OVERALL_TIMEOUT_SECONDS=45s
+# ceiling for the ENTIRE request, and a 61s RAG-retry storm alone would
+# blow straight through it before the Groq LLM call ever got a chance to
+# run, wasting the whole timeout on a step that's designed to gracefully
+# degrade to [] and move on (query_similar_memes/get_similar_examples
+# already catch and swallow embedding failures for exactly this reason).
+# A short budget here fails fast so the rest of the request still has a
+# real chance to succeed.
+_MAX_429_RETRIES_DOCUMENT = 6
+_MAX_429_RETRIES_QUERY = 2
 _BASE_BACKOFF_SECONDS = 1.0
 _MAX_BACKOFF_SECONDS = 30.0
+# Gemini's batchEmbedContents hard-rejects (400) more than 100 requests in
+# one call ("at most 100 requests can be in one batch") — empirically hit
+# while embedding all 122 template descriptions in one shot for the
+# duplicate-template sweep (scripts/find_duplicate_templates.py). No
+# current production caller sends anywhere near 100 documents at once
+# (_SEED_CHUNK_SIZE=20), but chunking transparently here means no future
+# caller has to independently know about or respect this limit.
+_MAX_ITEMS_PER_BATCH = 100
 
 
 class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
@@ -72,14 +103,22 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
             raise ValueError(f"{api_key_env_var} must be set to use GeminiEmbeddingFunction.")
 
     def __call__(self, input: Documents) -> Embeddings:
-        return self._embed(list(input), task_type="RETRIEVAL_DOCUMENT")
+        return self._embed(list(input), task_type="RETRIEVAL_DOCUMENT", max_retries=_MAX_429_RETRIES_DOCUMENT)
 
     def embed_query(self, input: Documents) -> Embeddings:
-        return self._embed(list(input), task_type="RETRIEVAL_QUERY")
+        return self._embed(list(input), task_type="RETRIEVAL_QUERY", max_retries=_MAX_429_RETRIES_QUERY)
 
-    def _embed(self, texts: list[str], task_type: str) -> Embeddings:
+    def _embed(self, texts: list[str], task_type: str, max_retries: int) -> Embeddings:
         if not texts:
             return []
+        embeddings: Embeddings = []
+        for i in range(0, len(texts), _MAX_ITEMS_PER_BATCH):
+            embeddings.extend(
+                self._embed_one_batch(texts[i : i + _MAX_ITEMS_PER_BATCH], task_type, max_retries)
+            )
+        return embeddings
+
+    def _embed_one_batch(self, texts: list[str], task_type: str, max_retries: int) -> Embeddings:
         model_path = f"models/{self.model_name}"
         requests_body = [
             {
@@ -89,7 +128,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
             }
             for text in texts
         ]
-        resp = self._post_with_429_retry(model_path, requests_body)
+        resp = self._post_with_429_retry(model_path, requests_body, max_retries)
         resp.raise_for_status()
         data = resp.json()
         embeddings = data.get("embeddings")
@@ -100,7 +139,9 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
             )
         return [e["values"] for e in embeddings]
 
-    def _post_with_429_retry(self, model_path: str, requests_body: list[dict]) -> httpx.Response:
+    def _post_with_429_retry(
+        self, model_path: str, requests_body: list[dict], max_retries: int
+    ) -> httpx.Response:
         """Startup seeding fires several batch calls back-to-back (one per
         _SEED_CHUNK_SIZE chunk) — empirically confirmed live, this alone is
         enough to trip Gemini's free-tier rate limit on the very first
@@ -109,15 +150,16 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
         main.py's _auto_seed_if_empty()), leaving the app stuck on the small
         hardcoded template fallback until the next restart. Bounded
         exponential backoff (honoring Retry-After when present) rides out a
-        transient rate-limit window instead."""
-        for attempt in range(_MAX_429_RETRIES + 1):
+        transient rate-limit window instead — max_retries differs by caller,
+        see the module-level comment on _MAX_429_RETRIES_DOCUMENT/_QUERY."""
+        for attempt in range(max_retries + 1):
             resp = httpx.post(
                 f"{_API_BASE}/{model_path}:batchEmbedContents",
                 params={"key": self.api_key},
                 json={"requests": requests_body},
                 timeout=_TIMEOUT_SECONDS,
             )
-            if resp.status_code != 429 or attempt == _MAX_429_RETRIES:
+            if resp.status_code != 429 or attempt == max_retries:
                 return resp
             retry_after = resp.headers.get("Retry-After")
             delay = (
@@ -127,7 +169,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
             )
             print(
                 f"[gemini_embedding_function] 429 from Gemini, "
-                f"retrying in {delay:.1f}s (attempt {attempt + 1}/{_MAX_429_RETRIES})",
+                f"retrying in {delay:.1f}s (attempt {attempt + 1}/{max_retries})",
                 flush=True,
             )
             time.sleep(delay)
