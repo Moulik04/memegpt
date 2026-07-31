@@ -4,9 +4,12 @@
 --
 -- PRIVACY RULE (confirmed with user): memes and feedback never store
 -- situation text, dump text, or captions — ids and metadata only.
--- few_shot_examples is the deliberate exception — storing
+-- few_shot_examples is a deliberate exception — storing
 -- (user_message, template_id, texts) is its entire purpose, replacing an
 -- already-existing ChromaDB store with the same content, not new exposure.
+-- lore_lexicon (Growth Phase C) is the other deliberate exception: it
+-- stores short LLM-extracted phrases (names/nicknames/running jokes), never
+-- raw dump text, and only when the user opts in — see nlp/lexicon.py.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -35,4 +38,16 @@ CREATE TABLE IF NOT EXISTS few_shot_examples (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Growth Phase C additions.
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS anon_user_id text;
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS template_id text;
+
+CREATE TABLE IF NOT EXISTS lore_lexicon (
+    anon_user_id text PRIMARY KEY,
+    terms jsonb NOT NULL DEFAULT '[]',
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_feedback_meme_id ON feedback(meme_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_anon_user_id ON feedback(anon_user_id);
+CREATE INDEX IF NOT EXISTS idx_memes_anon_user_id ON memes(anon_user_id);

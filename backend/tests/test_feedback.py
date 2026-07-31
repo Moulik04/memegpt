@@ -15,7 +15,9 @@ from main import app
 async def _post_feedback(monkeypatch, **payload):
     calls = []
 
-    async def fake_insert_feedback(meme_id, rating, conversation_id=None):
+    async def fake_insert_feedback(
+        meme_id, rating, conversation_id=None, anon_user_id=None, template_id=None
+    ):
         calls.append((meme_id, rating, conversation_id))
 
     monkeypatch.setattr(db, "insert_feedback", fake_insert_feedback)
@@ -42,7 +44,9 @@ async def test_thumbs_up_also_records_feedback_row(monkeypatch):
 
 
 async def test_thumbs_up_with_message_also_upserts_few_shot_example(monkeypatch):
-    async def fake_insert_feedback(meme_id, rating, conversation_id=None):
+    async def fake_insert_feedback(
+        meme_id, rating, conversation_id=None, anon_user_id=None, template_id=None
+    ):
         pass
 
     monkeypatch.setattr(db, "insert_feedback", fake_insert_feedback)

@@ -43,16 +43,18 @@ async def insert_feedback(
     meme_id: str | None,
     rating: str,
     conversation_id: str | None = None,
+    anon_user_id: str | None = None,
+    template_id: str | None = None,
 ) -> None:
     pool = await get_pool()
     if pool is None:
         return
     await pool.execute(
         """
-        INSERT INTO feedback (meme_id, rating, conversation_id, created_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO feedback (meme_id, rating, conversation_id, anon_user_id, template_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
         """,
-        meme_id, rating, conversation_id, datetime.now(timezone.utc),
+        meme_id, rating, conversation_id, anon_user_id, template_id, datetime.now(timezone.utc),
     )
 
 

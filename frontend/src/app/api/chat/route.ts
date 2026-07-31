@@ -23,12 +23,21 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
+  // Growth Phase C — this hand-written route builds its own fetch to the
+  // backend, so next.config.js's generic rewrite (which forwards headers
+  // transparently) never applies here; the anon-identity header has to be
+  // read off the incoming request and re-attached explicitly or it's
+  // silently dropped before ever reaching FastAPI.
+  const anonUser = req.headers.get("x-memegpt-user");
 
   let upstream: Response;
   try {
     upstream = await fetch(`${BACKEND}/chat/`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(anonUser ? { "X-MemeGPT-User": anonUser } : {}),
+      },
       body: JSON.stringify(body),
     });
   } catch (err) {

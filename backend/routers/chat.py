@@ -31,6 +31,7 @@ from PIL import Image
 
 import db
 from config import get_settings
+from identity import get_anon_user_id
 from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
 from nlp.intent_router import parse_intent
@@ -94,6 +95,7 @@ def _sse(event: dict) -> str:
 async def _stream_chat_turn(
     user_message: str,
     conversation_id: str,
+    anon_user_id: str | None = None,
     index: int = 0,
     total: int = 1,
 ) -> AsyncGenerator[dict, None]:
@@ -154,6 +156,7 @@ async def _stream_chat_turn(
         url=saved.url,
         template_id=intent.template_id,
         mode="context",
+        anon_user_id=anon_user_id,
     )
 
     reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
@@ -166,7 +169,9 @@ async def _stream_chat_turn(
     yield {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
 
 
-async def _stream_batch(situations: list[str], conversation_id: str) -> AsyncGenerator[str, None]:
+async def _stream_batch(
+    situations: list[str], conversation_id: str, anon_user_id: str | None = None
+) -> AsyncGenerator[str, None]:
     """Runs each situation through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
     context's just-picked template via conversation_store's recency
@@ -183,7 +188,9 @@ async def _stream_batch(situations: list[str], conversation_id: str) -> AsyncGen
         yield _sse({"type": "plan", "situations": situations, "total": total})
     succeeded = 0
     for i, situation in enumerate(situations):
-        async for event in _stream_chat_turn(situation, conversation_id, index=i, total=total):
+        async for event in _stream_chat_turn(
+            situation, conversation_id, anon_user_id, index=i, total=total
+        ):
             if event.get("type") == "done":
                 succeeded += 1
             yield _sse(event)
@@ -194,6 +201,7 @@ async def _stream_canvas_turn(
     image: Image.Image,
     texts: dict[str, str],
     conversation_id: str,
+    anon_user_id: str | None = None,
     index: int = 0,
     total: int = 1,
 ) -> AsyncGenerator[dict, None]:
@@ -224,6 +232,7 @@ async def _stream_canvas_turn(
         url=saved.url,
         template_id=None,
         mode="canvas",
+        anon_user_id=anon_user_id,
     )
 
     # The captions themselves are this meme's "situation" for feedback-
@@ -244,6 +253,7 @@ async def _stream_canvas_batch(
     clean_images: list[CleanImage],
     message: str | None,
     conversation_id: str,
+    anon_user_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Mode 2 (canvas) batch — captions each surviving photo directly via
     generate_canvas_captions(), never touching resolve_contexts/parse_intent
@@ -272,7 +282,7 @@ async def _stream_canvas_batch(
     succeeded = 0
     for i, (clean_image, captions) in enumerate(pairs):
         async for event in _stream_canvas_turn(
-            clean_image.image, captions, conversation_id, index=i, total=total
+            clean_image.image, captions, conversation_id, anon_user_id, index=i, total=total
         ):
             if event.get("type") == "done":
                 succeeded += 1
@@ -293,16 +303,17 @@ def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
 
 
 @router.post("/")
-async def chat(request: ChatRequest):
+async def chat(request: Request, body: ChatRequest):
     """
     Streams SSE events as one or more memes are generated — resolve_contexts
     decides (with zero added latency for a normal short message) whether
     this is one situation or several.
     """
-    conversation_id = request.conversation_id or ""
-    message = _clamp_dump_text(request.message) or ""
-    contexts = await resolve_contexts(message, None, request.meme_count)
-    return _sse_response(_stream_batch(contexts, conversation_id))
+    anon_user_id = get_anon_user_id(request)
+    conversation_id = body.conversation_id or ""
+    message = _clamp_dump_text(body.message) or ""
+    contexts = await resolve_contexts(message, None, body.meme_count)
+    return _sse_response(_stream_batch(contexts, conversation_id, anon_user_id))
 
 
 @router.post("/image/")
@@ -338,6 +349,7 @@ async def chat_with_image(
     drops that image and continues with the rest. This gate is identical
     for both modes.
     """
+    anon_user_id = get_anon_user_id(request)
     conv_id = conversation_id or ""
     message = _clamp_dump_text(message)
     if mode not in ("context", "canvas"):
@@ -365,7 +377,7 @@ async def chat_with_image(
             # rather than hard-refusing when the user's words are still usable.
             if message:
                 contexts = await resolve_contexts(message, None, meme_count)
-                async for event in _stream_batch(contexts, conv_id):
+                async for event in _stream_batch(contexts, conv_id, anon_user_id):
                     yield event
                 return
             # No ModerationRejected made it this far (that check already
@@ -378,7 +390,7 @@ async def chat_with_image(
             return
 
         if resolved_mode == "canvas":
-            async for event in _stream_canvas_batch(clean_images, message, conv_id):
+            async for event in _stream_canvas_batch(clean_images, message, conv_id, anon_user_id):
                 yield event
             return
 
@@ -397,7 +409,7 @@ async def chat_with_image(
             return
 
         contexts = await resolve_contexts(message, descriptions, meme_count)
-        async for event in _stream_batch(contexts, conv_id):
+        async for event in _stream_batch(contexts, conv_id, anon_user_id):
             yield event
 
     return _sse_response(event_stream())

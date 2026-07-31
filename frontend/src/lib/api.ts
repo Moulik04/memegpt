@@ -6,6 +6,7 @@ import type {
   MemeGenerationResponse,
   SSEEvent,
 } from "@/types";
+import { getOrCreateAnonId } from "@/lib/identity";
 
 const BASE = "/api";
 // Image uploads go straight to the backend, not through /api's Vercel proxy
@@ -15,10 +16,12 @@ const BASE = "/api";
 // already browser-reachable in every deployment topology (see memeImageUrl).
 const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
+const ANON_HEADER = "X-MemeGPT-User";
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", [ANON_HEADER]: getOrCreateAnonId() },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -69,7 +72,7 @@ export async function sendChatStream(
 ): Promise<void> {
   const res = await fetch(`${BASE}/chat/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", [ANON_HEADER]: getOrCreateAnonId() },
     body: JSON.stringify({
       message,
       conversation_id: conversationId,
@@ -107,6 +110,7 @@ export async function sendChatImageStream(
   try {
     res = await fetch(`${BACKEND_BASE}/chat/image/`, {
       method: "POST",
+      headers: { [ANON_HEADER]: getOrCreateAnonId() },
       body: form,
     });
   } catch {
@@ -128,6 +132,17 @@ export async function sendChatImageStream(
 
 export async function postFeedback(req: FeedbackRequest): Promise<void> {
   await post("/feedback/", req);
+}
+
+// Growth Phase C — erases every row tied to this browser's anon id. No
+// hand-written /api/me/ route exists (or is needed): next.config.js's
+// generic /api/:path* rewrite forwards headers/method transparently, unlike
+// the hand-rolled /api/chat/ and /api/feedback/ routes above.
+export async function forgetMe(): Promise<void> {
+  await fetch(`${BASE}/me/`, {
+    method: "DELETE",
+    headers: { [ANON_HEADER]: getOrCreateAnonId() },
+  });
 }
 
 export async function generateMeme(
