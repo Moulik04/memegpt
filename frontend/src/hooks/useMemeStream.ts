@@ -99,16 +99,25 @@ export function useMemeStream() {
     return { memes: collected, plainReply };
   }
 
-  async function submitText(message: string, memeCount?: number): Promise<MemeStreamResult> {
-    return run((onEvent) => sendChatStream(message, conversationId, onEvent, memeCount));
+  async function submitText(
+    message: string,
+    memeCount?: number,
+    rememberLore?: boolean,
+  ): Promise<MemeStreamResult> {
+    return run((onEvent) =>
+      sendChatStream(message, conversationId, onEvent, memeCount, rememberLore),
+    );
   }
 
   async function submitImages(
     files: File[],
     message?: string,
     memeCount?: number,
+    rememberLore?: boolean,
   ): Promise<MemeStreamResult> {
-    return run((onEvent) => sendChatImageStream(files, { message, conversationId, memeCount }, onEvent));
+    return run((onEvent) =>
+      sendChatImageStream(files, { message, conversationId, memeCount, rememberLore }, onEvent),
+    );
   }
 
   return { loading, thinking, error, plan, conversationId, submitText, submitImages };

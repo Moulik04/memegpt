@@ -243,7 +243,7 @@ You are MemeGPT. Pick the best meme template and write captions for the user's m
 Catalog format: each key is a template_id. "w" = when to use it. "b" = box label names \
 (use these exact labels in your "texts" output).
 
-{few_shot_block}{avoid_block}{humor_block}Templates:
+{few_shot_block}{avoid_block}{humor_block}{lexicon_block}Templates:
 {template_catalog}
 
 Respond with ONLY valid JSON — no markdown, no explanation:
@@ -276,6 +276,7 @@ async def parse_intent(
     avoid_templates: list[str] | None = None,
     loved_templates: list[str] | None = None,
     hated_templates: list[str] | None = None,
+    lexicon: list[str] | None = None,
 ) -> IntentResponse:
     """
     Route a user message to the best meme template + captions.
@@ -288,6 +289,11 @@ async def parse_intent(
     nudge rather than a hard rule. None/empty when there's no anon id, no
     DATABASE_URL, or not enough feedback yet to be confident.
 
+    lexicon: Growth Phase C opt-in Lore lexicon — short extracted phrases
+    (names/nicknames/running jokes) for this anon user, used for callback
+    humor only if genuinely relevant. Only ever reaches the prompt through
+    this instruction channel, never through user_message/situation text.
+
     Bounded to _OVERALL_TIMEOUT_SECONDS total — the two attempts inside
     _parse_intent_inner() each carry their own per-call timeout, but a
     pathological run (429s on both the primary AND retry attempts, each
@@ -298,7 +304,9 @@ async def parse_intent(
     """
     try:
         return await asyncio.wait_for(
-            _parse_intent_inner(user_message, avoid_templates, loved_templates, hated_templates),
+            _parse_intent_inner(
+                user_message, avoid_templates, loved_templates, hated_templates, lexicon
+            ),
             timeout=_OVERALL_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -349,6 +357,7 @@ async def _parse_intent_inner(
     avoid_templates: list[str] | None = None,
     loved_templates: list[str] | None = None,
     hated_templates: list[str] | None = None,
+    lexicon: list[str] | None = None,
 ) -> IntentResponse:
     settings = get_settings()
 
@@ -379,11 +388,19 @@ async def _parse_intent_inner(
             bits.append(f"tends to dislike {', '.join(hated_templates)}")
         humor_block = f"This user's taste — {'; '.join(bits)}. A light nudge, never a hard rule.\n\n"
 
+    lexicon_block = ""
+    if lexicon:
+        lexicon_block = (
+            f"This group's recurring names/running jokes — use for a callback only "
+            f"if genuinely relevant, never force it: {', '.join(lexicon)}.\n\n"
+        )
+
     system_prompt = _SYSTEM_TEMPLATE.format(
         template_catalog=json.dumps(catalog, indent=2),
         few_shot_block=few_shot_block,
         avoid_block=avoid_block,
         humor_block=humor_block,
+        lexicon_block=lexicon_block,
     )
 
     async with httpx.AsyncClient() as client:

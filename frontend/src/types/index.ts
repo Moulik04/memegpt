@@ -111,4 +111,5 @@ export interface ImageChatOptions {
   message?: string;
   conversationId?: string;
   memeCount?: number;
+  rememberLore?: boolean;
 }

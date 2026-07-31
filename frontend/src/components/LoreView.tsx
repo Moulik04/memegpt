@@ -48,6 +48,10 @@ export function LoreView() {
   const [text, setText] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [memeCount, setMemeCount] = useState<number | undefined>(undefined);
+  // Growth Phase C — strictly opt-in, off by default, and deliberately NOT
+  // reset per-submission in handleSubmit below: this means "remember this
+  // whole conversation," not "remember just this one message."
+  const [rememberLore, setRememberLore] = useState(false);
   const [feed, setFeed] = useState<FeedEntry[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -163,8 +167,8 @@ export function LoreView() {
 
     const { memes, plainReply } =
       images.length > 0
-        ? await submitImages(images.map((p) => p.file), submittedText || undefined, memeCount)
-        : await submitText(submittedText, memeCount);
+        ? await submitImages(images.map((p) => p.file), submittedText || undefined, memeCount, rememberLore)
+        : await submitText(submittedText, memeCount, rememberLore);
 
     if (memes.length > 0) {
       setFeed((prev) => [
@@ -280,6 +284,20 @@ export function LoreView() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setRememberLore((v) => !v)}
+              disabled={loading}
+              title="Extract and remember this group's recurring names/running jokes for future callbacks"
+              aria-pressed={rememberLore}
+              className={`shrink-0 text-xs font-medium rounded-full px-3 py-2.5 transition-colors ${
+                rememberLore
+                  ? "bg-brand-600 text-white"
+                  : "bg-gray-900 border border-gray-800 text-gray-500 hover:text-gray-300"
+              } disabled:opacity-40`}
+            >
+              🧠 Remember lore
+            </button>
             <div className="flex-1" />
             <button
               type="submit"
@@ -293,6 +311,9 @@ export function LoreView() {
 
           <p className="text-[10px] text-gray-600">
             Processed, never stored — images are deleted after your memes are generated.
+            {rememberLore
+              ? " Remember lore is on: short recurring names/jokes get extracted for future callbacks, never the raw text — erase anytime with Forget me."
+              : " Remember lore is off by default — turn it on to let recurring names/jokes carry into future memes."}
           </p>
         </form>
 

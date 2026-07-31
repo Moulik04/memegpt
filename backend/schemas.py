@@ -65,6 +65,8 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
     meme_count: Optional[int] = None  # explicit override — forces exactly N memes, clamped to
                                        # settings.max_memes_per_request; None = auto-detect
+    remember_lore: bool = False  # Growth Phase C — strictly opt-in, Lore composer only;
+                                  # see nlp/lexicon.py. Default False everywhere else.
 
 
 class ChatResponse(BaseModel):
@@ -110,6 +112,18 @@ class SegmentedContext(BaseModel):
     EXISTING parse_intent(), exactly like a single Phase 1 image description."""
 
     situation: str
+
+
+# ---------------------------------------------------------------------------
+# Growth Phase C — anonymous identity + memory v1
+# ---------------------------------------------------------------------------
+
+class LexiconExtractionResponse(BaseModel):
+    """Output of nlp/lexicon.py's extract_lexicon() — short recurring
+    names/nicknames/running-joke phrases pulled from a Lore dump, never the
+    dump text itself. Empty when nothing recurring stood out."""
+
+    terms: list[str]
 
 
 # ---------------------------------------------------------------------------

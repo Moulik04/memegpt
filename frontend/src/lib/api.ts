@@ -68,7 +68,8 @@ export async function sendChatStream(
   message: string,
   conversationId: string | undefined,
   onEvent: (event: SSEEvent) => void,
-  memeCount?: number
+  memeCount?: number,
+  rememberLore?: boolean
 ): Promise<void> {
   const res = await fetch(`${BASE}/chat/`, {
     method: "POST",
@@ -77,6 +78,7 @@ export async function sendChatStream(
       message,
       conversation_id: conversationId,
       meme_count: memeCount,
+      remember_lore: rememberLore ?? false,
     }),
   });
 
@@ -105,6 +107,7 @@ export async function sendChatImageStream(
   if (options.message) form.append("message", options.message);
   if (options.conversationId) form.append("conversation_id", options.conversationId);
   if (options.memeCount) form.append("meme_count", String(options.memeCount));
+  if (options.rememberLore) form.append("remember_lore", "true");
 
   let res: Response;
   try {

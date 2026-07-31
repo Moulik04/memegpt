@@ -35,6 +35,7 @@ from identity import get_anon_user_id
 from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
 from nlp.intent_router import parse_intent
+from nlp.lexicon import schedule_lexicon_extraction
 from nlp.segmentation import resolve_contexts
 from nlp.vision import describe_image, generate_canvas_captions, infer_mode
 from rate_limit import limiter
@@ -135,6 +136,7 @@ async def _stream_chat_turn(
             avoid_templates=avoid,
             loved_templates=ctx.loved_templates if ctx else None,
             hated_templates=ctx.hated_templates if ctx else None,
+            lexicon=ctx.lexicon if ctx else None,
         )
     except Exception as exc:
         yield {"type": "error", "index": index, "total": total, "message": str(exc)}
@@ -331,7 +333,9 @@ async def chat(request: Request, body: ChatRequest):
     ctx = await db.fetch_personalization(anon_user_id)
     conversation_id = body.conversation_id or ""
     message = _clamp_dump_text(body.message) or ""
-    contexts = await resolve_contexts(message, None, body.meme_count)
+    if body.remember_lore:
+        schedule_lexicon_extraction(anon_user_id, message)
+    contexts = await resolve_contexts(message, None, body.meme_count, lexicon=ctx.lexicon)
     return _sse_response(_stream_batch(contexts, conversation_id, ctx))
 
 
@@ -344,6 +348,7 @@ async def chat_with_image(
     conversation_id: str | None = Form(None),
     meme_count: int | None = Form(None),
     mode: str | None = Form(None),
+    remember_lore: bool = Form(False),
 ):
     """
     Uploads 1+ photos and generates memes from them, in one of two modes:
@@ -372,6 +377,8 @@ async def chat_with_image(
     ctx = await db.fetch_personalization(anon_user_id)
     conv_id = conversation_id or ""
     message = _clamp_dump_text(message)
+    if remember_lore:
+        schedule_lexicon_extraction(anon_user_id, message)
     if mode not in ("context", "canvas"):
         mode = None
     resolved_mode = mode or infer_mode(message)
@@ -396,7 +403,7 @@ async def chat_with_image(
             # Degrade to a text-only turn if there's accompanying text,
             # rather than hard-refusing when the user's words are still usable.
             if message:
-                contexts = await resolve_contexts(message, None, meme_count)
+                contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
                 async for event in _stream_batch(contexts, conv_id, ctx):
                     yield event
                 return
@@ -428,7 +435,7 @@ async def chat_with_image(
             yield _sse({"type": "done", **response.model_dump(mode="json")})
             return
 
-        contexts = await resolve_contexts(message, descriptions, meme_count)
+        contexts = await resolve_contexts(message, descriptions, meme_count, lexicon=ctx.lexicon)
         async for event in _stream_batch(contexts, conv_id, ctx):
             yield event
 

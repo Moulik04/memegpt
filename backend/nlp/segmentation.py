@@ -40,7 +40,7 @@ sentences, exactly as if the user were describing that one moment
 themselves in a chat message (e.g. "my dog destroyed the couch again" or
 "stuck in traffic for the third hour and everyone in the car is losing it").
 {count_instruction}
-
+{lexicon_instruction}
 Respond with ONLY valid JSON, no markdown, no explanation:
 {{"contexts": [{{"situation": "..."}}]}}\
 """
@@ -49,6 +49,11 @@ _COUNT_INSTRUCTION_TEMPLATE = (
     "The user explicitly asked for exactly {n} memes — return EXACTLY {n} "
     "contexts. If fewer than {n} genuinely distinct moments exist, split "
     "the dominant one into different angles to reach {n}."
+)
+
+_LEXICON_INSTRUCTION_TEMPLATE = (
+    "This group's recurring names/running jokes, for context only, not "
+    "something every situation needs to reference: {lexicon}."
 )
 
 
@@ -79,11 +84,16 @@ async def segment_contexts(
     text: str | None,
     image_descriptions: list[str] | None = None,
     requested_count: int | None = None,
+    lexicon: list[str] | None = None,
 ) -> list[SegmentedContext]:
     """Identify 1..max_memes_per_request distinct meme-worthy moments.
     Never raises — hard-falls-back to a single context (the plain
     concatenation of all input) if the LLM call fails entirely, matching
-    the pre-segmentation single-context behavior."""
+    the pre-segmentation single-context behavior.
+
+    lexicon (Growth Phase C, optional): this anon user's opt-in Lore
+    lexicon — reaches this prompt only through the instruction channel
+    below, never through _build_material's content channel."""
     settings = get_settings()
     image_descriptions = image_descriptions or []
     max_count = settings.max_memes_per_request
@@ -96,9 +106,14 @@ async def segment_contexts(
         clamped_count = max(1, min(requested_count, max_count))
         count_instruction = _COUNT_INSTRUCTION_TEMPLATE.format(n=clamped_count)
 
+    lexicon_instruction = ""
+    if lexicon:
+        lexicon_instruction = _LEXICON_INSTRUCTION_TEMPLATE.format(lexicon=", ".join(lexicon))
+
     system_prompt = _SEGMENTATION_SYSTEM_PROMPT.format(
         max_count=max_count,
         count_instruction=count_instruction,
+        lexicon_instruction=lexicon_instruction,
     )
 
     contexts: list[SegmentedContext] = []
@@ -155,6 +170,7 @@ async def resolve_contexts(
     text: str | None,
     image_descriptions: list[str] | None = None,
     requested_count: int | None = None,
+    lexicon: list[str] | None = None,
 ) -> list[str]:
     """Returns a plain list of situation strings, one per meme to generate.
     The only function other modules should call."""
@@ -169,5 +185,5 @@ async def resolve_contexts(
             return [text or ""]
         return [_combine_raw(text, image_descriptions)]
 
-    contexts = await segment_contexts(text, image_descriptions, requested_count)
+    contexts = await segment_contexts(text, image_descriptions, requested_count, lexicon)
     return [c.situation for c in contexts]
