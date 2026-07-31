@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from config import get_settings
 from nlp.intent_router import USE_WHEN
 from rate_limit import limiter
-from routers import chat, explain, feedback, generate, me, memes, share_intake
+from routers import chat, explain, feedback, generate, lore, me, memes, share_intake
 from uploads.retention import periodic_purge_loop
 from vector_db.chroma_client import init_chroma, list_template_ids, upsert_templates_batch
 from vector_db.examples_store import _get_collection as _init_examples, seed_examples
@@ -108,6 +108,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(lore.router, prefix="/lore", tags=["lore"])
 app.include_router(explain.router, prefix="/explain", tags=["explain"])
 app.include_router(generate.router, prefix="/generate", tags=["generate"])
 app.include_router(feedback.router, prefix="/feedback", tags=["feedback"])

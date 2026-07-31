@@ -30,7 +30,7 @@ export function ChatWindow() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream();
+  const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream("chat");
   const pendingImagesRef = useRef<PendingImage[]>([]);
 
   useEffect(() => {

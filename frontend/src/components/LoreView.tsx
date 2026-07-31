@@ -58,7 +58,7 @@ export function LoreView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream();
+  const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream("lore");
   const router = useRouter();
 
   // Consume a share-target handoff (?intake=<token>) on mount, if present.

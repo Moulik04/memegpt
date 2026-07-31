@@ -69,11 +69,13 @@ def _parse_sse_events(raw_text: str) -> list[dict]:
     return events
 
 
-async def _post_images(files: list[tuple[str, bytes]], **form_fields) -> list[dict]:
+async def _post_images(
+    files: list[tuple[str, bytes]], *, path: str = "/chat/image/", **form_fields
+) -> list[dict]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
-            "/chat/image/",
+            path,
             files=[("images", (name, data, "image/jpeg")) for name, data in files],
             data={k: str(v) for k, v in form_fields.items() if v is not None},
         )
@@ -130,8 +132,11 @@ async def test_explicit_meme_count_forces_n_memes(monkeypatch):
 
     monkeypatch.setattr("nlp.segmentation.call_llm", fake_call_llm)
 
+    # meme_count is a Lore-only control after the Growth Phase D endpoint
+    # split — /chat/image/ no longer accepts it, so this hits /lore/image/.
     events = await _post_images(
         [("clean.jpg", _tiny_jpeg_bytes())],
+        path="/lore/image/",
         meme_count=3,
     )
     done_events = [e for e in events if e.get("type") == "done"]

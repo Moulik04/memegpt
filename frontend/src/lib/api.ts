@@ -33,7 +33,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 /**
  * Read an SSE Response body, calling `onEvent` for each parsed event.
- * Shared by sendChatStream and sendChatImageStream.
+ * Shared by sendStream and sendImageStream.
  */
 async function _consumeSSE(res: Response, onEvent: (event: SSEEvent) => void): Promise<void> {
   const reader = res.body!.getReader();
@@ -60,26 +60,32 @@ async function _consumeSSE(res: Response, onEvent: (event: SSEEvent) => void): P
   }
 }
 
+export type Surface = "chat" | "lore";
+
 /**
- * Open an SSE stream to /chat/ and call `onEvent` for each parsed event.
- * Returns when the stream ends or an error occurs.
+ * Open an SSE stream to the given surface's text endpoint (/api/chat/ or
+ * /api/lore/, Growth Phase D split) and call `onEvent` for each parsed event.
+ * meme_count / remember_lore only exist on the Lore endpoint's request model,
+ * so they're only sent for surface="lore".
  */
-export async function sendChatStream(
+export async function sendStream(
+  surface: Surface,
   message: string,
   conversationId: string | undefined,
   onEvent: (event: SSEEvent) => void,
   memeCount?: number,
   rememberLore?: boolean
 ): Promise<void> {
-  const res = await fetch(`${BASE}/chat/`, {
+  const body: Record<string, unknown> = { message, conversation_id: conversationId };
+  if (surface === "lore") {
+    body.meme_count = memeCount;
+    body.remember_lore = rememberLore ?? false;
+  }
+
+  const res = await fetch(`${BASE}/${surface}/`, {
     method: "POST",
     headers: { "Content-Type": "application/json", [ANON_HEADER]: getOrCreateAnonId() },
-    body: JSON.stringify({
-      message,
-      conversation_id: conversationId,
-      meme_count: memeCount,
-      remember_lore: rememberLore ?? false,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -91,13 +97,14 @@ export async function sendChatStream(
 }
 
 /**
- * Phase 1 (Mode 1: image as context) — uploads one or more photos
- * (+ optional text) to /chat/image/ and streams the same SSE event shape
- * as sendChatStream. Multiple files (or a long message, or an explicit
- * memeCount > 1) can produce more than one meme in the same stream — see
- * nlp/segmentation.py on the backend.
+ * Uploads one or more photos (+ optional text) to the given surface's image
+ * endpoint (/chat/image/ or /lore/image/) and streams the same SSE event
+ * shape as sendStream. Posts DIRECTLY to the backend (not the /api proxy) to
+ * dodge Vercel's 4.5MB function body cap — see the BACKEND_BASE note above.
+ * meme_count / remember_lore are Lore-only.
  */
-export async function sendChatImageStream(
+export async function sendImageStream(
+  surface: Surface,
   files: File[],
   options: ImageChatOptions,
   onEvent: (event: SSEEvent) => void
@@ -106,12 +113,14 @@ export async function sendChatImageStream(
   for (const file of files) form.append("images", file);
   if (options.message) form.append("message", options.message);
   if (options.conversationId) form.append("conversation_id", options.conversationId);
-  if (options.memeCount) form.append("meme_count", String(options.memeCount));
-  if (options.rememberLore) form.append("remember_lore", "true");
+  if (surface === "lore") {
+    if (options.memeCount) form.append("meme_count", String(options.memeCount));
+    if (options.rememberLore) form.append("remember_lore", "true");
+  }
 
   let res: Response;
   try {
-    res = await fetch(`${BACKEND_BASE}/chat/image/`, {
+    res = await fetch(`${BACKEND_BASE}/${surface}/image/`, {
       method: "POST",
       headers: { [ANON_HEADER]: getOrCreateAnonId() },
       body: form,

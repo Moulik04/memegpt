@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { sendChatImageStream, sendChatStream } from "@/lib/api";
+import { sendImageStream, sendStream, type Surface } from "@/lib/api";
 import type { MemeItem, SSEEvent } from "@/types";
 
 interface ThinkingState {
@@ -30,7 +30,7 @@ export interface MemeStreamResult {
  * caller. Extracted verbatim from ChatWindow's original submit() so Chat's
  * behavior is provably unchanged.
  */
-export function useMemeStream() {
+export function useMemeStream(surface: Surface) {
   const [loading, setLoading] = useState(false);
   const [thinking, setThinking] = useState<ThinkingState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export function useMemeStream() {
     rememberLore?: boolean,
   ): Promise<MemeStreamResult> {
     return run((onEvent) =>
-      sendChatStream(message, conversationId, onEvent, memeCount, rememberLore),
+      sendStream(surface, message, conversationId, onEvent, memeCount, rememberLore),
     );
   }
 
@@ -116,7 +116,7 @@ export function useMemeStream() {
     rememberLore?: boolean,
   ): Promise<MemeStreamResult> {
     return run((onEvent) =>
-      sendChatImageStream(files, { message, conversationId, memeCount, rememberLore }, onEvent),
+      sendImageStream(surface, files, { message, conversationId, memeCount, rememberLore }, onEvent),
     );
   }
 

@@ -1,15 +1,23 @@
 """
-POST /chat/       — main conversational endpoint (text), returns Server-Sent Events.
-POST /chat/image/ — multimodal endpoint (image-as-context or canvas mode, 1+ photos), same SSE contract.
+POST /chat/       — Chat surface (text), returns Server-Sent Events.
+POST /chat/image/ — Chat surface multimodal (image-as-context or canvas, 1+ photos), same SSE contract.
 
-/chat/ and /chat/image/'s context-mode path both flow through the same
-batch pipeline (_stream_batch): a submission resolves into 1..N distinct
-"situations" (nlp/segmentation.py's resolve_contexts — a no-op fast path
-for the common case of one short message or one photo), and each situation
-is rendered into its own meme via _stream_chat_turn, sharing one HTTP
-response/SSE stream. /chat/image/'s canvas-mode path (Mode 2 — the user's
-own photo becomes the meme, not a catalog template) instead flows through
-_stream_canvas_batch, captioning each surviving photo directly.
+Growth Phase D split: Chat and Lore are now genuinely separate endpoints
+(/chat/ here, /lore/ in routers/lore.py) with their own request models, but
+they share this module's streaming core via the `handle_text_stream` /
+`handle_image_stream` entry helpers (lore.py imports them). The only
+difference is which controls each surface exposes (Lore adds meme_count +
+remember_lore) and the `surface` value ("chat"/"lore") the endpoint stamps
+onto every db.insert_meme — which is what makes Arc's Chat-vs-Lore split real.
+
+Both surfaces' context-mode path flows through the same batch pipeline
+(_stream_batch): a submission resolves into 1..N distinct "situations"
+(nlp/segmentation.py's resolve_contexts — a no-op fast path for the common
+case of one short message or one photo), and each situation is rendered into
+its own meme via _stream_chat_turn, sharing one HTTP response/SSE stream. The
+canvas-mode path (Mode 2 — the user's own photo becomes the meme, not a
+catalog template) instead flows through _stream_canvas_batch, captioning each
+surviving photo directly.
 
 SSE event stream:
   {"type": "plan",     "situations": [...], "total": N}   — only when N > 1
@@ -97,6 +105,7 @@ async def _stream_chat_turn(
     user_message: str,
     conversation_id: str,
     ctx: db.PersonalizationContext | None = None,
+    surface: str | None = None,
     index: int = 0,
     total: int = 1,
 ) -> AsyncGenerator[dict, None]:
@@ -175,6 +184,7 @@ async def _stream_chat_turn(
         template_id=intent.template_id,
         mode="context",
         anon_user_id=ctx.anon_user_id if ctx else None,
+        surface=surface,
     )
 
     reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
@@ -191,6 +201,7 @@ async def _stream_batch(
     situations: list[str],
     conversation_id: str,
     ctx: db.PersonalizationContext | None = None,
+    surface: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Runs each situation through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
@@ -209,7 +220,7 @@ async def _stream_batch(
     succeeded = 0
     for i, situation in enumerate(situations):
         async for event in _stream_chat_turn(
-            situation, conversation_id, ctx, index=i, total=total
+            situation, conversation_id, ctx, surface, index=i, total=total
         ):
             if event.get("type") == "done":
                 succeeded += 1
@@ -222,6 +233,7 @@ async def _stream_canvas_turn(
     texts: dict[str, str],
     conversation_id: str,
     anon_user_id: str | None = None,
+    surface: str | None = None,
     index: int = 0,
     total: int = 1,
 ) -> AsyncGenerator[dict, None]:
@@ -253,6 +265,7 @@ async def _stream_canvas_turn(
         template_id=None,
         mode="canvas",
         anon_user_id=anon_user_id,
+        surface=surface,
     )
 
     # The captions themselves are this meme's "situation" for feedback-
@@ -274,6 +287,7 @@ async def _stream_canvas_batch(
     message: str | None,
     conversation_id: str,
     anon_user_id: str | None = None,
+    surface: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Mode 2 (canvas) batch — captions each surviving photo directly via
     generate_canvas_captions(), never touching resolve_contexts/parse_intent
@@ -302,7 +316,7 @@ async def _stream_canvas_batch(
     succeeded = 0
     for i, (clean_image, captions) in enumerate(pairs):
         async for event in _stream_canvas_turn(
-            clean_image.image, captions, conversation_id, anon_user_id, index=i, total=total
+            clean_image.image, captions, conversation_id, anon_user_id, surface, index=i, total=total
         ):
             if event.get("type") == "done":
                 succeeded += 1
@@ -322,46 +336,53 @@ def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
     )
 
 
-@router.post("/")
-async def chat(request: Request, body: ChatRequest):
-    """
+async def handle_text_stream(
+    request: Request,
+    message_in: str,
+    conversation_id_in: str | None,
+    meme_count: int | None,
+    remember_lore: bool,
+    surface: str,
+) -> StreamingResponse:
+    """Shared text-turn core for both /chat/ and /lore/ (Growth Phase D).
     Streams SSE events as one or more memes are generated — resolve_contexts
-    decides (with zero added latency for a normal short message) whether
-    this is one situation or several.
-    """
+    decides (with zero added latency for a normal short message) whether this
+    is one situation or several. Chat calls this with meme_count=None,
+    remember_lore=False, surface="chat"; Lore passes its real values and
+    surface="lore"."""
     anon_user_id = get_anon_user_id(request)
     ctx = await db.fetch_personalization(anon_user_id)
-    conversation_id = body.conversation_id or ""
-    message = _clamp_dump_text(body.message) or ""
-    if body.remember_lore:
+    conversation_id = conversation_id_in or ""
+    message = _clamp_dump_text(message_in) or ""
+    if remember_lore:
         schedule_lexicon_extraction(anon_user_id, message)
-    contexts = await resolve_contexts(message, None, body.meme_count, lexicon=ctx.lexicon)
-    return _sse_response(_stream_batch(contexts, conversation_id, ctx))
+    contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
+    return _sse_response(_stream_batch(contexts, conversation_id, ctx, surface))
 
 
-@router.post("/image/")
-@limiter.limit(get_settings().upload_rate_limit)
-async def chat_with_image(
-    request: Request,  # required by slowapi's key_func, unused otherwise
-    images: list[UploadFile] = File(...),
-    message: str | None = Form(None),
-    conversation_id: str | None = Form(None),
-    meme_count: int | None = Form(None),
-    mode: str | None = Form(None),
-    remember_lore: bool = Form(False),
-):
-    """
-    Uploads 1+ photos and generates memes from them, in one of two modes:
+async def handle_image_stream(
+    request: Request,
+    images: list[UploadFile],
+    message_in: str | None,
+    conversation_id_in: str | None,
+    meme_count: int | None,
+    mode: str | None,
+    remember_lore: bool,
+    surface: str,
+) -> StreamingResponse:
+    """Shared image-turn core for both /chat/image/ and /lore/image/
+    (Growth Phase D). Uploads 1+ photos and generates memes from them, in one
+    of two modes:
 
     Mode 1 (context, default): describes each photo via the vision layer,
     resolves the descriptions (+ any user text) into 1..N situations, and
-    feeds each into the same _stream_batch used by /chat/ — the photo
-    informs which CATALOG template gets picked.
+    feeds each into _stream_batch — the photo informs which CATALOG template
+    gets picked.
 
     Mode 2 (canvas): the user's own photo becomes the meme directly,
-    captioned top/bottom, no catalog template involved. Selected via
-    keyword inference on `message` (nlp.vision.infer_mode — e.g. "make
-    this a meme") or the explicit `mode` override below.
+    captioned top/bottom, no catalog template involved. Selected via keyword
+    inference on `message` (nlp.vision.infer_mode — e.g. "make this a meme")
+    or the explicit `mode` override.
 
     ALL uploaded images pass through uploads/safe_ingest.safe_ingest() —
     never bypass it. A content-moderation failure on ANY image aborts the
@@ -369,14 +390,13 @@ async def chat_with_image(
     adversarial signal, unlike a size/type failure, and skip-and-continue
     would leak a per-image "this one got silently dropped" signal that
     uploads/moderation.py's category-never-echoed invariant exists to
-    prevent). A non-safety UploadRejected on one image in a batch just
-    drops that image and continues with the rest. This gate is identical
-    for both modes.
-    """
+    prevent). A non-safety UploadRejected on one image in a batch just drops
+    that image and continues with the rest. This gate is identical for both
+    modes and both surfaces."""
     anon_user_id = get_anon_user_id(request)
     ctx = await db.fetch_personalization(anon_user_id)
-    conv_id = conversation_id or ""
-    message = _clamp_dump_text(message)
+    conv_id = conversation_id_in or ""
+    message = _clamp_dump_text(message_in)
     if remember_lore:
         schedule_lexicon_extraction(anon_user_id, message)
     if mode not in ("context", "canvas"):
@@ -404,7 +424,7 @@ async def chat_with_image(
             # rather than hard-refusing when the user's words are still usable.
             if message:
                 contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
-                async for event in _stream_batch(contexts, conv_id, ctx):
+                async for event in _stream_batch(contexts, conv_id, ctx, surface):
                     yield event
                 return
             # No ModerationRejected made it this far (that check already
@@ -417,7 +437,7 @@ async def chat_with_image(
             return
 
         if resolved_mode == "canvas":
-            async for event in _stream_canvas_batch(clean_images, message, conv_id, anon_user_id):
+            async for event in _stream_canvas_batch(clean_images, message, conv_id, anon_user_id, surface):
                 yield event
             return
 
@@ -436,7 +456,33 @@ async def chat_with_image(
             return
 
         contexts = await resolve_contexts(message, descriptions, meme_count, lexicon=ctx.lexicon)
-        async for event in _stream_batch(contexts, conv_id, ctx):
+        async for event in _stream_batch(contexts, conv_id, ctx, surface):
             yield event
 
     return _sse_response(event_stream())
+
+
+@router.post("/")
+async def chat(request: Request, body: ChatRequest):
+    """Chat surface — minimal chrome, always auto-detects meme count, no Lore
+    lexicon. Delegates to the shared core with surface="chat"."""
+    return await handle_text_stream(
+        request, body.message, body.conversation_id,
+        meme_count=None, remember_lore=False, surface="chat",
+    )
+
+
+@router.post("/image/")
+@limiter.limit(get_settings().upload_rate_limit)
+async def chat_with_image(
+    request: Request,  # required by slowapi's key_func, unused otherwise
+    images: list[UploadFile] = File(...),
+    message: str | None = Form(None),
+    conversation_id: str | None = Form(None),
+    mode: str | None = Form(None),
+):
+    """Chat surface multimodal. No meme_count / remember_lore (Lore-only)."""
+    return await handle_image_stream(
+        request, images, message, conversation_id,
+        meme_count=None, mode=mode, remember_lore=False, surface="chat",
+    )

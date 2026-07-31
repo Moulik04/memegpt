@@ -61,12 +61,23 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    """Chat surface (Growth Phase D split) — the minimal-chrome conversational
+    surface. No meme-count override, no Lore lexicon: Chat always auto-detects.
+    Lore's extra controls live on LoreRequest, not here."""
+    message: str
+    conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+
+
+class LoreRequest(BaseModel):
+    """Lore surface (Growth Phase D split) — big-context-dump surface with the
+    explicit controls Chat deliberately doesn't expose. Same underlying
+    segmentation/batch/SSE core as Chat; the difference is these two fields
+    plus the surface stamp ("lore") the endpoint applies."""
     message: str
     conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
     meme_count: Optional[int] = None  # explicit override — forces exactly N memes, clamped to
                                        # settings.max_memes_per_request; None = auto-detect
-    remember_lore: bool = False  # Growth Phase C — strictly opt-in, Lore composer only;
-                                  # see nlp/lexicon.py. Default False everywhere else.
+    remember_lore: bool = False  # Growth Phase C — strictly opt-in Lore lexicon; see nlp/lexicon.py
 
 
 class ChatResponse(BaseModel):

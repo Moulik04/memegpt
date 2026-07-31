@@ -27,17 +27,18 @@ async def insert_meme(
     template_id: str | None,
     mode: str,
     anon_user_id: str | None = None,
+    surface: str | None = None,
 ) -> None:
     pool = await get_pool()
     if pool is None:
         return
     await pool.execute(
         """
-        INSERT INTO memes (id, url, template_id, mode, anon_user_id, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO memes (id, url, template_id, mode, anon_user_id, surface, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (id) DO NOTHING
         """,
-        meme_id, url, template_id, mode, anon_user_id, datetime.now(timezone.utc),
+        meme_id, url, template_id, mode, anon_user_id, surface, datetime.now(timezone.utc),
     )
 
 

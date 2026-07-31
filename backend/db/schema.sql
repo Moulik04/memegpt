@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS few_shot_examples (
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS anon_user_id text;
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS template_id text;
 
+-- Growth Phase D: which public surface generated this meme ("chat"/"lore"),
+-- stamped by the endpoint that served it — powers Arc's Chat-vs-Lore split.
+-- NULL for pre-Phase-D rows and for Arc share cards themselves.
+ALTER TABLE memes ADD COLUMN IF NOT EXISTS surface text;
+
 CREATE TABLE IF NOT EXISTS lore_lexicon (
     anon_user_id text PRIMARY KEY,
     terms jsonb NOT NULL DEFAULT '[]',
