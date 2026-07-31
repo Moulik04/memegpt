@@ -217,12 +217,17 @@ class SharedMemeResponse(BaseModel):
 class ArcTemplate(BaseModel):
     """One entry in ArcStats.top_templates — a template id, how many times
     it was this user's pick, and its roast (the parenthetical shown next to
-    it, e.g. "(concerning)"), voiced by arc/copy.py."""
+    it, e.g. "(concerning)"), voiced by arc/copy.py. image_url points at the
+    raw catalog template image (backend/templates/, served publicly at
+    /static/templates/) so the frontend can show the actual meme thumbnail
+    instead of just the template_id — None only if the file genuinely isn't
+    on disk (shouldn't happen for a template that was actually used)."""
 
     template_id: str
     display_name: str
     count: int
     roast: str
+    image_url: Optional[str] = None
 
 
 class ArcStats(BaseModel):

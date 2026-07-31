@@ -29,6 +29,22 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 FONTS_DIR = BACKEND_ROOT / "fonts"
 TEMPLATES_DIR = BACKEND_ROOT / "templates"
 
+_TEMPLATE_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+
+
+def resolve_template_image_path(template_id: str) -> Path | None:
+    """The shared "find this template's source image on disk" lookup —
+    compose_meme() uses it to render, and Growth Phase D's Arc feature
+    (arc/copy.py) uses the same resolution to build a public URL for the
+    "signature template" thumbnail, so both agree on which file backs a
+    given template_id."""
+    for ext in _TEMPLATE_IMAGE_EXTENSIONS:
+        candidate = TEMPLATES_DIR / f"{template_id}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
 _FONT_CANDIDATES = [
     "Anton-Regular.ttf",          # downloaded in Render build / drop in backend/fonts/
     "Impact.ttf", "impact.ttf",
@@ -183,14 +199,7 @@ async def compose_meme(
     Returns a SavedMeme (meme_id, url, path) — path is None when stored on
     R2 rather than local disk.
     """
-    # Resolve template image
-    template_path: Path | None = None
-    for ext in (".jpg", ".jpeg", ".png", ".webp"):
-        candidate = TEMPLATES_DIR / f"{template_id}{ext}"
-        if candidate.exists():
-            template_path = candidate
-            break
-
+    template_path = resolve_template_image_path(template_id)
     if template_path is None:
         raise FileNotFoundError(
             f"No template image found for '{template_id}' in {TEMPLATES_DIR}"

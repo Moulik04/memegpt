@@ -105,6 +105,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Growth Phase D — Arc's "signature template" stat shows the actual template
+# thumbnail, which requires the raw catalog images (backend/templates/) to be
+# publicly reachable; nothing served them before this (only a curated subset
+# gets copied into frontend/public/landing/ at build time, and that doesn't
+# cover the ~118-template catalog Arc's top-template stat can land on).
+# Registered BEFORE the general /static mount below — Starlette matches Mounts
+# by path prefix in registration order and doesn't fall through past a
+# matching one, so the more specific prefix must come first or every
+# /static/templates/* request would be swallowed (and 404'd) by /static.
+app.mount("/static/templates", StaticFiles(directory="templates"), name="template_images")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
