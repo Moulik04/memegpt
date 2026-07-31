@@ -62,6 +62,39 @@ text-only messages. The photo itself is never stored, published, or used to
 train anything — only the resulting meme (the same rendered PNG you see in
 the chat) is kept, exactly like every other meme this app generates.
 
+## Anonymous memory and Forget me
+
+Separately from the upload pipeline above, MemeGPT keeps a small amount of
+memory tied to a random id your browser generates for itself — no signup,
+no email, no account.
+
+- **No-signup identity.** The first time you use MemeGPT, your browser
+  generates a random id and saves it in `localStorage` on your device.
+  It's sent along with your chat/image/feedback requests as a header so
+  the app can recognize repeat visits from the same browser. It's never
+  tied to your name, email, or any other identifying information.
+- **Template memory.** MemeGPT remembers which meme templates it's picked
+  for you recently — across sessions, not just within one conversation —
+  so it's less likely to repeat itself.
+- **Humor profile.** If you consistently 👍 or 👎 certain templates, MemeGPT
+  picks up on that as a light preference signal. It's never a hard rule,
+  just a nudge.
+- **Lore lexicon — strictly opt-in, off by default.** Lore's composer has a
+  "Remember this group's lore" toggle. When it's on, MemeGPT extracts short
+  recurring names, nicknames, and running jokes from what you paste — never
+  the raw text itself — so future memes can make callbacks. Turning it off
+  just means nothing new gets extracted; anything already remembered stays
+  until you erase it.
+- **Forget me.** A "Forget me" link is available from the header on both
+  Chat and Lore. It permanently deletes every row tied to your anon id —
+  generated memes' association with you, your feedback history, and any
+  saved lore — and clears the id from your device, so the next request
+  starts completely fresh.
+
+None of this applies if `DATABASE_URL` isn't configured on the server
+(e.g. local dev without Postgres) — the app works identically, just without
+memory across visits.
+
 ## For developers
 
 - `backend/uploads/safe_ingest.py` — the choke-point described above.
@@ -71,6 +104,10 @@ the chat) is kept, exactly like every other meme this app generates.
 - `backend/nlp/vision.py` — the vision description call (Groq primary,
   optional Anthropic fallback).
 - `POST /chat/image/` — the endpoint (see `backend/routers/chat.py`).
+- `backend/identity.py` — reads the `X-MemeGPT-User` header (Growth Phase C).
+- `backend/nlp/lexicon.py` — the opt-in Lore lexicon extraction call.
+- `backend/routers/me.py` — `DELETE /me/`, the Forget-me endpoint.
+- `frontend/src/lib/identity.ts` — generates/persists the anon id client-side.
 
 Configuration lives in `backend/config.py` / `.env.example` — see
 `MAX_IMAGE_BYTES`, `MAX_IMAGE_DIMENSION_PX`, `MODERATION_MODEL`,
