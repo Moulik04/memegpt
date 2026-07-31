@@ -87,6 +87,17 @@ boundary, ask me for exactly the credentials that phase needs — not all upfron
 
 ## Phase D — Meme Wrapped
 
+**Done, reimagined as "Arc" (2026-07-31).** The project owner renamed and
+redesigned this phase on delivery — not "Wrapped"/"Recap," a GenZ-native
+roast-flavored recap scored in "aura," designed almost entirely in Artifacts
+across two review rounds before being ported to code. It also required a real
+Chat/Lore backend endpoint split (landed first) to make the "Chat vs Lore
+split" stat below derivable at all — previously not distinguishable from
+existing data. Full design and implementation notes in `CLAUDE.md`'s "Growth
+Phase D" section. The three items below are the original spec, kept for
+history; see CLAUDE.md for what was actually built (aura scoring/tiers, a
+roast-copy engine with full-catalog fallback coverage, `/arc` not `/wrapped`).
+
 1. Stats endpoint keyed by the anon id (total memes, top 3 templates, busiest day,
    Chat vs Lore split, longest streak). Private: reachable only with the anon id;
    sharing is an explicit act, never a public listing.
@@ -215,7 +226,7 @@ always available.
 Every generated meme is watermarked; with creds set, memes persist across restarts
 at permanent /m/ URLs that unfurl with og tags; feedback survives restarts and
 re-hydrates ChromaDB; anonymous memory influences template picks and "Forget me"
-works; /wrapped renders with a shareable card; the weekly Action opens a
+works; /arc (Phase D, reimagined) renders an aura-scored recap with a shareable card; the weekly Action opens a
 reviewable PR when Imgflip surfaces a new template; the fine-tune runbook executes
 cleanly up to the training handoff; the Discord command returns a meme through the
 worker path; a GIF template renders under the size cap or is documented as gated.
