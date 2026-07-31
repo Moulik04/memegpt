@@ -1,9 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { forgetMe } from "@/lib/api";
+import { forgetAnonId } from "@/lib/identity";
 
 interface Props {
   active: "chat" | "lore";
+}
+
+async function handleForgetMe() {
+  if (!window.confirm("Forget your MemeGPT identity and history? This can't be undone.")) {
+    return;
+  }
+  await forgetMe().catch(() => {});
+  forgetAnonId();
+  window.location.reload();
 }
 
 /**
@@ -27,28 +38,38 @@ export function ModeTabs({ active }: Props) {
             : "Drop the lore. Get the highlight reel."}
         </p>
       </Link>
-      <nav className="flex items-center gap-1 bg-[#13131e] border border-gray-800 rounded-full p-1">
-        <Link
-          href="/chat"
-          className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
-            active === "chat"
-              ? "bg-brand-600 text-white"
-              : "text-gray-500 hover:text-gray-300"
-          }`}
+      <div className="flex items-center gap-3">
+        <nav className="flex items-center gap-1 bg-[#13131e] border border-gray-800 rounded-full p-1">
+          <Link
+            href="/chat"
+            className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
+              active === "chat"
+                ? "bg-brand-600 text-white"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            Chat
+          </Link>
+          <Link
+            href="/lore"
+            className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
+              active === "lore"
+                ? "bg-brand-600 text-white"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            Lore
+          </Link>
+        </nav>
+        <button
+          type="button"
+          onClick={handleForgetMe}
+          title="Erase your MemeGPT identity, memory, and history from this device"
+          className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
         >
-          Chat
-        </Link>
-        <Link
-          href="/lore"
-          className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
-            active === "lore"
-              ? "bg-brand-600 text-white"
-              : "text-gray-500 hover:text-gray-300"
-          }`}
-        >
-          Lore
-        </Link>
-      </nav>
+          Forget me
+        </button>
+      </div>
     </header>
   );
 }

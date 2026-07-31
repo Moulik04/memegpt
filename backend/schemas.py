@@ -126,6 +126,14 @@ class LexiconExtractionResponse(BaseModel):
     terms: list[str]
 
 
+class ForgetMeResponse(BaseModel):
+    """DELETE /me/'s response — same shape/precedent as FeedbackResponse.
+    Always "ok", whether there was data to erase or not (a no-op absence is
+    not an error, matching every other db.py function's contract)."""
+
+    status: str
+
+
 # ---------------------------------------------------------------------------
 # Generation layer
 # ---------------------------------------------------------------------------

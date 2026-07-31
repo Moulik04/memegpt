@@ -266,3 +266,31 @@ async def fetch_personalization(anon_user_id: str | None) -> PersonalizationCont
     )
     loved, hated = humor if humor is not None else ([], [])
     return PersonalizationContext(anon_user_id, recent, loved, hated, lexicon)
+
+
+async def delete_anon_user_data(anon_user_id: str) -> None:
+    """"Forget me" — erases every row tied to this anon id. No-ops if
+    Postgres is absent, same as every other function here.
+
+    Runs inside one transaction: partial deletion would be worse than an
+    all-or-nothing failure for a user-initiated erase request. feedback
+    must be deleted before memes — feedback.meme_id REFERENCES memes(id)
+    with no ON DELETE clause (defaults to RESTRICT), so deleting a
+    referenced memes row first would fail with a FK violation. The OR
+    clause below covers both feedback rows this user posted directly AND
+    feedback (from anyone) attached to a meme this user generated."""
+    pool = await get_pool()
+    if pool is None:
+        return
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                DELETE FROM feedback
+                WHERE anon_user_id = $1
+                   OR meme_id IN (SELECT id FROM memes WHERE anon_user_id = $1)
+                """,
+                anon_user_id,
+            )
+            await conn.execute("DELETE FROM memes WHERE anon_user_id = $1", anon_user_id)
+            await conn.execute("DELETE FROM lore_lexicon WHERE anon_user_id = $1", anon_user_id)
