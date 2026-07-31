@@ -18,7 +18,7 @@ from schemas import ForgetMeResponse
 router = APIRouter()
 
 
-@router.delete("/", response_model=ForgetMeResponse)
+@router.delete("", response_model=ForgetMeResponse)  # "" not "/" — see api.ts's forgetMe() for why
 @limiter.limit("5/minute")
 async def forget_me(request: Request) -> ForgetMeResponse:
     anon_user_id = get_anon_user_id(request)

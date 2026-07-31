@@ -1,12 +1,24 @@
 """
-GET /arc/       — this anon user's personal meme stats + roast copy (Growth Phase D).
+GET /arc        — this anon user's personal meme stats + roast copy (Growth Phase D).
 POST /arc/card  — renders + persists a shareable Arc card, returns its /m/{id}.
 
 Both private by construction: only reachable with the caller's own
-X-MemeGPT-User header, no listing endpoint exists anywhere. GET /arc/ never
+X-MemeGPT-User header, no listing endpoint exists anywhere. GET /arc never
 errors on absence (no header, no DATABASE_URL, not enough data yet) — it
 always returns a valid ArcStats with has_enough=False, which the frontend
 renders as the empty state rather than an error.
+
+The GET route is registered at "" (giving the exact path "/arc", not
+"/arc/") — found empirically while verifying the frontend end-to-end:
+Next.js's next.config.js /api/:path* rewrite normalizes away trailing
+slashes on every request BEFORE rewriting (its trailingSlash default is
+false, applied globally, not just to page routes), so a bare-root endpoint
+registered the "natural" way (prefix + "/") never actually receives a
+request with the trailing slash intact — the client's request bounces
+through a 308 (Next) then a 307 (FastAPI's own redirect_slashes trying to
+restore the slash) before finally landing, two avoidable hops. Registering
+at "" instead matches what actually arrives. /arc/card is unaffected —
+it's not a bare path, so Next's normalizer never touches it.
 """
 
 from fastapi import APIRouter, HTTPException, Request
@@ -29,7 +41,7 @@ async def _stats_for(request: Request, tz: str) -> ArcStats:
     return build_arc_stats(raw, tz=tz)
 
 
-@router.get("/", response_model=ArcStats)
+@router.get("", response_model=ArcStats)
 @limiter.limit("30/minute")
 async def get_arc(request: Request, tz: str = "UTC") -> ArcStats:
     return await _stats_for(request, tz)

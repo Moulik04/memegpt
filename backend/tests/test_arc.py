@@ -1,6 +1,6 @@
 """
 Growth Phase D — Arc. Pure-logic tests for streak/aura/tier computation
-(no DB needed), plus GET /arc/ and POST /arc/card's graceful-absence
+(no DB needed), plus GET /arc and POST /arc/card's graceful-absence
 behavior with no DATABASE_URL configured (the default test environment).
 """
 
@@ -113,13 +113,13 @@ async def _get(path: str, **kwargs):
 
 
 async def test_get_arc_with_no_anon_header_is_empty_state():
-    resp = await _get("/arc/")
+    resp = await _get("/arc")
     assert resp.status_code == 200
     assert resp.json()["has_enough"] is False
 
 
 async def test_get_arc_with_anon_header_but_no_database_url_is_empty_state():
-    resp = await _get("/arc/", headers={"X-MemeGPT-User": "test-anon-id"})
+    resp = await _get("/arc", headers={"X-MemeGPT-User": "test-anon-id"})
     assert resp.status_code == 200
     assert resp.json()["has_enough"] is False
 

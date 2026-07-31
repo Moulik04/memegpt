@@ -1,4 +1,6 @@
 import type {
+  ArcCardResponse,
+  ArcStats,
   ExplainResponse,
   FeedbackRequest,
   ImageChatOptions,
@@ -147,11 +149,15 @@ export async function postFeedback(req: FeedbackRequest): Promise<void> {
 }
 
 // Growth Phase C — erases every row tied to this browser's anon id. No
-// hand-written /api/me/ route exists (or is needed): next.config.js's
+// hand-written /api/me route exists (or is needed): next.config.js's
 // generic /api/:path* rewrite forwards headers/method transparently, unlike
-// the hand-rolled /api/chat/ and /api/feedback/ routes above.
+// the hand-rolled /api/chat/ and /api/feedback/ routes above. No trailing
+// slash — Next normalizes one away before the rewrite even runs (found
+// while verifying Arc's endpoint end-to-end; matches backend/routers/me.py
+// being registered at "" for the same reason), so requesting it directly
+// skips two avoidable redirect hops.
 export async function forgetMe(): Promise<void> {
-  await fetch(`${BASE}/me/`, {
+  await fetch(`${BASE}/me`, {
     method: "DELETE",
     headers: { [ANON_HEADER]: getOrCreateAnonId() },
   });
@@ -173,4 +179,33 @@ export async function explainMeme(
 export function memeImageUrl(relativeUrl: string): string {
   const base = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
   return `${base}${relativeUrl}`;
+}
+
+// Growth Phase D — Arc. Both ride next.config.js's generic /api/:path*
+// rewrite (which forwards headers transparently) rather than a hand-written
+// proxy route — same precedent as /me, no SSE involved here to force one.
+// getArc has no trailing slash before the query string, same reasoning as
+// forgetMe() above — matches backend/routers/arc.py's GET route being
+// registered at "".
+export async function getArc(tz: string): Promise<ArcStats> {
+  const res = await fetch(`${BASE}/arc?tz=${encodeURIComponent(tz)}`, {
+    headers: { [ANON_HEADER]: getOrCreateAnonId() },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+  }
+  return res.json() as Promise<ArcStats>;
+}
+
+export async function createArcCard(tz: string): Promise<ArcCardResponse> {
+  const res = await fetch(`${BASE}/arc/card?tz=${encodeURIComponent(tz)}`, {
+    method: "POST",
+    headers: { [ANON_HEADER]: getOrCreateAnonId() },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+  }
+  return res.json() as Promise<ArcCardResponse>;
 }

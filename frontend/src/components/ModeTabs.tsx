@@ -5,7 +5,7 @@ import { forgetMe } from "@/lib/api";
 import { forgetAnonId } from "@/lib/identity";
 
 interface Props {
-  active: "chat" | "lore";
+  active: "chat" | "lore" | "arc";
 }
 
 async function handleForgetMe() {
@@ -35,7 +35,9 @@ export function ModeTabs({ active }: Props) {
         <p className="text-[11px] text-gray-600 mt-0.5">
           {active === "chat"
             ? "Talk to it like any chatbot. It only speaks meme."
-            : "Drop the lore. Get the highlight reel."}
+            : active === "lore"
+            ? "Drop the lore. Get the highlight reel."
+            : "Your meme era, scored in aura."}
         </p>
       </Link>
       <div className="flex items-center gap-3">
@@ -59,6 +61,16 @@ export function ModeTabs({ active }: Props) {
             }`}
           >
             Lore
+          </Link>
+          <Link
+            href="/arc"
+            className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
+              active === "arc"
+                ? "bg-brand-600 text-white"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            Arc
           </Link>
         </nav>
         <button

@@ -113,3 +113,36 @@ export interface ImageChatOptions {
   memeCount?: number;
   rememberLore?: boolean;
 }
+
+// Growth Phase D — Arc. Mirrors backend/schemas.py's ArcTemplate/ArcStats.
+export interface ArcTemplate {
+  template_id: string;
+  display_name: string;
+  count: number;
+  roast: string;
+  image_url: string | null;
+}
+
+export interface ArcStats {
+  has_enough: boolean;
+  total_memes: number;
+  date_span_start: string | null;
+  date_span_end: string | null;
+  period_label: string | null;
+  aura: number;
+  tier: string | null;
+  top_templates: ArcTemplate[];
+  busiest_date: string | null;
+  busiest_time_label: string | null;
+  hour_roast: string | null;
+  chat_count: number;
+  lore_count: number;
+  split_roast: string | null;
+  longest_streak_days: number;
+  verdict: string | null;
+}
+
+export interface ArcCardResponse {
+  meme_id: string;
+  url: string;
+}
