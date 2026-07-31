@@ -1,0 +1,241 @@
+/* Coming-soon page — dark purple/pink/cyan glow theme, floating meme
+   lanes, and a color-wave running through the headline text. Custom CSS
+   Module (not Tailwind utilities) because the animations here — the
+   text-as-window wave effect, the lane-drift keyframes, the multi-stop
+   glow gradients — don't map cleanly onto utility classes and are
+   page-specific, not shared. */
+
+.stage {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #050308;
+  color: #f7f5fa;
+}
+
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(110px);
+  pointer-events: none;
+}
+.blob1 {
+  width: 460px;
+  height: 460px;
+  top: -160px;
+  left: -160px;
+  background: color-mix(in srgb, #9333ea 55%, transparent);
+  animation: drift1 20s ease-in-out infinite;
+}
+.blob2 {
+  width: 420px;
+  height: 420px;
+  top: 30%;
+  right: -180px;
+  background: color-mix(in srgb, #db2777 40%, transparent);
+  animation: drift2 24s ease-in-out infinite;
+}
+.blob3 {
+  width: 380px;
+  height: 380px;
+  bottom: -140px;
+  left: 30%;
+  background: color-mix(in srgb, #9333ea 35%, transparent);
+  animation: drift3 22s ease-in-out infinite;
+}
+.blob4 {
+  width: 320px;
+  height: 320px;
+  top: 55%;
+  left: 8%;
+  background: color-mix(in srgb, #22d3ee 26%, transparent);
+  animation: drift4 26s ease-in-out infinite;
+}
+@keyframes drift1 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(50px, 40px); }
+}
+@keyframes drift2 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-40px, 50px); }
+}
+@keyframes drift3 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(40px, -30px); }
+}
+@keyframes drift4 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-30px, -40px); }
+}
+
+.sky {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.lane {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  display: flex;
+  will-change: transform;
+}
+.laneRight { animation-name: flyRight; animation-timing-function: linear; animation-iteration-count: infinite; }
+.laneLeft { animation-name: flyLeft; animation-timing-function: linear; animation-iteration-count: infinite; }
+@keyframes flyRight {
+  from { transform: translateX(-40vw); }
+  to { transform: translateX(140vw); }
+}
+@keyframes flyLeft {
+  from { transform: translateX(140vw); }
+  to { transform: translateX(-40vw); }
+}
+
+.memeCard {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px var(--edge-color, rgba(255, 255, 255, 0.1)),
+    0 0 22px -2px var(--edge-color, transparent);
+}
+.memeCard img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.memeCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), transparent 45%);
+  pointer-events: none;
+}
+
+.content {
+  position: relative;
+  z-index: 5;
+  max-width: 640px;
+  padding: 0 28px;
+  text-align: center;
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(247, 245, 250, 0.06);
+  border: 1px solid rgba(232, 121, 249, 0.35);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a89db8;
+  margin-bottom: 28px;
+  backdrop-filter: blur(6px);
+}
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e879f9;
+  box-shadow: 0 0 8px #e879f9;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.headline {
+  position: relative;
+  font-size: clamp(2.1rem, 5.4vw, 3.6rem);
+  font-weight: 900;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  margin: 0 0 18px;
+  text-wrap: balance;
+  /* the letters never move — this gradient slides underneath them via
+     background-position, and background-clip:text turns the letter
+     shapes into a window onto that motion, like a wave passing behind
+     a stencil rather than the text itself animating. Many alternating
+     cyan/magenta bands so a full sweep reads as a continuous ripple
+     rather than "color A, color B, repeat." */
+  background: linear-gradient(
+    100deg,
+    #ffffff 0%, #ffffff 4%,
+    #22d3ee 8%,
+    #ffffff 12%, #ffffff 16%,
+    #e879f9 20%,
+    #ffffff 24%, #ffffff 28%,
+    #22d3ee 32%,
+    #ffffff 36%, #ffffff 40%,
+    #e879f9 44%,
+    #ffffff 48%, #ffffff 52%,
+    #22d3ee 56%,
+    #ffffff 60%, #ffffff 64%,
+    #e879f9 68%,
+    #ffffff 72%, #ffffff 76%,
+    #22d3ee 80%,
+    #ffffff 84%, #ffffff 88%,
+    #e879f9 92%,
+    #ffffff 96%, #ffffff 100%
+  );
+  background-size: 480% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 26px rgba(232, 121, 249, 0.25));
+  min-height: 2.2em;
+  animation: textWave 24s linear infinite;
+  transition: opacity 0.4s ease;
+}
+@keyframes textWave {
+  0% { background-position: 0% 50%; }
+  100% { background-position: -380% 50%; }
+}
+
+.sub {
+  font-size: 1.05rem;
+  line-height: 1.55;
+  color: #a89db8;
+  margin: 0 auto 30px;
+  max-width: 46ch;
+  min-height: 3.3em;
+  transition: opacity 0.4s ease;
+}
+
+.fade { opacity: 0; }
+
+.variantDots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.variantDots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(247, 245, 250, 0.18);
+  transition: background 0.3s ease, transform 0.3s ease;
+  display: inline-block;
+}
+.variantDots span.on {
+  background: #e879f9;
+  transform: scale(1.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lane, .blob1, .blob2, .blob3, .blob4, .statusDot, .headline {
+    animation: none !important;
+  }
+}
