@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import date, datetime, timezone
 from typing import Any
 
 from db.pool import get_pool
@@ -110,16 +110,23 @@ async def fetch_few_shot_examples() -> list[dict[str, Any]]:
 async def fetch_meme(meme_id: str) -> dict[str, Any] | None:
     """Used by GET /memes/{id} (share pages). None when Postgres is absent
     or the id doesn't exist — the caller 404s either way, since there's
-    nothing durable to serve without Postgres."""
+    nothing durable to serve without Postgres. `mode` (Growth Phase D) lets
+    the share-page router give Arc cards their own title instead of the
+    generic meme one."""
     pool = await get_pool()
     if pool is None:
         return None
     row = await pool.fetchrow(
-        "SELECT id, url, template_id FROM memes WHERE id = $1", meme_id
+        "SELECT id, url, template_id, mode FROM memes WHERE id = $1", meme_id
     )
     if row is None:
         return None
-    return {"id": row["id"], "url": row["url"], "template_id": row["template_id"]}
+    return {
+        "id": row["id"],
+        "url": row["url"],
+        "template_id": row["template_id"],
+        "mode": row["mode"],
+    }
 
 
 # --- Growth Phase C — anonymous identity + memory v1 ---
@@ -295,3 +302,126 @@ async def delete_anon_user_data(anon_user_id: str) -> None:
             )
             await conn.execute("DELETE FROM memes WHERE anon_user_id = $1", anon_user_id)
             await conn.execute("DELETE FROM lore_lexicon WHERE anon_user_id = $1", anon_user_id)
+
+
+# --- Growth Phase D — Arc (personal meme stats) ---
+#
+# Every query below excludes mode IN ('wrapped', 'arc') — a shared Arc card
+# is itself a row in `memes`, and must never inflate the stats of the
+# person it's shared with, or its own owner's next Arc. Written as a static
+# literal (not interpolated) in each query string, matching this file's
+# existing style of never building SQL dynamically.
+
+
+@dataclass
+class RawArcStats:
+    """Pure aggregates, no scoring/copy — arc/copy.py turns this into the
+    voiced ArcStats API response. total_memes=0 (with every other field at
+    its default) is a valid, real state (a real anon user with too little
+    data), distinct from `None` (no Postgres pool at all)."""
+    total_memes: int = 0
+    distinct_templates: int = 0
+    chat_count: int = 0
+    lore_count: int = 0
+    top_templates: list[tuple[str, int]] = field(default_factory=list)  # (template_id, count), desc
+    first_date: date | None = None
+    last_date: date | None = None
+    busiest_date: date | None = None
+    busiest_sample_ts: datetime | None = None  # a real created_at from the busiest date
+    longest_streak_days: int = 0
+
+
+def _longest_streak(dates: list[date]) -> int:
+    """Longest run of consecutive calendar days in a (possibly unsorted,
+    possibly duplicated) list of dates. Pure function — no DB, easy to unit
+    test directly."""
+    unique_sorted = sorted(set(dates))
+    if not unique_sorted:
+        return 0
+    longest = current = 1
+    for prev, curr in zip(unique_sorted, unique_sorted[1:]):
+        if (curr - prev).days == 1:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 1
+    return longest
+
+
+async def fetch_raw_arc_stats(anon_user_id: str, tz: str = "UTC") -> RawArcStats | None:
+    """None only when Postgres is absent — the caller (arc/copy.py) treats
+    that identically to "not enough data yet" (both show the empty state),
+    but keeping them distinct here matches every other fetch_* function's
+    contract. `tz` is a bind parameter to `AT TIME ZONE`, never
+    string-interpolated, so this is injection-safe regardless of what a
+    client sends as an IANA zone name."""
+    pool = await get_pool()
+    if pool is None:
+        return None
+
+    totals_row, top_rows, busiest_row, date_rows = await asyncio.gather(
+        pool.fetchrow(
+            """
+            SELECT COUNT(*) AS total,
+                   COUNT(DISTINCT template_id) AS distinct_templates,
+                   COUNT(*) FILTER (WHERE surface = 'chat') AS chat_count,
+                   COUNT(*) FILTER (WHERE surface = 'lore') AS lore_count,
+                   (MIN(created_at) AT TIME ZONE $2)::date AS first_date,
+                   (MAX(created_at) AT TIME ZONE $2)::date AS last_date
+            FROM memes
+            WHERE anon_user_id = $1 AND mode NOT IN ('wrapped', 'arc')
+            """,
+            anon_user_id, tz,
+        ),
+        pool.fetch(
+            """
+            SELECT template_id, COUNT(*) AS cnt
+            FROM memes
+            WHERE anon_user_id = $1 AND mode NOT IN ('wrapped', 'arc') AND template_id IS NOT NULL
+            GROUP BY template_id
+            ORDER BY cnt DESC
+            LIMIT 3
+            """,
+            anon_user_id,
+        ),
+        pool.fetchrow(
+            """
+            SELECT d, cnt, last_ts FROM (
+                SELECT (created_at AT TIME ZONE $2)::date AS d,
+                       COUNT(*) AS cnt,
+                       MAX(created_at) AS last_ts
+                FROM memes
+                WHERE anon_user_id = $1 AND mode NOT IN ('wrapped', 'arc')
+                GROUP BY d
+            ) sub
+            ORDER BY cnt DESC, d DESC
+            LIMIT 1
+            """,
+            anon_user_id, tz,
+        ),
+        pool.fetch(
+            """
+            SELECT DISTINCT (created_at AT TIME ZONE $2)::date AS d
+            FROM memes
+            WHERE anon_user_id = $1 AND mode NOT IN ('wrapped', 'arc')
+            """,
+            anon_user_id, tz,
+        ),
+    )
+
+    total = totals_row["total"] if totals_row else 0
+    if not total:
+        return RawArcStats()
+
+    return RawArcStats(
+        total_memes=total,
+        distinct_templates=totals_row["distinct_templates"],
+        chat_count=totals_row["chat_count"],
+        lore_count=totals_row["lore_count"],
+        top_templates=[(row["template_id"], row["cnt"]) for row in top_rows],
+        first_date=totals_row["first_date"],
+        last_date=totals_row["last_date"],
+        busiest_date=busiest_row["d"] if busiest_row else None,
+        busiest_sample_ts=busiest_row["last_ts"] if busiest_row else None,
+        longest_streak_days=_longest_streak([row["d"] for row in date_rows]),
+    )

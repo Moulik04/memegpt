@@ -109,11 +109,15 @@ async def test_fetch_few_shot_examples_deserializes_texts(monkeypatch):
 
 async def test_fetch_meme_returns_row(monkeypatch):
     fake_pool = FakePool()
-    fake_pool.fetchrow_return = {"id": "abc1234567", "url": "https://example.com/x.png", "template_id": "drake"}
+    fake_pool.fetchrow_return = {
+        "id": "abc1234567", "url": "https://example.com/x.png", "template_id": "drake", "mode": "context",
+    }
     monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
 
     result = await db.fetch_meme("abc1234567")
-    assert result == {"id": "abc1234567", "url": "https://example.com/x.png", "template_id": "drake"}
+    assert result == {
+        "id": "abc1234567", "url": "https://example.com/x.png", "template_id": "drake", "mode": "context",
+    }
 
 
 async def test_fetch_meme_none_when_not_found(monkeypatch):

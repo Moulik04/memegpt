@@ -208,3 +208,51 @@ class SharedMemeResponse(BaseModel):
 
     url: str
     template_name: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Growth Phase D — Arc (personal meme stats)
+# ---------------------------------------------------------------------------
+
+class ArcTemplate(BaseModel):
+    """One entry in ArcStats.top_templates — a template id, how many times
+    it was this user's pick, and its roast (the parenthetical shown next to
+    it, e.g. "(concerning)"), voiced by arc/copy.py."""
+
+    template_id: str
+    display_name: str
+    count: int
+    roast: str
+
+
+class ArcStats(BaseModel):
+    """GET /arc/'s response. has_enough=False means every other field is at
+    its default (0 / None / []) — the frontend shows the empty state rather
+    than treating this as an error. Private by construction: only reachable
+    with the caller's own X-MemeGPT-User header, no listing endpoint."""
+
+    has_enough: bool = False
+    total_memes: int = 0
+    date_span_start: Optional[str] = None  # ISO date, e.g. "2026-06-04"
+    date_span_end: Optional[str] = None
+    period_label: Optional[str] = None  # e.g. "Summer Arc" or "Your Arc"
+    aura: int = 0
+    tier: Optional[str] = None  # e.g. "main character (unwell)"
+    top_templates: list[ArcTemplate] = []
+    busiest_date: Optional[str] = None  # ISO date
+    busiest_time_label: Optional[str] = None  # e.g. "2:14 AM", in the caller's tz
+    hour_roast: Optional[str] = None
+    chat_count: int = 0
+    lore_count: int = 0
+    split_roast: Optional[str] = None
+    longest_streak_days: int = 0
+    verdict: Optional[str] = None  # the closing line, e.g. "Character development: none detected. Arc continues."
+
+
+class ArcCardResponse(BaseModel):
+    """POST /arc/card's response — same shape/precedent as
+    MemeGenerationResponse and FeedbackResponse. url is the rendered share
+    card's public URL; meme_id is what /m/{meme_id} resolves to."""
+
+    meme_id: str
+    url: str

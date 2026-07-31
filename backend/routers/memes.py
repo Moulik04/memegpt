@@ -29,6 +29,15 @@ def _template_display_name(template_id: str | None) -> str | None:
     return template_id.replace("_", " ").title()
 
 
+def _display_title(template_id: str | None, mode: str | None) -> str | None:
+    """Growth Phase D: an Arc share card has no template_id at all, so the
+    generic canvas-mode-reads-as-None fallback above would give it no title —
+    give it its own instead, so a shared Arc card unfurls sensibly."""
+    if mode == "arc":
+        return "My MemeGPT Arc"
+    return _template_display_name(template_id)
+
+
 @router.get("/{meme_id}", response_model=SharedMemeResponse)
 @limiter.limit("30/minute")
 async def get_meme(request: Request, meme_id: str) -> SharedMemeResponse:
@@ -37,5 +46,5 @@ async def get_meme(request: Request, meme_id: str) -> SharedMemeResponse:
         raise HTTPException(status_code=404, detail="Meme not found")
     return SharedMemeResponse(
         url=meme["url"],
-        template_name=_template_display_name(meme["template_id"]),
+        template_name=_display_title(meme["template_id"], meme.get("mode")),
     )
