@@ -24,6 +24,9 @@ boundary, ask me for exactly the credentials that phase needs — not all upfron
 - Phase F: I run the Colab training myself — you stop at the handoff.
 - Phase G: Discord application creds (`DISCORD_PUBLIC_KEY`, `DISCORD_APP_ID`,
   `DISCORD_BOT_TOKEN`) and a Cloudflare Workers account.
+- Phase H: no new service — Supabase Auth is part of the existing Supabase
+  project. I'll enable the Google/Apple OAuth providers in the Supabase
+  dashboard and hand over the anon/publishable key + auth env vars when we start.
 
 ---
 
@@ -140,6 +143,58 @@ boundary, ask me for exactly the credentials that phase needs — not all upfron
    USE_WHENs; if per-meme render time on the deployed box exceeds ~10s, gate GIFs
    behind a feasibility note instead of shipping slow.
 
+## Phase H — Optional accounts + chat history (Memory v2)
+
+Added 2026-07-31 at the project owner's request — NOT part of the original
+A–G spec. Its only hard dependency is Phase C (anonymous memory, done), plus
+Phase B (Postgres). Listed last per "add it at the end," but it does NOT
+depend on D–G and can be pulled forward if desired. This is the one phase
+that deliberately softens Phase C's "no signup, nothing stored" stance —
+signing in is opt-in, and the whole point of chat history is to store
+conversations, so the privacy model shifts for authenticated users ONLY.
+Anonymous use stays exactly as Phase C shipped it — unchanged, default,
+always available.
+
+1. **Optional auth (Supabase Auth — already in the stack, no new service).**
+   Reuse the same Supabase project Phase B's `DATABASE_URL` already points at;
+   its Auth product is free-tier and supports email/password + Google + Apple
+   OAuth. A "Sign in" affordance on the landing page and in the app header, with
+   email, Google, and Apple as the three providers. Signing in is NEVER required
+   — the Phase C anonymous flow stays the default and fully functional.
+   Feature-flagged: with the Supabase Auth env vars unset, the sign-in UI hides
+   and the app is exactly today's anonymous-only app.
+2. **Anonymous → account memory migration.** On first sign-in, attach the
+   browser's existing `anon_user_id` data (memes, feedback, humor profile,
+   lexicon — all already keyed by `anon_user_id` after Phase C) to the new
+   account's stable user id, so built-up memory carries over instead of
+   resetting to zero. A nullable `user_id` column on the Phase B/C tables,
+   backfilled from `anon_user_id` at migration time; `anon_user_id` stays the
+   fallback key for not-signed-in use. Phase C's "Forget me" still serves
+   anonymous users; signed-in users get an account-level "delete everything"
+   plus per-chat deletion (below).
+3. **Persisted chat history + left sidebar (signed-in only).** A `conversations`
+   table (id, user_id, title, created_at) and a `messages` table
+   (conversation_id, role, content, meme_id, created_at). A left sidebar lists
+   previous chats (auto-titled + timestamp), newest first, like every mainstream
+   generative-AI app — click to reopen a past conversation with its full
+   context, plus a "new chat" action. **This is the deliberate privacy
+   departure: authenticated chat CONTENT (the user's own text messages, not just
+   meme ids) is stored, because a revisitable history is impossible without it.**
+   This amends the "never store situation text" non-negotiable below for
+   signed-in users specifically — disclose it plainly in the sign-in flow and
+   privacy copy. Anonymous users store nothing new (unchanged); signed-in users
+   knowingly trade the no-store guarantee for a persistent, revisitable history.
+4. **Per-chat delete = forget that chat's context.** Deleting a conversation from
+   the sidebar removes it AND everything derived from it — its stored messages,
+   its contribution to the humor profile and cross-session `avoid_templates`, and
+   any lexicon terms extracted from it. "Delete this chat" means "forget this
+   ever happened," not "hide it from the list." Requires attributing lexicon
+   terms / feedback to a source `conversation_id` so a targeted delete can unwind
+   them — a schema refinement over Phase C's user-level-only attribution.
+5. Everything degrades cleanly when auth isn't configured: no sidebar, no
+   sign-in, pure Phase C anonymous behavior — same "feature-flagged with graceful
+   absence" contract as every other phase.
+
 ---
 
 ## Non-negotiables (all phases)
@@ -148,6 +203,8 @@ boundary, ask me for exactly the credentials that phase needs — not all upfron
   category-never-echoed invariant unchanged.
 - Never store or log raw dump text, captions from dumps, or situation text; the
   lexicon is the only derived-from-dump artifact and it is opt-in + deletable.
+  (Phase H amends this for AUTHENTICATED users only: signing in opts into a
+  stored, revisitable chat history. Anonymous users are unaffected.)
 - Unguessable ids everywhere; no listing/enumeration endpoints; rate limits on
   every new public endpoint (share intake precedent).
 - App boots and tests pass with zero new env vars. One phase per commit set.
@@ -162,3 +219,7 @@ works; /wrapped renders with a shareable card; the weekly Action opens a
 reviewable PR when Imgflip surfaces a new template; the fine-tune runbook executes
 cleanly up to the training handoff; the Discord command returns a meme through the
 worker path; a GIF template renders under the size cap or is documented as gated.
+Phase H (if built): optional sign-in links anonymous memory to a real account,
+signed-in users get a revisitable chat-history sidebar, deleting a chat forgets
+its context, and everything still degrades to the anonymous Phase C app when auth
+is unconfigured.
