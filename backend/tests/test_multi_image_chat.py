@@ -46,7 +46,7 @@ async def _fake_describe_image(image, user_text=None):
     return VisionDescription(situation="a fake photo description")
 
 
-async def _fake_parse_intent(user_message: str, avoid_templates=None) -> IntentResponse:
+async def _fake_parse_intent(user_message: str, avoid_templates=None, loved_templates=None, hated_templates=None) -> IntentResponse:
     return IntentResponse(
         template_id="hide_the_pain_harold",
         texts={"public_face": "everything is fine", "inner_reality": user_message[:50]},

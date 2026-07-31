@@ -95,7 +95,7 @@ def _sse(event: dict) -> str:
 async def _stream_chat_turn(
     user_message: str,
     conversation_id: str,
-    anon_user_id: str | None = None,
+    ctx: db.PersonalizationContext | None = None,
     index: int = 0,
     total: int = 1,
 ) -> AsyncGenerator[dict, None]:
@@ -106,7 +106,13 @@ async def _stream_chat_turn(
     constructor repeating it. `content` on the reply carries the situation
     text itself (previously always ""), which the frontend uses to key
     per-meme feedback correctly when several memes in one batch share a
-    single preceding user bubble."""
+    single preceding user bubble.
+
+    ctx (Growth Phase C, optional): this request's anon-user personalization
+    bundle, fetched ONCE per batch by the caller since it doesn't change
+    turn-to-turn (unlike the in-memory recent-templates lookup below, which
+    does). None when there's no anon id — every field on it is then treated
+    as empty."""
     yield {
         "type": "thinking",
         "stage": "analyzing",
@@ -115,11 +121,21 @@ async def _stream_chat_turn(
         "message": "Reading your vibe...",
     }
 
-    # Retrieve recent templates from this conversation to avoid repeats
+    # In-memory, per-conversation half of avoid_templates (updates turn-to-
+    # turn within this batch) merged with the cross-session, DB-backed half
+    # (fetched once for the whole batch) — in-memory first since it's the
+    # freshest signal, deduped preserving order.
     recent = get_recent_templates(conversation_id, n=5)
+    cross_session = ctx.avoid_templates if ctx else []
+    avoid = list(dict.fromkeys(recent + cross_session))[:5]
 
     try:
-        intent = await parse_intent(user_message, avoid_templates=recent)
+        intent = await parse_intent(
+            user_message,
+            avoid_templates=avoid,
+            loved_templates=ctx.loved_templates if ctx else None,
+            hated_templates=ctx.hated_templates if ctx else None,
+        )
     except Exception as exc:
         yield {"type": "error", "index": index, "total": total, "message": str(exc)}
         return
@@ -156,7 +172,7 @@ async def _stream_chat_turn(
         url=saved.url,
         template_id=intent.template_id,
         mode="context",
-        anon_user_id=anon_user_id,
+        anon_user_id=ctx.anon_user_id if ctx else None,
     )
 
     reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
@@ -170,7 +186,9 @@ async def _stream_chat_turn(
 
 
 async def _stream_batch(
-    situations: list[str], conversation_id: str, anon_user_id: str | None = None
+    situations: list[str],
+    conversation_id: str,
+    ctx: db.PersonalizationContext | None = None,
 ) -> AsyncGenerator[str, None]:
     """Runs each situation through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
@@ -189,7 +207,7 @@ async def _stream_batch(
     succeeded = 0
     for i, situation in enumerate(situations):
         async for event in _stream_chat_turn(
-            situation, conversation_id, anon_user_id, index=i, total=total
+            situation, conversation_id, ctx, index=i, total=total
         ):
             if event.get("type") == "done":
                 succeeded += 1
@@ -310,10 +328,11 @@ async def chat(request: Request, body: ChatRequest):
     this is one situation or several.
     """
     anon_user_id = get_anon_user_id(request)
+    ctx = await db.fetch_personalization(anon_user_id)
     conversation_id = body.conversation_id or ""
     message = _clamp_dump_text(body.message) or ""
     contexts = await resolve_contexts(message, None, body.meme_count)
-    return _sse_response(_stream_batch(contexts, conversation_id, anon_user_id))
+    return _sse_response(_stream_batch(contexts, conversation_id, ctx))
 
 
 @router.post("/image/")
@@ -350,6 +369,7 @@ async def chat_with_image(
     for both modes.
     """
     anon_user_id = get_anon_user_id(request)
+    ctx = await db.fetch_personalization(anon_user_id)
     conv_id = conversation_id or ""
     message = _clamp_dump_text(message)
     if mode not in ("context", "canvas"):
@@ -377,7 +397,7 @@ async def chat_with_image(
             # rather than hard-refusing when the user's words are still usable.
             if message:
                 contexts = await resolve_contexts(message, None, meme_count)
-                async for event in _stream_batch(contexts, conv_id, anon_user_id):
+                async for event in _stream_batch(contexts, conv_id, ctx):
                     yield event
                 return
             # No ModerationRejected made it this far (that check already
@@ -409,7 +429,7 @@ async def chat_with_image(
             return
 
         contexts = await resolve_contexts(message, descriptions, meme_count)
-        async for event in _stream_batch(contexts, conv_id, anon_user_id):
+        async for event in _stream_batch(contexts, conv_id, ctx):
             yield event
 
     return _sse_response(event_stream())
