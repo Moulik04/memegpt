@@ -171,9 +171,9 @@ otherwise.
 Full design notes: `CLAUDE.md`'s "Growth Phase F" section. Training itself is
 the project owner's own next action, whenever they run the Colab session.
 
-## Phase G — Distribution: Discord bot + GIF templates (feasibility-gated) — GIF half DONE, 2026-08-01
+## Phase G — Distribution: Discord bot + GIF templates (feasibility-gated) — DONE, 2026-08-01
 
-1. **Discord slash command** (`/meme <text>`): implement as HTTP interactions, not
+1. ✅ **Discord slash command** (`/meme <text>`): implement as HTTP interactions, not
    a gateway bot — backend endpoint with ed25519 signature verification. Because
    Discord requires a 3-second ack and Render cold-starts in ~30s, ship a tiny
    Cloudflare Worker (code lives in `integrations/discord-worker/`, I deploy it)
@@ -181,11 +181,17 @@ the project owner's own next action, whenever they run the Colab session.
    follow-up with the meme URL (Phase B public URLs make this trivial). Rate-limit
    the endpoint. If the Worker step is skipped, document the limitation and stop —
    do not ship a bot that times out.
-   **DEFERRED** — needs a Discord app (`DISCORD_PUBLIC_KEY`/`DISCORD_APP_ID`/
-   `DISCORD_BOT_TOKEN`) and a Cloudflare Workers account, gathered at this
-   sub-phase's own boundary when the project owner is ready, not before. The
-   project owner explicitly chose to sequence this after GIF templates rather
-   than ship credential-gated, unverifiable-until-then code now.
+   **Shipped once the project owner had a Discord app + Cloudflare account set
+   up.** Real architecture resolution: "ed25519 verification" ended up living
+   entirely in the Cloudflare Worker, not the backend — Discord requires
+   verification on every request it sends directly (including its PING
+   handshake) within 3 seconds, and only the Worker (always-warm edge) can
+   satisfy that; the backend, which can cold-start in ~30s, is never contacted
+   by Discord at all. The backend's `/discord/generate` endpoint is gated by a
+   plain pre-shared secret instead, and never needs a Discord credential.
+   Verified locally end-to-end (real `wrangler dev` + a locally-signed test
+   payload) before any live deploy. Full design in `CLAUDE.md`'s "Growth Phase
+   G" section; exact deploy steps in `docs/DISCORD_SETUP.md`.
 2. ✅ **GIF templates:** support `type: "gif"` catalog entries — per-frame caption
    burn (Pillow frames or ffmpeg, whichever benchmarks acceptably on Render),
    output size cap ~8MB, frame-count cap. Seed 3–5 classic animated templates with
