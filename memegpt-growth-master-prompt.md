@@ -171,7 +171,7 @@ otherwise.
 Full design notes: `CLAUDE.md`'s "Growth Phase F" section. Training itself is
 the project owner's own next action, whenever they run the Colab session.
 
-## Phase G — Distribution: Discord bot + GIF templates (feasibility-gated)
+## Phase G — Distribution: Discord bot + GIF templates (feasibility-gated) — GIF half DONE, 2026-08-01
 
 1. **Discord slash command** (`/meme <text>`): implement as HTTP interactions, not
    a gateway bot — backend endpoint with ed25519 signature verification. Because
@@ -181,11 +181,21 @@ the project owner's own next action, whenever they run the Colab session.
    follow-up with the meme URL (Phase B public URLs make this trivial). Rate-limit
    the endpoint. If the Worker step is skipped, document the limitation and stop —
    do not ship a bot that times out.
-2. **GIF templates:** support `type: "gif"` catalog entries — per-frame caption
+   **DEFERRED** — needs a Discord app (`DISCORD_PUBLIC_KEY`/`DISCORD_APP_ID`/
+   `DISCORD_BOT_TOKEN`) and a Cloudflare Workers account, gathered at this
+   sub-phase's own boundary when the project owner is ready, not before. The
+   project owner explicitly chose to sequence this after GIF templates rather
+   than ship credential-gated, unverifiable-until-then code now.
+2. ✅ **GIF templates:** support `type: "gif"` catalog entries — per-frame caption
    burn (Pillow frames or ffmpeg, whichever benchmarks acceptably on Render),
    output size cap ~8MB, frame-count cap. Seed 3–5 classic animated templates with
    USE_WHENs; if per-meme render time on the deployed box exceeds ~10s, gate GIFs
-   behind a feasibility note instead of shipping slow.
+   behind a feasibility note instead of shipping slow. **Pillow alone benchmarked
+   well under 10s** (real seeded templates: 146ms–1.85s), no ffmpeg needed. Seeded
+   3 real templates (`party_parrot`, `floss_dance`, `spinning_dancer`) from
+   Wikimedia Commons after confirming live that Imgflip's own "gif" API results
+   are actually served as `.mp4`, not usable with Pillow. Full design notes:
+   `CLAUDE.md`'s "Growth Phase G" section.
 
 ## Phase H — Optional accounts + chat history (Memory v2)
 
