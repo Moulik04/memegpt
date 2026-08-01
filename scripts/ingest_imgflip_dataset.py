@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import asyncio
 import csv
 import re
 import sys
@@ -67,7 +68,7 @@ def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def main() -> None:
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest Imgflip 100k dataset into examples store")
     parser.add_argument("csv_path", help="Path to the Imgflip CSV file")
     parser.add_argument("--limit", type=int, default=0, help="Max rows to ingest (0 = all)")
@@ -112,7 +113,7 @@ def main() -> None:
             # The joined captions serve as the synthetic "user message" for retrieval
             user_message = " / ".join(filter(None, [top_text, bottom_text]))
 
-            upsert_example(
+            await upsert_example(
                 user_message=user_message,
                 template_id=template_id,
                 texts={"top_text": top_text, "bottom_text": bottom_text} if bottom_text
@@ -127,4 +128,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
