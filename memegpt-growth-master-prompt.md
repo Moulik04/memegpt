@@ -110,6 +110,25 @@ roast-copy engine with full-catalog fallback coverage, `/arc` not `/wrapped`).
 
 ## Phase E — Trend pipeline (GitHub Actions, human-in-the-loop)
 
+**Code done (2026-07-31); the GitHub Actions secret it needs to actually run
+for real is not yet added.** First `.github/workflows/` file in this repo.
+Full design notes in `CLAUDE.md`'s "Growth Phase E" section — highlights:
+the name-based diff against Imgflip's list is deliberately a cheap,
+imprecise pre-filter (our curated template_ids almost never equal Imgflip's
+own name slug), with the real "is this genuinely new" decision made by a
+perceptual-hash comparison against every existing template image, reusing
+`find_duplicate_templates.py`'s already-validated `dhash()`/`hamming()`
+rather than rewriting them. Verified against real data before being
+committed — a live `--dry-run` run correctly re-identified, by image alone,
+every duplicate pair manually found and removed earlier this project. One
+deliberate deviation from item 1 below: no explicit inter-call pacing/sleep
+was added, unlike `eval_intent_models.py`'s pattern — that lesson was for a
+tight loop of many back-to-back calls, whereas a typical week's candidate
+count here is expected to be 0-5, so `call_groq_vision()`'s existing
+graceful-failure-to-a-placeholder-draft behavior was judged sufficient
+without adding unused complexity; revisit if real usage ever proves
+otherwise.
+
 1. Weekly scheduled workflow: fetch Imgflip's public `get_memes` API (official,
    free — do NOT scrape Know Your Meme or other sites; ToS risk), diff against the
    repo's template set, and for genuinely new candidates: download the image,
