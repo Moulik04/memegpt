@@ -17,7 +17,7 @@ import textwrap
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageSequence
 from PIL.PngImagePlugin import PngInfo
 
 from config import get_settings
@@ -29,7 +29,13 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 FONTS_DIR = BACKEND_ROOT / "fonts"
 TEMPLATES_DIR = BACKEND_ROOT / "templates"
 
-_TEMPLATE_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
+_TEMPLATE_IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+
+# Growth Phase G — GIF templates. Caps keep per-meme render time and output
+# size predictably bounded up front, rather than a post-hoc retry loop.
+_GIF_MAX_FRAMES = 30
+_GIF_MAX_DIMENSION_PX = 480
+_GIF_MAX_OUTPUT_BYTES = 8 * 1024 * 1024  # ~8MB, per the growth spec
 
 
 def resolve_template_image_path(template_id: str) -> Path | None:
@@ -184,6 +190,81 @@ async def _finalize_and_save(img: Image.Image) -> SavedMeme:
     return await save_meme(buf.getvalue(), meme_id=meme_id)
 
 
+def _compose_gif_frames(
+    template_path: Path,
+    texts: dict[str, str],
+    config,
+) -> tuple[list[Image.Image], list[int]]:
+    """Growth Phase G. Opens the source animated GIF, caps frame count and
+    longest-side dimension up front (predictable render time/output size,
+    not a post-hoc retry loop), then reuses _draw_text_in_box/_draw_watermark
+    per frame — identical text-layout and brand-mark logic to the static
+    path, just run once per frame. Returns (frames, durations_ms); durations
+    come from each source frame's own timing so output pacing matches the
+    original instead of a guessed fixed value."""
+    src = Image.open(template_path)
+    frames: list[Image.Image] = []
+    durations: list[int] = []
+
+    for i, frame in enumerate(ImageSequence.Iterator(src)):
+        if i >= _GIF_MAX_FRAMES:
+            break
+        duration = frame.info.get("duration", 100) or 100
+        rgba = frame.convert("RGBA")
+
+        img_w, img_h = rgba.size
+        if max(img_w, img_h) > _GIF_MAX_DIMENSION_PX:
+            scale = _GIF_MAX_DIMENSION_PX / max(img_w, img_h)
+            rgba = rgba.resize((max(1, int(img_w * scale)), max(1, int(img_h * scale))), Image.LANCZOS)
+            img_w, img_h = rgba.size
+
+        draw = ImageDraw.Draw(rgba)
+        for box_cfg in config.text_boxes:
+            text = texts.get(box_cfg.label, "")
+            if not text.strip():
+                continue
+            pixel_box = box_cfg.to_pixels(img_w, img_h)
+            _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
+        _draw_watermark(rgba)
+
+        frames.append(rgba.convert("RGB"))
+        durations.append(duration)
+
+    return frames, durations
+
+
+async def _finalize_and_save_gif(frames: list[Image.Image], durations: list[int]) -> SavedMeme:
+    """GIF counterpart to _finalize_and_save — can't share it directly
+    since PNG's tEXt provenance chunk and single-frame "format=PNG" save
+    have no GIF equivalent. meme_id is embedded as a best-effort GIF
+    comment block (same honesty as the PNG tEXt tag: most platforms strip
+    metadata on re-encode, the visible watermark — already drawn per-frame
+    by _compose_gif_frames — is the durable mark)."""
+    meme_id = generate_meme_id()
+
+    buf = io.BytesIO()
+    frames[0].save(
+        buf,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=durations,
+        loop=0,
+        optimize=True,
+        comment=meme_id.encode("ascii"),
+    )
+    data = buf.getvalue()
+    if len(data) > _GIF_MAX_OUTPUT_BYTES:
+        print(
+            f"[compositor] GIF meme {meme_id} is {len(data) / 1024 / 1024:.1f}MB, "
+            f"over the ~{_GIF_MAX_OUTPUT_BYTES / 1024 / 1024:.0f}MB budget — "
+            "frame/dimension caps should prevent this; investigate the source template.",
+            flush=True,
+        )
+
+    return await save_meme(data, meme_id=meme_id, extension="gif", content_type="image/gif")
+
+
 async def compose_meme(
     template_id: str,
     texts: dict[str, str],
@@ -205,11 +286,15 @@ async def compose_meme(
             f"No template image found for '{template_id}' in {TEMPLATES_DIR}"
         )
 
+    config = get_config(template_id)
+
+    if config.is_gif:
+        frames, durations = _compose_gif_frames(template_path, texts, config)
+        return await _finalize_and_save_gif(frames, durations)
+
     img = Image.open(template_path).convert("RGBA")
     img_w, img_h = img.size
     draw = ImageDraw.Draw(img)
-
-    config = get_config(template_id)
 
     for box_cfg in config.text_boxes:
         text = texts.get(box_cfg.label, "")

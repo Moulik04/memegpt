@@ -47,6 +47,11 @@ class TemplateConfig:
     text_boxes: list[TextBoxConfig]
     # Human-readable description of each box — injected into LLM system prompt
     box_descriptions: dict[str, str] = field(default_factory=dict)
+    # Growth Phase G — animated GIF templates. compositor.py's compose_meme()
+    # branches on this right after resolving the template's source file;
+    # everything else about a gif TemplateConfig (text_boxes, box_descriptions)
+    # works identically to a static one.
+    is_gif: bool = False
 
 
 # ---------------------------------------------------------------------------

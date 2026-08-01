@@ -44,7 +44,7 @@ def _auto_seed_if_empty() -> None:
     print("ChromaDB is empty — auto-seeding templates from disk...", flush=True)
     records = []
     for img in _TEMPLATES_DIR.iterdir():
-        if img.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+        if img.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
             continue
         tid = img.stem
         if tid in existing:
