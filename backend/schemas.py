@@ -261,3 +261,21 @@ class ArcCardResponse(BaseModel):
 
     meme_id: str
     url: str
+
+
+# ---------------------------------------------------------------------------
+# Growth Phase G — Discord /meme slash command
+# ---------------------------------------------------------------------------
+
+class DiscordGenerateRequest(BaseModel):
+    """POST /discord/generate's request — called only by the Cloudflare
+    Worker (routers/discord.py), never by Discord itself. Deliberately
+    minimal: one plain string, no conversation/personalization concept,
+    matching the spec's one-shot /meme <text> framing."""
+
+    text: str
+
+
+class DiscordGenerateResponse(BaseModel):
+    meme_url: str
+    template_id: Optional[str] = None

@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from config import get_settings
 from nlp.intent_router import USE_WHEN
 from rate_limit import limiter
-from routers import arc, chat, explain, feedback, generate, lore, me, memes, share_intake
+from routers import arc, chat, discord, explain, feedback, generate, lore, me, memes, share_intake
 from uploads.retention import periodic_purge_loop
 from vector_db.chroma_client import init_chroma, list_template_ids, upsert_templates_batch
 from vector_db.examples_store import _get_collection as _init_examples, seed_examples
@@ -126,6 +126,7 @@ app.include_router(memes.router, prefix="/memes", tags=["memes"])
 app.include_router(share_intake.router, prefix="/share-intake", tags=["share"])
 app.include_router(me.router, prefix="/me", tags=["me"])
 app.include_router(arc.router, prefix="/arc", tags=["arc"])
+app.include_router(discord.router, prefix="/discord", tags=["discord"])
 
 
 @app.get("/health", tags=["meta"])
