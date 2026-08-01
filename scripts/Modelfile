@@ -1,13 +1,19 @@
 # Ollama Modelfile for the MemeGPT fine-tuned model.
 #
-# After running finetune_unsloth.py and downloading the .gguf file:
-#   1. Place the .gguf file in the memegpt/ root directory
-#   2. Update the FROM line below with the actual filename
-#   3. Run: ollama create memegpt -f scripts/Modelfile
-#   4. Update backend/config.py: ollama_model = "memegpt"
-#   5. Restart uvicorn
+# finetune_unsloth.py prints the real output filename at the end of a run
+# (whatever Unsloth's GGUF export names it — not a fixed name), so this
+# Modelfile standardizes on one fixed filename instead of guessing:
+#
+#   1. Download the .gguf file finetune_unsloth.py produced, rename it to
+#      memegpt.gguf, and place it at this repo's root (same level as this
+#      scripts/ directory) — NOT inside the _gguf/ output subdirectory.
+#   2. Run (from the repo root): ollama create memegpt -f scripts/Modelfile
+#   3. Update backend/config.py: ollama_model = "memegpt"
+#   4. Restart uvicorn
+#
+# Full walkthrough: docs/FINETUNE_RUNBOOK.md
 
-FROM ./memegpt_lora_gguf/model-q4_k_m.gguf
+FROM ./memegpt.gguf
 
 SYSTEM """
 You are MemeGPT. Given a user message, respond ONLY with a valid JSON object
