@@ -495,6 +495,38 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
             "situation": "What dreaded recurring situation is starting again. Do NOT write 'ah shit here we go again' — that line is already baked into the image.",
         },
     ),
+
+    # ── Growth Phase G — GIF templates ───────────────────────────────────────
+    # Classic top/bottom layout (same box shape as DEFAULT_BOXES) — is_gif=True
+    # is what actually routes these through compositor.py's animated path;
+    # relying on the DEFAULT_BOXES fallback wouldn't set that flag.
+    "party_parrot": TemplateConfig(
+        template_id="party_parrot",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=20, font_size_pct=7),
+            TextBoxConfig("bottom_text", x_pct=5, y_pct=78, w_pct=90, h_pct=20, font_size_pct=7),
+        ],
+        box_descriptions=DEFAULT_BOX_DESCRIPTIONS,
+        is_gif=True,
+    ),
+    "floss_dance": TemplateConfig(
+        template_id="floss_dance",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=16, font_size_pct=6),
+            TextBoxConfig("bottom_text", x_pct=5, y_pct=82, w_pct=90, h_pct=16, font_size_pct=6),
+        ],
+        box_descriptions=DEFAULT_BOX_DESCRIPTIONS,
+        is_gif=True,
+    ),
+    "spinning_dancer": TemplateConfig(
+        template_id="spinning_dancer",
+        text_boxes=[
+            TextBoxConfig("top_text",    x_pct=5, y_pct=2,  w_pct=90, h_pct=16, font_size_pct=6),
+            TextBoxConfig("bottom_text", x_pct=5, y_pct=82, w_pct=90, h_pct=16, font_size_pct=6),
+        ],
+        box_descriptions=DEFAULT_BOX_DESCRIPTIONS,
+        is_gif=True,
+    ),
 }
 
 

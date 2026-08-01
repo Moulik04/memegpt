@@ -172,6 +172,11 @@ USE_WHEN: dict[str, str] = {
     "alliswel":         "FORCED POSITIVITY AMID COLLAPSE: 'All is well' — chanting fake reassurance to yourself and others as things visibly fall apart. E.g. insisting the project is 'totally on track' while the deadline quietly implodes.",
     "mogambo_khush":    "VILLAIN SATISFACTION WHEN THE PLAN WORKS: Mogambo's sinister grin — evil satisfaction when your plan succeeds, when karma hits, or when you were right all along. E.g. smiling when the thing you warned everyone about finally happens.",
     "sholay_gabbar":    "MENACING ACCOUNTABILITY DEMAND: Gabbar Singh — 'Kitne aadmi the' — demanding accountability for a failure with real menace. E.g. sternly asking who forgot to run the tests before the broken deploy.",
+
+    # --- Growth Phase G — GIF templates (animated) ---
+    "party_parrot":     "PURE HYPE CELEBRATION: A bobbing rainbow parrot losing its mind with excitement — unbridled, uncomplicated hype with zero nuance. E.g. the whole team losing it when the deploy finally goes green. NOT for a measured single win (success_kid) or an ironic/backhanded celebration (stonks).",
+    "floss_dance":      "GOOFY VICTORY LAP: An exaggerated, silly little dance — showing off or celebrating a small win in a deliberately dorky, over-the-top way. E.g. smugly flossing after fixing a bug nobody else could. NOT for genuine unfiltered hype (party_parrot) or a smug comparison to someone else (drake).",
+    "spinning_dancer":  "SAME THING, OPPOSITE PERCEPTIONS: A silhouette that famously appears to spin either direction depending on who's looking at it. Use when two people staring at the exact same situation walk away with completely different, equally confident readings of it — there's no objectively right side. NOT simple disagreement with a clear right/wrong (woman_yelling_at_cat) or two things that are secretly identical (theyre_the_same_picture).",
 }
 
 
