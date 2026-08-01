@@ -54,15 +54,31 @@ export default {
     const rawBody = await request.text();
 
     if (!signature || !timestamp) {
+      console.log("Rejected: missing signature headers", {
+        hasSignature: !!signature,
+        hasTimestamp: !!timestamp,
+      });
       return new Response("Missing signature headers", { status: 401 });
     }
 
+    // Never logs the key itself (it's not secret, but no reason to print
+    // it) — length + first/last 4 chars is enough to catch a truncated or
+    // whitespace-padded paste into `wrangler secret put`, the most common
+    // real cause of "verified: false" on an otherwise-correct setup.
+    const key = env.DISCORD_PUBLIC_KEY ?? "";
+    console.log("DISCORD_PUBLIC_KEY sanity check", {
+      length: key.length,
+      preview: key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : "(too short)",
+    });
+
     const isValid = await verifyKey(rawBody, signature, timestamp, env.DISCORD_PUBLIC_KEY);
+    console.log("Signature verification result:", isValid);
     if (!isValid) {
       return new Response("Invalid request signature", { status: 401 });
     }
 
     const interaction = JSON.parse(rawBody) as DiscordInteraction;
+    console.log("Interaction type:", interaction.type, interaction.data?.name ?? "(no command name)");
 
     if (interaction.type === InteractionType.PING) {
       // What lets the Discord Developer Portal accept this URL when saved
