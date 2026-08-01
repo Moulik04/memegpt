@@ -1,0 +1,147 @@
+/**
+ * Growth Phase G — the Discord-facing half of the /meme slash command.
+ *
+ * This Worker is what Discord's Interactions Endpoint URL actually points
+ * at (not the backend) — Discord requires ed25519 signature verification
+ * on every request, including its PING handshake, AND a response within
+ * 3 seconds. Render's free tier can cold-start in ~30s, so the backend
+ * structurally cannot be the thing Discord talks to directly. This Worker
+ * runs at Cloudflare's edge (always warm), verifies the signature itself
+ * (the real security boundary for this whole feature), acks within the
+ * 3s deadline with a deferred response, then in the background forwards
+ * the actual text to the backend and PATCHes Discord's follow-up webhook
+ * once a meme URL comes back.
+ *
+ * The backend (backend/routers/discord.py) never talks to Discord's API
+ * and never sees DISCORD_PUBLIC_KEY or an interaction token — its only
+ * auth is DISCORD_WORKER_SHARED_SECRET, a plain internal secret between
+ * this Worker and the backend, unrelated to Discord's own protocol.
+ */
+
+import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
+
+export interface Env {
+  BACKEND_URL: string;
+  DISCORD_PUBLIC_KEY: string;
+  DISCORD_WORKER_SHARED_SECRET: string;
+}
+
+interface DiscordInteractionOption {
+  name: string;
+  value: unknown;
+}
+
+interface DiscordInteraction {
+  type: number;
+  token: string;
+  application_id: string;
+  data?: {
+    name: string;
+    options?: DiscordInteractionOption[];
+  };
+}
+
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (request.method !== "POST") {
+      return new Response("Expected POST", { status: 405 });
+    }
+
+    const signature = request.headers.get("X-Signature-Ed25519");
+    const timestamp = request.headers.get("X-Signature-Timestamp");
+    const rawBody = await request.text();
+
+    if (!signature || !timestamp) {
+      return new Response("Missing signature headers", { status: 401 });
+    }
+
+    const isValid = await verifyKey(rawBody, signature, timestamp, env.DISCORD_PUBLIC_KEY);
+    if (!isValid) {
+      return new Response("Invalid request signature", { status: 401 });
+    }
+
+    const interaction = JSON.parse(rawBody) as DiscordInteraction;
+
+    if (interaction.type === InteractionType.PING) {
+      // What lets the Discord Developer Portal accept this URL when saved
+      // as the Interactions Endpoint URL — it PINGs live before allowing it.
+      return new Response(JSON.stringify({ type: InteractionResponseType.PONG }), {
+        headers: JSON_HEADERS,
+      });
+    }
+
+    if (interaction.type === InteractionType.APPLICATION_COMMAND && interaction.data?.name === "meme") {
+      const textOption = interaction.data.options?.find((opt) => opt.name === "text");
+      const text = typeof textOption?.value === "string" ? textOption.value : "";
+
+      // Runs after this fetch() handler returns the deferred ack below —
+      // Discord's 3s clock is already satisfied at that point, so this can
+      // take however long the backend (including a cold Render instance)
+      // actually needs.
+      ctx.waitUntil(handleMemeCommand(interaction, text, env));
+
+      return new Response(
+        JSON.stringify({ type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE }),
+        { headers: JSON_HEADERS },
+      );
+    }
+
+    return new Response("Unhandled interaction type", { status: 400 });
+  },
+};
+
+async function handleMemeCommand(interaction: DiscordInteraction, text: string, env: Env): Promise<void> {
+  const followupUrl =
+    `https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`;
+
+  if (!text.trim()) {
+    await patchFollowup(followupUrl, {
+      content: "Give me something to turn into a meme — e.g. `/meme waiting for the build to finish`.",
+    });
+    return;
+  }
+
+  try {
+    const backendUrl = env.BACKEND_URL.replace(/\/$/, "");
+    const backendResp = await fetch(`${backendUrl}/discord/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Discord-Worker-Secret": env.DISCORD_WORKER_SHARED_SECRET,
+      },
+      body: JSON.stringify({ text }),
+    });
+
+    if (!backendResp.ok) {
+      await patchFollowup(followupUrl, {
+        content: "Couldn't generate a meme for that one — try again in a bit.",
+      });
+      return;
+    }
+
+    const { meme_url: memeUrl } = (await backendResp.json()) as { meme_url: string; template_id?: string };
+    // Local-disk storage returns a backend-relative path
+    // (/static/generated/<id>.png); R2 storage already returns an absolute
+    // URL. Same normalization frontend/src/lib/api.ts's memeImageUrl()
+    // already does for exactly this reason.
+    const absoluteUrl = memeUrl.startsWith("http") ? memeUrl : `${backendUrl}${memeUrl}`;
+
+    await patchFollowup(followupUrl, {
+      embeds: [{ image: { url: absoluteUrl } }],
+    });
+  } catch {
+    await patchFollowup(followupUrl, {
+      content: "Something went wrong generating that meme.",
+    });
+  }
+}
+
+async function patchFollowup(url: string, body: Record<string, unknown>): Promise<void> {
+  await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}

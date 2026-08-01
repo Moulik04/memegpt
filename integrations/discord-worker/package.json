@@ -1,0 +1,21 @@
+{
+  "name": "memegpt-discord-worker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Growth Phase G — Cloudflare Worker fronting Discord's /meme slash command. Verifies Discord's ed25519 signature, acks within Discord's 3-second deadline with a deferred response, forwards to the MemeGPT backend, and PATCHes the follow-up with the rendered meme.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "discord-interactions": "^4.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.0.0",
+    "@types/express": "^4.17.21",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
+  }
+}

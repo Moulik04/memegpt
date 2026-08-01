@@ -1,0 +1,13 @@
+name = "memegpt-discord-worker"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Non-secret config. BACKEND_URL is the MemeGPT backend's public base URL
+# (Render), no trailing slash — e.g. "https://memegpt-backend.onrender.com".
+[vars]
+BACKEND_URL = "https://memegpt-backend.onrender.com"
+
+# Secrets are NOT set here — never commit them. Set both with:
+#   wrangler secret put DISCORD_PUBLIC_KEY
+#   wrangler secret put DISCORD_WORKER_SHARED_SECRET
+# See ../../docs/DISCORD_SETUP.md for the full walkthrough.
