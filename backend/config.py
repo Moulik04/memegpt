@@ -59,6 +59,25 @@ class Settings(BaseSettings):
     chroma_host: str = ""
     chroma_port: int = 8000
 
+    # Growth Phase G — Discord /meme slash command. Discord's own ed25519
+    # signature verification happens in the Cloudflare Worker (the entity
+    # Discord actually talks to, not this backend — see routers/discord.py's
+    # module docstring for why), so this backend never needs
+    # discord_public_key for verification; it's declared here anyway,
+    # alongside discord_app_id, purely so a developer can keep both in
+    # backend/.env without pydantic-settings' strict extra="forbid"
+    # rejecting the whole Settings object on startup. discord_bot_token is
+    # only ever needed transiently for the one-time slash-command
+    # registration call — also declared here for the same reason.
+    # discord_worker_shared_secret is the only one the backend actually
+    # checks (routers/discord.py) — an internal Worker<->backend secret,
+    # not a Discord credential at all.
+    discord_app_id: str = ""
+    discord_public_key: str = ""
+    discord_bot_token: str = ""
+    discord_worker_shared_secret: str = ""
+    discord_rate_limit: str = "20/minute"
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000

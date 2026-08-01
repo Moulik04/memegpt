@@ -131,22 +131,8 @@ async def _stream_chat_turn(
         "message": "Reading your vibe...",
     }
 
-    # In-memory, per-conversation half of avoid_templates (updates turn-to-
-    # turn within this batch) merged with the cross-session, DB-backed half
-    # (fetched once for the whole batch) — in-memory first since it's the
-    # freshest signal, deduped preserving order.
-    recent = get_recent_templates(conversation_id, n=5)
-    cross_session = ctx.avoid_templates if ctx else []
-    avoid = list(dict.fromkeys(recent + cross_session))[:5]
-
     try:
-        intent = await parse_intent(
-            user_message,
-            avoid_templates=avoid,
-            loved_templates=ctx.loved_templates if ctx else None,
-            hated_templates=ctx.hated_templates if ctx else None,
-            lexicon=ctx.lexicon if ctx else None,
-        )
+        intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx)
     except Exception as exc:
         yield {"type": "error", "index": index, "total": total, "message": str(exc)}
         return
@@ -162,13 +148,56 @@ async def _stream_chat_turn(
     }
 
     try:
-        saved = await compose_meme(
-            template_id=intent.template_id,
-            texts=intent.texts,
-        )
+        response = await _render_and_record_turn(intent, user_message, conversation_id, ctx, surface)
     except FileNotFoundError as exc:
         yield {"type": "error", "index": index, "total": total, "message": f"Template not found: {exc}"}
         return
+
+    yield {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
+
+
+async def _resolve_intent_for_turn(
+    user_message: str,
+    conversation_id: str,
+    ctx: db.PersonalizationContext | None = None,
+):
+    """avoid_templates merge + parse_intent — the first half of a turn,
+    extracted so both the SSE path (_stream_chat_turn) and the plain
+    synchronous path (generate_single_meme, used by routers/discord.py)
+    share it without either duplicating the merge logic."""
+    # In-memory, per-conversation half of avoid_templates (updates turn-to-
+    # turn within this batch) merged with the cross-session, DB-backed half
+    # (fetched once for the whole batch) — in-memory first since it's the
+    # freshest signal, deduped preserving order.
+    recent = get_recent_templates(conversation_id, n=5)
+    cross_session = ctx.avoid_templates if ctx else []
+    avoid = list(dict.fromkeys(recent + cross_session))[:5]
+
+    return await parse_intent(
+        user_message,
+        avoid_templates=avoid,
+        loved_templates=ctx.loved_templates if ctx else None,
+        hated_templates=ctx.hated_templates if ctx else None,
+        lexicon=ctx.lexicon if ctx else None,
+    )
+
+
+async def _render_and_record_turn(
+    intent,
+    user_message: str,
+    conversation_id: str,
+    ctx: db.PersonalizationContext | None = None,
+    surface: str | None = None,
+) -> ChatResponse:
+    """compose_meme -> log_usage/db.insert_meme -> build ChatResponse — the
+    second half of a turn, given an already-resolved IntentResponse. Raises
+    FileNotFoundError on a missing template (the realistic failure mode);
+    _stream_chat_turn catches it into an SSE error event, generate_single_meme
+    lets it propagate to its own caller."""
+    saved = await compose_meme(
+        template_id=intent.template_id,
+        texts=intent.texts,
+    )
 
     add_turn(conversation_id, intent.template_id)
 
@@ -188,13 +217,27 @@ async def _stream_chat_turn(
     )
 
     reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
-    response = ChatResponse(
+    return ChatResponse(
         conversation_id=conversation_id,
         message=reply,
         template_used=intent.template_id,
     )
 
-    yield {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
+
+async def generate_single_meme(
+    user_message: str,
+    conversation_id: str,
+    ctx: db.PersonalizationContext | None = None,
+    surface: str | None = None,
+) -> ChatResponse:
+    """Plain non-streaming entry point for a single meme — routers/discord.py's
+    one-shot /meme command uses this directly (no SSE, no progress events,
+    just await and get a ChatResponse back or an exception). Chat/Lore's SSE
+    path (_stream_chat_turn above) calls the same two halves directly
+    instead, so it can yield a 'rendering' progress event between them; this
+    is just both halves back to back with nothing in between."""
+    intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx)
+    return await _render_and_record_turn(intent, user_message, conversation_id, ctx, surface)
 
 
 async def _stream_batch(
