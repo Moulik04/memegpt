@@ -141,21 +141,35 @@ otherwise.
 3. A local dry-run mode (`--dry-run`, no PR, no network beyond Imgflip) so the
    script is testable; a unit test covers the diff logic with fixtures.
 
-## Phase F — Fine-tune preparation + humor evals (STOP at training)
+## Phase F — Fine-tune preparation + humor evals (STOP at training) — DONE (prep), 2026-07-31
 
-1. Verify the existing pipeline end-to-end on a SMALL local sample (no GPU):
+1. ✅ Verify the existing pipeline end-to-end on a SMALL local sample (no GPU):
    `ingest_imgflip_dataset.py` → `prepare_finetune_dataset.py` → train-ready files.
-   Fix bit-rot only; no redesign.
-2. Produce a Colab T4 QLoRA config (small, budget-realistic) and
+   Fix bit-rot only; no redesign. **Found and fixed a real bug**: `ingest_imgflip_dataset.py`
+   called the now-`async` `upsert_example()` without `await`/`asyncio.run()`, silently
+   ingesting zero rows despite printing success. Verified against a new committed
+   fixture (`scripts/sample_data/imgflip_sample.csv`, 19 rows) with real credentials
+   explicitly blanked: 19/19 rows now land, 19/19 ChatML records well-formed.
+   `prepare_finetune_dataset.py` needed no fix.
+2. ✅ Produce a Colab T4 QLoRA config (small, budget-realistic) and
    `docs/FINETUNE_RUNBOOK.md`: exact cells/commands, expected artifacts (GGUF +
    adapter), and how to load the result via the existing `scripts/Modelfile`.
-3. Extend the eval harness: build an eval set from Postgres feedback
+   Also fixed a real path mismatch in `scripts/Modelfile` (its `FROM` line didn't
+   match what `finetune_unsloth.py`'s own printed handoff instructions actually
+   produce) — standardized on renaming the output to `memegpt.gguf` at the repo root.
+3. ✅ Extend the eval harness: build an eval set from Postgres feedback
    (thumbs-up examples as references), and add a pairwise LLM-judge script
    (baseline vs candidate captions, position-swapped double judging to reduce
-   order bias, Groq as judge, paced).
-4. **HARD STOP:** you do not run training. Production swap is out of scope unless
-   a genuinely free serving path exists — document the options honestly in the
-   runbook (e.g., offline-eval-only vs. small-model self-hosting trade-offs).
+   order bias, Groq as judge, paced). Shipped as `backend/scripts/eval_caption_quality.py`
+   — the eval set is `few_shot_examples` (already exactly "thumbs-up examples,"
+   written by `routers/feedback.py` on every 👍 with a caption — no new query
+   needed since `memes`/`feedback` are deliberately text-free).
+4. ✅ **HARD STOP respected:** no training was run. Production swap is out of scope —
+   documented honestly in the runbook (offline-eval-only vs. small-model
+   self-hosting trade-offs; no free always-on GPU hosting path exists today).
+
+Full design notes: `CLAUDE.md`'s "Growth Phase F" section. Training itself is
+the project owner's own next action, whenever they run the Colab session.
 
 ## Phase G — Distribution: Discord bot + GIF templates (feasibility-gated)
 
