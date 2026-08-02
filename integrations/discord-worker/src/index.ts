@@ -24,6 +24,10 @@ export interface Env {
   BACKEND_URL: string;
   DISCORD_PUBLIC_KEY: string;
   DISCORD_WORKER_SHARED_SECRET: string;
+  // Optional override, string because wrangler vars are always strings —
+  // only meant for local testing (verify_local.mjs) to exercise the
+  // timeout path without a real 22s wait; unset in production.
+  BACKEND_TIMEOUT_MS?: string;
 }
 
 interface DiscordInteractionOption {
@@ -119,16 +123,32 @@ async function handleMemeCommand(interaction: DiscordInteraction, text: string, 
     return;
   }
 
+  // ctx.waitUntil() is hard-capped at 30s after the response is sent
+  // (every Cloudflare plan, not just Free) — if the backend fetch alone
+  // (worse on a cold Render instance, which can take ~30s just to wake up)
+  // ran past that, Cloudflare kills this whole background task with no
+  // PATCH ever sent, leaving Discord's "thinking..." placeholder stuck
+  // forever with no explanation. Racing against a 22s internal timeout
+  // (leaving a few seconds of budget for the PATCH call itself) means the
+  // user always gets SOME follow-up instead of silence, even when the
+  // backend genuinely can't finish in time.
+  const TIMEOUT_MS = env.BACKEND_TIMEOUT_MS ? Number(env.BACKEND_TIMEOUT_MS) : 22_000;
+
   try {
     const backendUrl = env.BACKEND_URL.replace(/\/$/, "");
-    const backendResp = await fetch(`${backendUrl}/discord/generate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Discord-Worker-Secret": env.DISCORD_WORKER_SHARED_SECRET,
-      },
-      body: JSON.stringify({ text }),
-    });
+    const backendResp = await Promise.race([
+      fetch(`${backendUrl}/discord/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Discord-Worker-Secret": env.DISCORD_WORKER_SHARED_SECRET,
+        },
+        body: JSON.stringify({ text }),
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("backend-timeout")), TIMEOUT_MS),
+      ),
+    ]);
 
     if (!backendResp.ok) {
       await patchFollowup(followupUrl, {
@@ -147,9 +167,12 @@ async function handleMemeCommand(interaction: DiscordInteraction, text: string, 
     await patchFollowup(followupUrl, {
       embeds: [{ image: { url: absoluteUrl } }],
     });
-  } catch {
+  } catch (err) {
+    const timedOut = err instanceof Error && err.message === "backend-timeout";
     await patchFollowup(followupUrl, {
-      content: "Something went wrong generating that meme.",
+      content: timedOut
+        ? "That's taking longer than expected (probably a cold backend) — try again in a moment, it should be faster the second time."
+        : "Something went wrong generating that meme.",
     });
   }
 }
