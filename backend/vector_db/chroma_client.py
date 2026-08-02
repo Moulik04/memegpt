@@ -77,6 +77,15 @@ def _get_collection() -> Collection:
 # Write operations
 # ---------------------------------------------------------------------------
 
+def template_document_text(name: str, description: str, tags: list[str]) -> str:
+    """The single source of truth for how a template's searchable document
+    string is built — shared by upsert_template()/upsert_templates_batch()
+    below AND scripts/precompute_template_embeddings.py, so a precomputed
+    embedding can never silently drift from what live embedding would have
+    produced for the same template."""
+    return f"{name}. {description}. Tags: {', '.join(tags)}."
+
+
 def upsert_template(
     template_id: str,
     name: str,
@@ -85,7 +94,7 @@ def upsert_template(
 ) -> None:
     """Insert or update a template's searchable document in ChromaDB."""
     col = _get_collection()
-    document = f"{name}. {description}. Tags: {', '.join(tags)}."
+    document = template_document_text(name, description, tags)
     col.upsert(
         ids=[template_id],
         documents=[document],
@@ -115,7 +124,48 @@ def upsert_templates_batch(records: list[dict[str, Any]]) -> None:
     col.upsert(
         ids=[r["template_id"] for r in records],
         documents=[
-            f"{r['name']}. {r.get('description', '')}. Tags: {', '.join(r.get('tags', []))}."
+            template_document_text(r["name"], r.get("description", ""), r.get("tags", []))
+            for r in records
+        ],
+        metadatas=[
+            {
+                "name": r["name"],
+                "tags": json.dumps(r.get("tags", [])),
+                "description": r.get("description", ""),
+                "usage_count": 0,
+                "recent_uses": json.dumps([]),
+            }
+            for r in records
+        ],
+    )
+
+
+def upsert_templates_batch_with_embeddings(records: list[dict[str, Any]]) -> None:
+    """
+    Same shape as upsert_templates_batch(), but for records that already
+    carry a precomputed `embedding` — passes it straight to ChromaDB's
+    `embeddings=` kwarg, which skips invoking the collection's embedding
+    function entirely. This is what makes startup seeding not need a live
+    Gemini call for templates already covered by
+    backend/data/template_embeddings.json (see main.py's
+    _auto_seed_if_empty()) — the whole point being to stop hammering
+    Gemini's rate limit on every restart just to re-derive vectors for
+    text that hasn't changed.
+
+    Each record: {"template_id", "name", "tags", "description", "embedding"}
+    Caller's responsibility: only call this when the precomputed
+    embeddings' dimensionality actually matches the collection's active
+    embedding backend (Gemini) — see main.py's settings.gemini_api_key
+    guard. Mixing dimensions silently corrupts query-time results.
+    """
+    if not records:
+        return
+    col = _get_collection()
+    col.upsert(
+        ids=[r["template_id"] for r in records],
+        embeddings=[r["embedding"] for r in records],
+        documents=[
+            template_document_text(r["name"], r.get("description", ""), r.get("tags", []))
             for r in records
         ],
         metadatas=[

@@ -9,17 +9,26 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+import json
+
 from config import get_settings
 from nlp.intent_router import USE_WHEN
 from rate_limit import limiter
 from routers import arc, chat, discord, explain, feedback, generate, lore, me, memes, share_intake
 from uploads.retention import periodic_purge_loop
-from vector_db.chroma_client import init_chroma, list_template_ids, upsert_templates_batch
+from vector_db.chroma_client import (
+    init_chroma,
+    list_template_ids,
+    template_document_text,
+    upsert_templates_batch,
+    upsert_templates_batch_with_embeddings,
+)
 from vector_db.examples_store import _get_collection as _init_examples, seed_examples
 
 settings = get_settings()
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+_PRECOMPUTED_EMBEDDINGS_PATH = Path(__file__).parent / "data" / "template_embeddings.json"
 
 
 _SEED_CHUNK_SIZE = 20  # caps peak memory during embedding — Render free tier is 512MB
@@ -52,6 +61,17 @@ def _auto_seed_if_empty() -> None:
     self-healing — a fully-seeded catalog costs one cheap
     list_template_ids() read and does nothing further; a partial one
     fills in exactly what's missing.
+
+    Prefers scripts/precompute_template_embeddings.py's precomputed
+    vectors (backend/data/template_embeddings.json) over a live Gemini
+    call whenever both are available — template descriptions are static,
+    so re-embedding them from scratch on every single restart (Render's
+    disk is ephemeral; nothing here survives a restart) is exactly what
+    was hammering Gemini's rate limit repeatedly in production. A
+    template missing from the precomputed file (new since the last
+    precompute run) or Gemini not being configured at all both fall
+    through to the original live-embedding path unchanged — this is a
+    graceful degrade per-template, not an all-or-nothing switch.
     """
     existing = set(list_template_ids())
     records = []
@@ -74,19 +94,57 @@ def _auto_seed_if_empty() -> None:
     if not records:
         return
 
-    print(f"{len(records)} template(s) missing from ChromaDB — seeding...", flush=True)
-    seeded = 0
-    for i in range(0, len(records), _SEED_CHUNK_SIZE):
-        chunk = records[i : i + _SEED_CHUNK_SIZE]
+    # Precomputed vectors are Gemini's 3072-dim embeddings — only safe to
+    # use when this collection is ALSO running Gemini (settings.gemini_api_key
+    # set). Local dev's default fallback embedding model uses a different
+    # (384-dim) space; mixing dimensions would silently corrupt query-time
+    # results. No key configured means every record just falls through to
+    # the live path below, exactly as before this change.
+    precomputed: dict[str, dict] = {}
+    if settings.gemini_api_key and _PRECOMPUTED_EMBEDDINGS_PATH.exists():
         try:
-            upsert_templates_batch(chunk)
-            seeded += len(chunk)
+            precomputed = json.loads(_PRECOMPUTED_EMBEDDINGS_PATH.read_text())
         except Exception as exc:
-            # One rate-limited/failed chunk must not sink every remaining
-            # chunk — matches the existing per-item try/except precedent in
-            # trend_pipeline.py and _stream_batch. Whatever's still missing
-            # gets picked up on the next startup by this same function.
-            print(f"  [error] Failed to seed a chunk of {len(chunk)} template(s): {exc}", flush=True)
+            print(f"  [error] Failed to read {_PRECOMPUTED_EMBEDDINGS_PATH.name}: {exc}", flush=True)
+
+    fast_records = []
+    live_records = []
+    for r in records:
+        entry = precomputed.get(r["template_id"])
+        # Only trust a precomputed entry whose document text matches
+        # exactly — a stale entry (description changed since the last
+        # precompute run) falls through to a live embed instead of
+        # silently serving a mismatched vector.
+        if entry and entry.get("document") == template_document_text(r["name"], r["description"], r["tags"]):
+            fast_records.append({**r, "embedding": entry["embedding"]})
+        else:
+            live_records.append(r)
+
+    seeded = 0
+    if fast_records:
+        print(f"{len(fast_records)} template(s) seeded from precomputed embeddings (no Gemini call).", flush=True)
+        for i in range(0, len(fast_records), _SEED_CHUNK_SIZE):
+            chunk = fast_records[i : i + _SEED_CHUNK_SIZE]
+            try:
+                upsert_templates_batch_with_embeddings(chunk)
+                seeded += len(chunk)
+            except Exception as exc:
+                print(f"  [error] Failed to seed a precomputed chunk of {len(chunk)} template(s): {exc}", flush=True)
+
+    if live_records:
+        print(f"{len(live_records)} template(s) missing from ChromaDB and precomputed embeddings — seeding live...", flush=True)
+        for i in range(0, len(live_records), _SEED_CHUNK_SIZE):
+            chunk = live_records[i : i + _SEED_CHUNK_SIZE]
+            try:
+                upsert_templates_batch(chunk)
+                seeded += len(chunk)
+            except Exception as exc:
+                # One rate-limited/failed chunk must not sink every remaining
+                # chunk — matches the existing per-item try/except precedent in
+                # trend_pipeline.py and _stream_batch. Whatever's still missing
+                # gets picked up on the next startup by this same function.
+                print(f"  [error] Failed to seed a chunk of {len(chunk)} template(s): {exc}", flush=True)
+
     print(f"Seeded {seeded}/{len(records)} template(s) into ChromaDB.", flush=True)
 
 

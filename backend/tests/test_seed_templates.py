@@ -11,6 +11,8 @@ doesn't prevent the rest from being attempted.
 
 from __future__ import annotations
 
+import json
+
 import main
 
 
@@ -68,3 +70,97 @@ def test_one_failing_chunk_does_not_prevent_remaining_chunks(monkeypatch, tmp_pa
     main._auto_seed_if_empty()  # must not raise
 
     assert len(attempted_chunks) == 3  # all 3 chunks were attempted despite chunk 2 failing
+
+
+def _stub_settings_gemini_key(monkeypatch, key: str):
+    class _FakeSettings:
+        gemini_api_key = key
+
+    monkeypatch.setattr(main, "settings", _FakeSettings())
+
+
+def test_uses_precomputed_embeddings_when_gemini_configured_and_document_matches(monkeypatch, tmp_path):
+    # A template_id deliberately absent from the real USE_WHEN dict, so its
+    # description deterministically falls back to "Meme template: <Name>"
+    # regardless of the real catalog's content.
+    _make_template_files(tmp_path, ["totally_fake_test_template"])
+    monkeypatch.setattr(main, "_TEMPLATES_DIR", tmp_path)
+    monkeypatch.setattr(main, "list_template_ids", lambda: [])
+    _stub_settings_gemini_key(monkeypatch, "fake-gemini-key")
+
+    document = main.template_document_text(
+        "Totally Fake Test Template", "Meme template: Totally Fake Test Template", ["totally_fake_test_template"]
+    )
+    embeddings_file = tmp_path / "template_embeddings.json"
+    embeddings_file.write_text(json.dumps({
+        "totally_fake_test_template": {"embedding": [0.1, 0.2], "document": document},
+    }))
+    monkeypatch.setattr(main, "_PRECOMPUTED_EMBEDDINGS_PATH", embeddings_file)
+
+    live_calls = []
+    fast_calls = []
+    monkeypatch.setattr(main, "upsert_templates_batch", lambda records: live_calls.append(records))
+    monkeypatch.setattr(main, "upsert_templates_batch_with_embeddings", lambda records: fast_calls.append(records))
+
+    main._auto_seed_if_empty()
+
+    assert live_calls == []  # never touched Gemini
+    assert len(fast_calls) == 1
+    assert fast_calls[0][0]["template_id"] == "totally_fake_test_template"
+    assert fast_calls[0][0]["embedding"] == [0.1, 0.2]
+
+
+def test_falls_back_to_live_embedding_when_precomputed_entry_is_stale(monkeypatch, tmp_path):
+    """A stale precomputed entry (description changed since the last
+    precompute run) must never be trusted — falls through to a real
+    embed for that one template rather than silently using a mismatched
+    vector."""
+    _make_template_files(tmp_path, ["drake"])
+    monkeypatch.setattr(main, "_TEMPLATES_DIR", tmp_path)
+    monkeypatch.setattr(main, "list_template_ids", lambda: [])
+    _stub_settings_gemini_key(monkeypatch, "fake-gemini-key")
+
+    embeddings_file = tmp_path / "template_embeddings.json"
+    embeddings_file.write_text(json.dumps({
+        "drake": {"embedding": [0.1, 0.2], "document": "some stale outdated description"},
+    }))
+    monkeypatch.setattr(main, "_PRECOMPUTED_EMBEDDINGS_PATH", embeddings_file)
+
+    live_calls = []
+    fast_calls = []
+    monkeypatch.setattr(main, "upsert_templates_batch", lambda records: live_calls.append(records))
+    monkeypatch.setattr(main, "upsert_templates_batch_with_embeddings", lambda records: fast_calls.append(records))
+
+    main._auto_seed_if_empty()
+
+    assert fast_calls == []
+    assert len(live_calls) == 1
+    assert live_calls[0][0]["template_id"] == "drake"
+
+
+def test_falls_back_to_live_embedding_when_gemini_not_configured(monkeypatch, tmp_path):
+    """Even with a valid, up-to-date precomputed file present, no
+    GEMINI_API_KEY means the collection is running the local (different-
+    dimension) embedding model — using precomputed Gemini vectors there
+    would corrupt query-time results, so this must never happen."""
+    _make_template_files(tmp_path, ["drake"])
+    monkeypatch.setattr(main, "_TEMPLATES_DIR", tmp_path)
+    monkeypatch.setattr(main, "list_template_ids", lambda: [])
+    _stub_settings_gemini_key(monkeypatch, "")  # not configured
+
+    document = main.template_document_text("Drake", "Meme template: Drake", ["drake"])
+    embeddings_file = tmp_path / "template_embeddings.json"
+    embeddings_file.write_text(json.dumps({
+        "drake": {"embedding": [0.1, 0.2], "document": document},
+    }))
+    monkeypatch.setattr(main, "_PRECOMPUTED_EMBEDDINGS_PATH", embeddings_file)
+
+    live_calls = []
+    fast_calls = []
+    monkeypatch.setattr(main, "upsert_templates_batch", lambda records: live_calls.append(records))
+    monkeypatch.setattr(main, "upsert_templates_batch_with_embeddings", lambda records: fast_calls.append(records))
+
+    main._auto_seed_if_empty()
+
+    assert fast_calls == []
+    assert len(live_calls) == 1
