@@ -151,6 +151,8 @@ async function handleMemeCommand(interaction: DiscordInteraction, text: string, 
     ]);
 
     if (!backendResp.ok) {
+      const bodyText = await backendResp.text().catch(() => "(couldn't read body)");
+      console.log("Backend returned non-OK status", { status: backendResp.status, body: bodyText });
       await patchFollowup(followupUrl, {
         content: "Couldn't generate a meme for that one — try again in a bit.",
       });
@@ -163,6 +165,7 @@ async function handleMemeCommand(interaction: DiscordInteraction, text: string, 
     // URL. Same normalization frontend/src/lib/api.ts's memeImageUrl()
     // already does for exactly this reason.
     const absoluteUrl = memeUrl.startsWith("http") ? memeUrl : `${backendUrl}${memeUrl}`;
+    console.log("Generated meme URL:", absoluteUrl);
 
     await patchFollowup(followupUrl, {
       embeds: [{ image: { url: absoluteUrl } }],
@@ -178,9 +181,13 @@ async function handleMemeCommand(interaction: DiscordInteraction, text: string, 
 }
 
 async function patchFollowup(url: string, body: Record<string, unknown>): Promise<void> {
-  await fetch(url, {
+  const resp = await fetch(url, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "(couldn't read body)");
+    console.log("Discord follow-up PATCH failed", { status: resp.status, body: text });
+  }
 }
