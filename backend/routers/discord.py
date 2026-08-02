@@ -21,6 +21,7 @@ caller from hitting a real-compute-costing endpoint, not to satisfy
 Discord's own protocol.
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request
@@ -29,6 +30,8 @@ from config import get_settings
 from rate_limit import limiter
 from routers.chat import generate_single_meme
 from schemas import DiscordGenerateRequest, DiscordGenerateResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -57,8 +60,14 @@ async def generate(request: Request, body: DiscordGenerateRequest) -> DiscordGen
             surface="discord",
         )
     except Exception as exc:
-        # Deliberately generic — the Worker turns this into a short
-        # friendly follow-up message, not a leaked internal error string.
+        # Logged server-side (with the real traceback) so a failure is
+        # diagnosable from Render's logs directly — the HTTPException detail
+        # stays deliberately generic, since the Worker turns THAT into a
+        # short friendly follow-up message, never a leaked internal string.
+        # Length only, never the text itself, matching this app's existing
+        # never-log-raw-user-text discipline (see _clamp_dump_text in
+        # routers/chat.py).
+        logger.exception("Discord /meme generation failed (text length=%d)", len(body.text))
         raise HTTPException(status_code=500, detail="Meme generation failed") from exc
 
     return DiscordGenerateResponse(
