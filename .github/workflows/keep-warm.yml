@@ -1,0 +1,23 @@
+name: Keep backend warm
+
+# Growth Phase G (Discord /meme) — Render's free tier spins the backend
+# down after ~15 minutes idle, and the resulting ~30s cold-start eats the
+# Cloudflare Worker's entire 30s ctx.waitUntil() budget before generation
+# even starts (a real failure discovered testing the Discord integration
+# live — see CLAUDE.md's "Growth Phase G — Discord" section). Pinging
+# /health every 10 minutes (under Render's 15-minute idle threshold) keeps
+# the instance warm so real requests — Discord's included — don't pay the
+# cold-start tax. Free: this is a GET request to a public health endpoint,
+# no secrets, no repo checkout even needed.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: curl -fsS --max-time 30 https://memegpt-backend.onrender.com/health
