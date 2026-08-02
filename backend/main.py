@@ -27,21 +27,33 @@ _SEED_CHUNK_SIZE = 20  # caps peak memory during embedding — Render free tier 
 
 def _auto_seed_if_empty() -> None:
     """
-    Seed templates from disk if ChromaDB is empty — chunked batched upserts.
+    Seed any templates from disk that aren't already in ChromaDB — chunked
+    batched upserts.
 
     Runs in a background thread (see lifespan below) so it never blocks app
     startup: intent_router falls back to a hardcoded template list while
     this is still running, so /chat/ works immediately even mid-seed.
 
-    Embedding all 100 templates in a single batch spiked memory past Render's
-    free-tier 512MB limit and triggered an OOM restart. Chunking into groups
-    of _SEED_CHUNK_SIZE keeps peak memory low while still being far faster
-    than one upsert call per template.
+    Embedding all 100+ templates in a single batch spiked memory past
+    Render's free-tier 512MB limit and triggered an OOM restart. Chunking
+    into groups of _SEED_CHUNK_SIZE keeps peak memory low while still
+    being far faster than one upsert call per template.
+
+    Deliberately NOT gated on "collection is completely empty" — a real
+    production incident (Growth Phase G, Discord integration) showed why:
+    Gemini's embedding API rate-limited hard enough during seeding to
+    exhaust the documented 6-attempt retry budget on one chunk, raising an
+    uncaught exception that killed every REMAINING chunk — but because the
+    collection wasn't empty anymore (the first successful chunk had already
+    landed), an empty-only guard would mean the catalog stays permanently
+    partial forever, since this function would never run again. Instead,
+    this runs every startup and the existing per-template `if tid in
+    existing: continue` check below makes it naturally idempotent and
+    self-healing — a fully-seeded catalog costs one cheap
+    list_template_ids() read and does nothing further; a partial one
+    fills in exactly what's missing.
     """
     existing = set(list_template_ids())
-    if existing:
-        return
-    print("ChromaDB is empty — auto-seeding templates from disk...", flush=True)
     records = []
     for img in _TEMPLATES_DIR.iterdir():
         if img.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
@@ -58,9 +70,24 @@ def _auto_seed_if_empty() -> None:
             "tags": [tid],
             "description": USE_WHEN.get(tid, f"Meme template: {name}"),
         })
+
+    if not records:
+        return
+
+    print(f"{len(records)} template(s) missing from ChromaDB — seeding...", flush=True)
+    seeded = 0
     for i in range(0, len(records), _SEED_CHUNK_SIZE):
-        upsert_templates_batch(records[i : i + _SEED_CHUNK_SIZE])
-    print(f"Seeded {len(records)} templates into ChromaDB.", flush=True)
+        chunk = records[i : i + _SEED_CHUNK_SIZE]
+        try:
+            upsert_templates_batch(chunk)
+            seeded += len(chunk)
+        except Exception as exc:
+            # One rate-limited/failed chunk must not sink every remaining
+            # chunk — matches the existing per-item try/except precedent in
+            # trend_pipeline.py and _stream_batch. Whatever's still missing
+            # gets picked up on the next startup by this same function.
+            print(f"  [error] Failed to seed a chunk of {len(chunk)} template(s): {exc}", flush=True)
+    print(f"Seeded {seeded}/{len(records)} template(s) into ChromaDB.", flush=True)
 
 
 @asynccontextmanager
