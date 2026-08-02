@@ -196,13 +196,29 @@ def _build_template_catalog(template_ids: list[str]) -> dict:
     return catalog
 
 
-def _normalize_llm_response(data: dict, known_ids: set[str]) -> dict:
+def _normalize_llm_response(data, known_ids: set[str]) -> dict:
     """
     Handle common LLM JSON format deviations:
     1. Already correct: {"template_id": "...", "texts": {...}}
     2. Wrapped by template_id: {"drake": {"texts": {...}, "reasoning": "..."}}
     3. Field name aliases: {"id": "...", "captions": {...}}
+    4. Wrapped in a single-element array despite explicit instructions not
+       to — real, confirmed in production (Groq occasionally returns
+       `[{...}]` instead of `{...}`), which crashed `.items()` below with
+       an unhandled AttributeError before this guard existed. Raising
+       ValueError here (rather than letting the AttributeError/TypeError
+       propagate) is what lets the caller's existing except clause treat
+       this exactly like any other malformed response — retry, then the
+       hard fallback — instead of a raw 500.
     """
+    if isinstance(data, list):
+        if len(data) == 1 and isinstance(data[0], dict):
+            data = data[0]
+        else:
+            raise ValueError(f"Expected a JSON object, got a {len(data)}-item list")
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected a JSON object, got {type(data).__name__}")
+
     if "template_id" in data and "texts" in data:
         return data
 
@@ -422,7 +438,7 @@ async def _parse_intent_inner(
             if result.template_id not in known_id_set:
                 raise ValueError(f"Hallucinated template_id: {result.template_id}")
             return result
-        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, httpx.HTTPError):
+        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
             pass
 
         # Attempt 2 — minimal strict prompt at low temperature
@@ -441,7 +457,7 @@ async def _parse_intent_inner(
             if result.template_id not in known_id_set:
                 raise ValueError(f"Hallucinated template_id: {result.template_id}")
             return result
-        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, httpx.HTTPError):
+        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
             pass
 
     # Hard fallback — always returns something rather than 500-ing
