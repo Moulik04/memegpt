@@ -30,7 +30,7 @@ export interface MemeStreamResult {
  * caller. Extracted verbatim from ChatWindow's original submit() so Chat's
  * behavior is provably unchanged.
  */
-export function useMemeStream(surface: Surface) {
+export function useMemeStream(surface: Surface, conversationRowId?: string) {
   const [loading, setLoading] = useState(false);
   const [thinking, setThinking] = useState<ThinkingState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export function useMemeStream(surface: Surface) {
     rememberLore?: boolean,
   ): Promise<MemeStreamResult> {
     return run((onEvent) =>
-      sendStream(surface, message, conversationId, onEvent, memeCount, rememberLore),
+      sendStream(surface, message, conversationId, onEvent, memeCount, rememberLore, conversationRowId),
     );
   }
 
@@ -116,7 +116,12 @@ export function useMemeStream(surface: Surface) {
     rememberLore?: boolean,
   ): Promise<MemeStreamResult> {
     return run((onEvent) =>
-      sendImageStream(surface, files, { message, conversationId, memeCount, rememberLore }, onEvent),
+      sendImageStream(
+        surface,
+        files,
+        { message, conversationId, memeCount, rememberLore, conversationRowId },
+        onEvent,
+      ),
     );
   }
 

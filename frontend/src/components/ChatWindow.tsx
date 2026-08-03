@@ -1,12 +1,43 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { postFeedback } from "@/lib/api";
+import { getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
+import { useConversation } from "@/lib/ConversationContext";
 import { pickRandomPrompts } from "@/lib/examplePrompts";
 import { MessageBubble } from "./MessageBubble";
 import { ThinkingBubble } from "./ThinkingBubble";
-import type { ChatMessage, MemeItem } from "@/types";
+import type { ChatMessage, MemeItem, PersistedMessage } from "@/types";
+
+// Growth Phase H, Stage 3 — reconstructs the grouped-bubble shape a live
+// SSE batch already produces (one user turn, one assistant turn whose
+// `memes` array can hold several) from the flat, one-row-per-meme table
+// GET /conversations/{id}/messages actually returns.
+function groupPersistedMessages(rows: PersistedMessage[]): ChatMessage[] {
+  const result: ChatMessage[] = [];
+  let openMemes: MemeItem[] | null = null;
+
+  for (const row of rows) {
+    if (row.role === "user") {
+      openMemes = null;
+      result.push({ role: "user", content: row.content, timestamp: row.created_at });
+      continue;
+    }
+    if (row.meme_url) {
+      const meme: MemeItem = { url: row.meme_url, situationText: row.content, memeId: row.meme_id ?? undefined };
+      if (openMemes) {
+        openMemes.push(meme);
+      } else {
+        openMemes = [meme];
+        result.push({ role: "assistant", content: "", memes: openMemes, timestamp: row.created_at });
+      }
+    } else {
+      openMemes = null;
+      result.push({ role: "assistant", content: row.content, timestamp: row.created_at });
+    }
+  }
+  return result;
+}
 
 // Client-side only — a fast-fail UX nicety, NOT a security control. The
 // real limits are enforced server-side by uploads/safe_ingest.py / config.py.
@@ -30,12 +61,34 @@ export function ChatWindow() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream("chat");
+  const { conversationRowId, bumpRefresh } = useConversation();
+  const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream(
+    "chat",
+    conversationRowId,
+  );
   const pendingImagesRef = useRef<PendingImage[]>([]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, thinking]);
+
+  // Hydrate from a persisted conversation when one becomes selected (sidebar
+  // click), and reset to a blank slate when it's cleared ("New chat", or
+  // switching surfaces). Anonymous use never sets conversationRowId at all,
+  // so this effect is a no-op for every anonymous page load.
+  useEffect(() => {
+    if (!conversationRowId) {
+      setMessages([]);
+      return;
+    }
+    let cancelled = false;
+    getConversationMessages(conversationRowId).then((rows) => {
+      if (!cancelled) setMessages(groupPersistedMessages(rows));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationRowId]);
 
   useEffect(() => {
     pendingImagesRef.current = pendingImages;
@@ -133,6 +186,12 @@ export function ChatWindow() {
         { role: "assistant", content: plainReply, timestamp: new Date().toISOString() },
       ]);
     }
+
+    // Growth Phase H, Stage 3 — a persisted turn just landed a title and/or
+    // moved to the top of the sidebar's newest-first order; a no-op when
+    // there's no active conversationRowId (anonymous use, or signed in with
+    // no chat selected).
+    if (conversationRowId) bumpRefresh();
   }
 
   function handleSubmit(e: React.FormEvent) {

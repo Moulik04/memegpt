@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { postFeedback } from "@/lib/api";
+import { getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
+import { useConversation } from "@/lib/ConversationContext";
 import { FeedbackButtons } from "./FeedbackButtons";
 import { MemeDisplay } from "./MemeDisplay";
 import { ShareButtons } from "./ShareButtons";
 import { ThinkingBubble } from "./ThinkingBubble";
-import type { MemeItem } from "@/types";
+import type { MemeItem, PersistedMessage } from "@/types";
 
 const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
@@ -36,6 +37,23 @@ type FeedEntry =
   | { kind: "meme"; meme: MemeItem; votedKey: string }
   | { kind: "text"; content: string; key: string };
 
+// Growth Phase H, Stage 3 — Lore's feed never showed user-echo entries
+// (handleSubmit below only ever pushes results, not the submission itself),
+// so hydration keeps that: only assistant rows become feed entries.
+function groupPersistedFeed(rows: PersistedMessage[]): FeedEntry[] {
+  return rows
+    .filter((r) => r.role === "assistant")
+    .map((r) =>
+      r.meme_url
+        ? {
+            kind: "meme" as const,
+            meme: { url: r.meme_url, situationText: r.content, memeId: r.meme_id ?? undefined },
+            votedKey: r.id,
+          }
+        : { kind: "text" as const, content: r.content, key: r.id },
+    );
+}
+
 /**
  * Lore — the surface for big context dumps: paste a whole conversation,
  * upload a stack of screenshots, get several memes back. Every meme from
@@ -58,8 +76,28 @@ export function LoreView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream("lore");
+  const { conversationRowId, bumpRefresh } = useConversation();
+  const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream(
+    "lore",
+    conversationRowId,
+  );
   const router = useRouter();
+
+  // Hydrate from a persisted conversation when one becomes selected, reset
+  // to an empty feed when it's cleared — same precedent as ChatWindow.tsx.
+  useEffect(() => {
+    if (!conversationRowId) {
+      setFeed([]);
+      return;
+    }
+    let cancelled = false;
+    getConversationMessages(conversationRowId).then((rows) => {
+      if (!cancelled) setFeed(groupPersistedFeed(rows));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationRowId]);
 
   // Consume a share-target handoff (?intake=<token>) on mount, if present.
   // Reads window.location.search directly rather than next/navigation's
@@ -182,6 +220,8 @@ export function LoreView() {
     } else if (plainReply) {
       setFeed((prev) => [...prev, { kind: "text", content: plainReply, key: `${Date.now()}` }]);
     }
+
+    if (conversationRowId) bumpRefresh();
   }
 
   const displayError = localError ?? error;

@@ -1,11 +1,13 @@
 import type {
   ArcCardResponse,
   ArcStats,
+  ConversationSummary,
   ExplainResponse,
   FeedbackRequest,
   ImageChatOptions,
   MemeGenerationRequest,
   MemeGenerationResponse,
+  PersistedMessage,
   SSEEvent,
 } from "@/types";
 import { getOrCreateAnonId } from "@/lib/identity";
@@ -98,9 +100,14 @@ export async function sendStream(
   conversationId: string | undefined,
   onEvent: (event: SSEEvent) => void,
   memeCount?: number,
-  rememberLore?: boolean
+  rememberLore?: boolean,
+  conversationRowId?: string
 ): Promise<void> {
-  const body: Record<string, unknown> = { message, conversation_id: conversationId };
+  const body: Record<string, unknown> = {
+    message,
+    conversation_id: conversationId,
+    conversation_row_id: conversationRowId,
+  };
   if (surface === "lore") {
     body.meme_count = memeCount;
     body.remember_lore = rememberLore ?? false;
@@ -137,6 +144,7 @@ export async function sendImageStream(
   for (const file of files) form.append("images", file);
   if (options.message) form.append("message", options.message);
   if (options.conversationId) form.append("conversation_id", options.conversationId);
+  if (options.conversationRowId) form.append("conversation_row_id", options.conversationRowId);
   if (surface === "lore") {
     if (options.memeCount) form.append("meme_count", String(options.memeCount));
     if (options.rememberLore) form.append("remember_lore", "true");
@@ -222,7 +230,7 @@ export function memeImageUrl(relativeUrl: string): string {
 // registered at "".
 export async function getArc(tz: string): Promise<ArcStats> {
   const res = await fetch(`${BASE}/arc?tz=${encodeURIComponent(tz)}`, {
-    headers: { [ANON_HEADER]: getOrCreateAnonId() },
+    headers: await authHeaders(),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -234,11 +242,59 @@ export async function getArc(tz: string): Promise<ArcStats> {
 export async function createArcCard(tz: string): Promise<ArcCardResponse> {
   const res = await fetch(`${BASE}/arc/card?tz=${encodeURIComponent(tz)}`, {
     method: "POST",
-    headers: { [ANON_HEADER]: getOrCreateAnonId() },
+    headers: await authHeaders(),
   });
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`${res.status} ${res.statusText}: ${err}`);
   }
   return res.json() as Promise<ArcCardResponse>;
+}
+
+// Growth Phase H, Stage 3 — persisted chat history (signed-in only). All
+// four ride next.config.js's generic /api/:path* rewrite (headers forward
+// transparently) — no hand-written proxy route needed, same precedent as
+// /me and /arc, since none of these are SSE.
+export async function listConversations(surface: Surface): Promise<ConversationSummary[]> {
+  const res = await fetch(`${BASE}/conversations?surface=${surface}`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) return [];
+  return res.json() as Promise<ConversationSummary[]>;
+}
+
+export async function createConversation(surface: Surface): Promise<{ id: string; surface: string }> {
+  const res = await fetch(`${BASE}/conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ surface }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+  }
+  return res.json() as Promise<{ id: string; surface: string }>;
+}
+
+export async function getConversationMessages(id: string): Promise<PersistedMessage[]> {
+  const res = await fetch(`${BASE}/conversations/${id}/messages`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) return [];
+  return res.json() as Promise<PersistedMessage[]>;
+}
+
+export async function renameConversation(id: string, title: string): Promise<void> {
+  await fetch(`${BASE}/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  await fetch(`${BASE}/conversations/${id}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
 }

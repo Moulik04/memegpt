@@ -112,6 +112,7 @@ export interface ImageChatOptions {
   conversationId?: string;
   memeCount?: number;
   rememberLore?: boolean;
+  conversationRowId?: string;
 }
 
 // Growth Phase D — Arc. Mirrors backend/schemas.py's ArcTemplate/ArcStats.
@@ -145,4 +146,23 @@ export interface ArcStats {
 export interface ArcCardResponse {
   meme_id: string;
   url: string;
+}
+
+// Growth Phase H, Stage 3 — persisted chat history (signed-in only).
+// Mirrors backend/schemas.py's ConversationSummary/MessageOut.
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  surface: "chat" | "lore";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PersistedMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  meme_url: string | null;
+  meme_id: string | null;
+  created_at: string;
 }

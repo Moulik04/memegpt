@@ -3,7 +3,7 @@ import { ModeTabs } from "@/components/ModeTabs";
 
 export default function ChatPage() {
   return (
-    <div className="flex flex-col h-dvh">
+    <div className="flex flex-col h-full">
       <ModeTabs active="chat" />
 
       {/* Chat fills remaining height */}
