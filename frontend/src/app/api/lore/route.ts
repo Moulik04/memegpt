@@ -18,6 +18,7 @@ export const maxDuration = 60;
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const anonUser = req.headers.get("x-memegpt-user");
+  const authorization = req.headers.get("authorization");
 
   let upstream: Response;
   try {
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         ...(anonUser ? { "X-MemeGPT-User": anonUser } : {}),
+        ...(authorization ? { Authorization: authorization } : {}),
       },
       body: JSON.stringify(body),
     });

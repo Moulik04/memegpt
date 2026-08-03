@@ -7,12 +7,15 @@ export async function POST(req: NextRequest) {
   // Growth Phase C — same header-forwarding fix as app/api/chat/route.ts:
   // this hand-written route bypasses next.config.js's generic rewrite, so
   // the anon-identity header must be read and re-attached explicitly.
+  // Growth Phase H, Stage 2 — same fix for the Authorization bearer header.
   const anonUser = req.headers.get("x-memegpt-user");
+  const authorization = req.headers.get("authorization");
   const upstream = await fetch(`${BACKEND}/feedback/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(anonUser ? { "X-MemeGPT-User": anonUser } : {}),
+      ...(authorization ? { Authorization: authorization } : {}),
     },
     body: JSON.stringify(body),
   });

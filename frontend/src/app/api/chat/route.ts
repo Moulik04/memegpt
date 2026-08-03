@@ -27,8 +27,10 @@ export async function POST(req: NextRequest) {
   // backend, so next.config.js's generic rewrite (which forwards headers
   // transparently) never applies here; the anon-identity header has to be
   // read off the incoming request and re-attached explicitly or it's
-  // silently dropped before ever reaching FastAPI.
+  // silently dropped before ever reaching FastAPI. Growth Phase H, Stage 2 —
+  // same fix for the Supabase Authorization bearer header.
   const anonUser = req.headers.get("x-memegpt-user");
+  const authorization = req.headers.get("authorization");
 
   let upstream: Response;
   try {
@@ -37,6 +39,7 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         ...(anonUser ? { "X-MemeGPT-User": anonUser } : {}),
+        ...(authorization ? { Authorization: authorization } : {}),
       },
       body: JSON.stringify(body),
     });

@@ -3,6 +3,7 @@
 import { createContext, useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { authEnabled, supabase } from "@/lib/supabaseClient";
+import { linkAnonAccount } from "@/lib/api";
 
 export interface AuthContextValue {
   user: User | null;
@@ -41,8 +42,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
+      // Growth Phase H, Stage 2 — link this browser's anonymous history to
+      // the account exactly once per real sign-in (not on every
+      // TOKEN_REFRESHED firing for an already-signed-in session). Fire-
+      // and-forget: a failure here just means personalization stays
+      // anon-only for now, never worth blocking the sign-in UI over.
+      if (event === "SIGNED_IN") {
+        linkAnonAccount().catch(() => {});
+      }
     });
 
     return () => listener.subscription.unsubscribe();

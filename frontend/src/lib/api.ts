@@ -9,6 +9,7 @@ import type {
   SSEEvent,
 } from "@/types";
 import { getOrCreateAnonId } from "@/lib/identity";
+import { supabase } from "@/lib/supabaseClient";
 
 const BASE = "/api";
 // Image uploads go straight to the backend, not through /api's Vercel proxy
@@ -20,10 +21,31 @@ const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"
 
 const ANON_HEADER = "X-MemeGPT-User";
 
+/**
+ * Growth Phase H, Stage 2 — the single place every call site attaches
+ * identity headers, replacing 6 previously-independent inline copies of
+ * `{ [ANON_HEADER]: getOrCreateAnonId() }`. Always attaches the anon
+ * header (unaffected by sign-in state — Phase C's identity never stops
+ * being sent); additionally attaches `Authorization: Bearer <token>` when
+ * a Supabase session exists, so the backend can verify a real user_id
+ * alongside the anon one. A no-op when Supabase Auth isn't configured
+ * (`supabase` is null) or there's no active session — no different from
+ * today's anon-only behavior in either case.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { [ANON_HEADER]: getOrCreateAnonId() };
+  if (supabase) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", [ANON_HEADER]: getOrCreateAnonId() },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -86,7 +108,7 @@ export async function sendStream(
 
   const res = await fetch(`${BASE}/${surface}/`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", [ANON_HEADER]: getOrCreateAnonId() },
+    headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify(body),
   });
 
@@ -124,7 +146,7 @@ export async function sendImageStream(
   try {
     res = await fetch(`${BACKEND_BASE}/${surface}/image/`, {
       method: "POST",
-      headers: { [ANON_HEADER]: getOrCreateAnonId() },
+      headers: await authHeaders(),
       body: form,
     });
   } catch {
@@ -159,7 +181,18 @@ export async function postFeedback(req: FeedbackRequest): Promise<void> {
 export async function forgetMe(): Promise<void> {
   await fetch(`${BASE}/me`, {
     method: "DELETE",
-    headers: { [ANON_HEADER]: getOrCreateAnonId() },
+    headers: await authHeaders(),
+  });
+}
+
+// Growth Phase H, Stage 2 — links this browser's anonymous history to the
+// account that just signed in. Called once by AuthProvider.tsx on
+// Supabase's SIGNED_IN event; safe to call again (backend-side idempotent).
+// No trailing slash, same "" registration precedent as forgetMe()/getArc().
+export async function linkAnonAccount(): Promise<void> {
+  await fetch(`${BASE}/auth/link-anon`, {
+    method: "POST",
+    headers: await authHeaders(),
   });
 }
 
