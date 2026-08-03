@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "motion/react";
+import { AuthControl } from "@/components/AuthControl";
 
 // Every image here is a real template MemeGPT can actually pick for you.
 // A random 6 fill the hero's floating slots below on each page load, drawn
@@ -102,13 +103,16 @@ export function LandingPage() {
         className="relative z-20 flex items-center justify-between px-6 py-5 sm:px-10"
       >
         <span className="text-xl font-extrabold tracking-tight gradient-text">MemeGPT</span>
-        <Link
-          href="/chat"
-          className="rounded-full bg-white/5 border border-gray-800 px-4 py-2 text-sm text-gray-300
-                     hover:border-brand-500/60 hover:text-white transition-colors"
-        >
-          Open the app
-        </Link>
+        <div className="flex items-center gap-4">
+          <AuthControl />
+          <Link
+            href="/chat"
+            className="rounded-full bg-white/5 border border-gray-800 px-4 py-2 text-sm text-gray-300
+                       hover:border-brand-500/60 hover:text-white transition-colors"
+          >
+            Open the app
+          </Link>
+        </div>
       </motion.header>
 
       {/* Hero */}

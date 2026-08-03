@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { forgetMe } from "@/lib/api";
 import { forgetAnonId } from "@/lib/identity";
+import { AuthControl } from "@/components/AuthControl";
 
 interface Props {
   active: "chat" | "lore" | "arc";
@@ -73,6 +74,7 @@ export function ModeTabs({ active }: Props) {
             Arc
           </Link>
         </nav>
+        <AuthControl />
         <button
           type="button"
           onClick={handleForgetMe}
