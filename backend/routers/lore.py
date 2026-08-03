@@ -30,6 +30,7 @@ async def lore(request: Request, body: LoreRequest):
     return await handle_text_stream(
         request, body.message, body.conversation_id,
         meme_count=body.meme_count, remember_lore=body.remember_lore, surface="lore",
+        conversation_row_id_in=body.conversation_row_id,
     )
 
 
@@ -43,10 +44,12 @@ async def lore_with_image(
     meme_count: int | None = Form(None),
     mode: str | None = Form(None),
     remember_lore: bool = Form(False),
+    conversation_row_id: str | None = Form(None),
 ):
     """Lore surface multimodal — same as /chat/image/ plus meme_count and
     remember_lore, stamped surface="lore"."""
     return await handle_image_stream(
         request, images, message, conversation_id,
         meme_count=meme_count, mode=mode, remember_lore=remember_lore, surface="lore",
+        conversation_row_id_in=conversation_row_id,
     )

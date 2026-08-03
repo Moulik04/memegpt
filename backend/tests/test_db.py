@@ -9,6 +9,7 @@ issued with the right arguments when a pool is available.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import db
 
@@ -355,3 +356,181 @@ async def test_migrate_anon_data_to_user_zero_rows_when_nothing_to_link(monkeypa
     total = await db.migrate_anon_data_to_user("anon-1", "user-1")
 
     assert total == 0
+
+
+# --- Growth Phase H, Stage 3 — persisted chat history (conversations/messages) ---
+
+
+async def test_create_conversation_none_with_no_pool(monkeypatch):
+    monkeypatch.setattr(db, "get_pool", _no_pool)
+
+    assert await db.create_conversation("user-1", "chat") is None
+
+
+async def test_create_conversation_returns_new_id(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"id": "conv-uuid-1"}
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    result = await db.create_conversation("user-1", "chat")
+
+    assert result == "conv-uuid-1"
+    query, args = fake_pool.fetchrow_calls[0]
+    assert "INSERT INTO conversations" in query
+    assert args == ("user-1", "chat")
+
+
+async def test_fetch_conversations_empty_with_no_pool(monkeypatch):
+    monkeypatch.setattr(db, "get_pool", _no_pool)
+
+    assert await db.fetch_conversations("user-1") == []
+
+
+async def test_fetch_conversations_filters_by_surface(monkeypatch):
+    fake_pool = FakePool()
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    await db.fetch_conversations("user-1", surface="lore")
+
+    query, args = fake_pool.fetch_calls[0]
+    assert "surface = $2" in query
+    assert args == ("user-1", "lore", 50)
+
+
+async def test_fetch_conversations_returns_rows(monkeypatch):
+    fake_pool = FakePool()
+    now = datetime.now(timezone.utc)
+    fake_pool.fetch_return = [
+        {"id": "conv-1", "title": "hello", "surface": "chat", "created_at": now, "updated_at": now}
+    ]
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    rows = await db.fetch_conversations("user-1")
+
+    assert rows == [{"id": "conv-1", "title": "hello", "surface": "chat", "created_at": now, "updated_at": now}]
+
+
+async def test_fetch_conversation_owner_returns_user_id(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "user-1"}
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.fetch_conversation_owner("conv-1") == "user-1"
+
+
+async def test_fetch_conversation_owner_none_when_not_found(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = None
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.fetch_conversation_owner("conv-1") is None
+
+
+async def test_fetch_messages_none_when_not_owned(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "someone-else"}
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.fetch_messages("conv-1", "user-1") is None
+    # Never even issued the messages query once ownership failed.
+    assert fake_pool.fetch_calls == []
+
+
+async def test_fetch_messages_returns_rows_when_owned(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "user-1"}
+    now = datetime.now(timezone.utc)
+    fake_pool.fetch_return = [
+        {"id": "msg-1", "role": "user", "content": "hi", "meme_url": None, "created_at": now},
+    ]
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    rows = await db.fetch_messages("conv-1", "user-1")
+
+    assert rows == [{"id": "msg-1", "role": "user", "content": "hi", "meme_url": None, "created_at": now}]
+
+
+async def test_fetch_messages_owned_but_empty_conversation_returns_empty_list(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "user-1"}
+    fake_pool.fetch_return = []
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.fetch_messages("conv-1", "user-1") == []
+
+
+async def test_insert_message_noops_with_no_pool(monkeypatch):
+    monkeypatch.setattr(db, "get_pool", _no_pool)
+
+    await db.insert_message("conv-1", "user", "hi")
+
+
+async def test_insert_message_inserts_and_bumps_updated_at(monkeypatch):
+    fake_pool = FakePool()
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    await db.insert_message("conv-1", "assistant", "here's your meme", meme_id="meme-1")
+
+    assert len(fake_pool.executed) == 2
+    insert_query, insert_args = fake_pool.executed[0]
+    assert "INSERT INTO messages" in insert_query
+    assert insert_args[:4] == ("conv-1", "assistant", "here's your meme", "meme-1")
+    update_query, update_args = fake_pool.executed[1]
+    assert "UPDATE conversations SET updated_at" in update_query
+    assert update_args[0] == "conv-1"
+
+
+async def test_set_conversation_title_if_unset_issues_correct_sql(monkeypatch):
+    fake_pool = FakePool()
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    await db.set_conversation_title_if_unset("conv-1", "My new chat")
+
+    query, args = fake_pool.executed[0]
+    assert "WHERE id = $1 AND title IS NULL" in query
+    assert args == ("conv-1", "My new chat")
+
+
+async def test_rename_conversation_true_when_row_affected(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.execute_status = "UPDATE 1"
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.rename_conversation("conv-1", "user-1", "New title") is True
+
+
+async def test_rename_conversation_false_when_nothing_matched(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.execute_status = "UPDATE 0"
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.rename_conversation("conv-1", "user-1", "New title") is False
+
+
+async def test_delete_conversation_true_when_row_affected(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.execute_status = "DELETE 1"
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.delete_conversation("conv-1", "user-1") is True
+
+
+async def test_delete_conversation_false_when_nothing_matched(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.execute_status = "DELETE 0"
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.delete_conversation("conv-1", "user-1") is False
+
+
+async def test_fetch_conversation_returns_owned_row(monkeypatch):
+    fake_pool = FakePool()
+    now = datetime.now(timezone.utc)
+    fake_pool.fetchrow_return = {
+        "id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now
+    }
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    result = await db.fetch_conversation("conv-1", "user-1")
+
+    assert result == {"id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now}

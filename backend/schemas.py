@@ -66,6 +66,13 @@ class ChatRequest(BaseModel):
     Lore's extra controls live on LoreRequest, not here."""
     message: str
     conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+    # Growth Phase H, Stage 3 — a server-generated conversations.id (from
+    # POST /conversations), deliberately separate from conversation_id
+    # above (see CLAUDE.md's "Growth Phase H" section for why). None for
+    # anonymous use or a signed-in turn with no active persisted chat —
+    # routers/chat.py only ever writes messages when this AND a verified
+    # user_id are both present and ownership-checked.
+    conversation_row_id: Optional[str] = None
 
 
 class LoreRequest(BaseModel):
@@ -78,6 +85,7 @@ class LoreRequest(BaseModel):
     meme_count: Optional[int] = None  # explicit override — forces exactly N memes, clamped to
                                        # settings.max_memes_per_request; None = auto-detect
     remember_lore: bool = False  # Growth Phase C — strictly opt-in Lore lexicon; see nlp/lexicon.py
+    conversation_row_id: Optional[str] = None  # Growth Phase H, Stage 3 — see ChatRequest's field
 
 
 class ChatResponse(BaseModel):
@@ -167,6 +175,44 @@ class LinkAnonResponse(BaseModel):
 
     status: str
     migrated: bool
+
+
+class ConversationSummary(BaseModel):
+    """One row of GET /conversations' sidebar list. title is None until the
+    first exchange's auto-titling (or a user rename) sets it — the frontend
+    shows a placeholder like "New chat" for that case."""
+
+    id: str
+    title: Optional[str] = None
+    surface: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class MessageOut(BaseModel):
+    """One row of GET /conversations/{id}/messages — reopening a past chat
+    hydrates from a list of these. meme_url, not meme_id, so the frontend
+    doesn't need a second round trip through memeImageUrl() logic per
+    message; built server-side from the stored meme_id via db.fetch_meme()."""
+
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    meme_url: Optional[str] = None
+    created_at: datetime
+
+
+class CreateConversationRequest(BaseModel):
+    surface: Literal["chat", "lore"] = "chat"
+
+
+class ConversationCreatedResponse(BaseModel):
+    id: str
+    surface: str
+
+
+class RenameConversationRequest(BaseModel):
+    title: str
 
 
 # ---------------------------------------------------------------------------

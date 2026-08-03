@@ -555,3 +555,221 @@ async def fetch_raw_arc_stats(
         busiest_sample_ts=busiest_row["last_ts"] if busiest_row else None,
         longest_streak_days=_longest_streak([row["d"] for row in date_rows]),
     )
+
+
+# --- Growth Phase H, Stage 3 — persisted chat history (signed-in only) ---
+#
+# Every ownership-sensitive function below pairs a client-supplied
+# conversation_id with a verified user_id (`WHERE id = $1 AND user_id = $2`,
+# or an explicit fetch_conversation_owner() check) — a bare conversation_id
+# is never trusted as proof of ownership on its own. See CLAUDE.md's
+# "Growth Phase H" section for why conversations.id is a separate,
+# server-generated id rather than reusing the client-correlation
+# conversation_id string every ChatRequest/LoreRequest already carries.
+
+
+async def create_conversation(user_id: str, surface: str) -> str | None:
+    """Returns the new conversation's server-generated id, or None with no
+    pool — unlike every anon-side function in this file, Postgres being
+    absent here means the feature genuinely can't work, not a graceful
+    degrade (the caller, POST /conversations, turns None into a 503)."""
+    pool = await get_pool()
+    if pool is None:
+        return None
+    row = await pool.fetchrow(
+        "INSERT INTO conversations (user_id, surface) VALUES ($1, $2) RETURNING id",
+        user_id, surface,
+    )
+    return str(row["id"]) if row else None
+
+
+async def fetch_conversations(
+    user_id: str, surface: str | None = None, limit: int = 50
+) -> list[dict[str, Any]]:
+    """Newest-first by updated_at (real activity, not just creation time) —
+    the sidebar's list. [] with no pool, same graceful-absence contract as
+    every other fetch_* in this file (unlike create_conversation above,
+    an empty list here is a perfectly normal "nothing to show yet" state,
+    not a broken feature)."""
+    pool = await get_pool()
+    if pool is None:
+        return []
+    if surface:
+        rows = await pool.fetch(
+            """
+            SELECT id, title, surface, created_at, updated_at FROM conversations
+            WHERE user_id = $1 AND surface = $2
+            ORDER BY updated_at DESC
+            LIMIT $3
+            """,
+            user_id, surface, limit,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT id, title, surface, created_at, updated_at FROM conversations
+            WHERE user_id = $1
+            ORDER BY updated_at DESC
+            LIMIT $2
+            """,
+            user_id, limit,
+        )
+    return [
+        {
+            "id": str(row["id"]),
+            "title": row["title"],
+            "surface": row["surface"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        for row in rows
+    ]
+
+
+async def fetch_conversation_owner(conversation_id: str) -> str | None:
+    """The ownership-check primitive fetch_messages below builds on. None
+    with no pool OR no such conversation — deliberately indistinguishable,
+    same posture as fetch_meme()'s existing None contract."""
+    pool = await get_pool()
+    if pool is None:
+        return None
+    row = await pool.fetchrow(
+        "SELECT user_id FROM conversations WHERE id = $1", conversation_id
+    )
+    return row["user_id"] if row else None
+
+
+async def fetch_conversation(conversation_id: str, user_id: str) -> dict[str, Any] | None:
+    """A single ownership-checked conversation row — used by PATCH
+    /conversations/{id} to build its response after a rename, without the
+    caller needing to re-derive it from the full fetch_conversations() list."""
+    pool = await get_pool()
+    if pool is None:
+        return None
+    row = await pool.fetchrow(
+        """
+        SELECT id, title, surface, created_at, updated_at FROM conversations
+        WHERE id = $1 AND user_id = $2
+        """,
+        conversation_id, user_id,
+    )
+    if row is None:
+        return None
+    return {
+        "id": str(row["id"]),
+        "title": row["title"],
+        "surface": row["surface"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+async def fetch_messages(conversation_id: str, user_id: str) -> list[dict[str, Any]] | None:
+    """Oldest-first (chronological replay order). None — not [] — when the
+    conversation doesn't exist or isn't owned by user_id, so the caller
+    (GET /conversations/{id}/messages) can 404 rather than returning an
+    empty list for a real conversation that's simply owned by someone else.
+    A brand-new, genuinely-owned, zero-message conversation still correctly
+    returns [] (checked via a separate ownership query, not inferred from
+    row count — a JOIN-based single query can't tell "owned but empty"
+    apart from "not owned" by row count alone)."""
+    pool = await get_pool()
+    if pool is None:
+        return None
+    owner = await fetch_conversation_owner(conversation_id)
+    if owner != user_id:
+        return None
+    # LEFT JOIN memes for the url directly — avoids an N+1 fetch_meme()
+    # call per message with an attached meme, at the cost of one join.
+    rows = await pool.fetch(
+        """
+        SELECT m.id, m.role, m.content, mm.url AS meme_url, m.created_at
+        FROM messages m
+        LEFT JOIN memes mm ON mm.id = m.meme_id
+        WHERE m.conversation_id = $1
+        ORDER BY m.created_at ASC
+        """,
+        conversation_id,
+    )
+    return [
+        {
+            "id": str(row["id"]),
+            "role": row["role"],
+            "content": row["content"],
+            "meme_url": row["meme_url"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+async def insert_message(
+    conversation_id: str, role: str, content: str, meme_id: str | None = None
+) -> None:
+    """No ownership check here — this is the hot chat-streaming path
+    (routers/chat.py), which only ever calls this after its own
+    fetch_conversation_owner() check already succeeded once for the turn;
+    re-checking per message would be a redundant query for no safety gain.
+    One transaction: the message insert and the updated_at bump (so the
+    sidebar's newest-first ordering reflects real activity) succeed or
+    fail together."""
+    pool = await get_pool()
+    if pool is None:
+        return
+    now = datetime.now(timezone.utc)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                """
+                INSERT INTO messages (conversation_id, role, content, meme_id, created_at)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                conversation_id, role, content, meme_id, now,
+            )
+            await conn.execute(
+                "UPDATE conversations SET updated_at = $2 WHERE id = $1",
+                conversation_id, now,
+            )
+
+
+async def set_conversation_title_if_unset(conversation_id: str, title: str) -> None:
+    """The auto-titling write — only ever sets a title once (the first
+    exchange), via the WHERE title IS NULL guard, so it can never clobber a
+    user's rename (rename_conversation, below) or a title set by an
+    earlier turn."""
+    pool = await get_pool()
+    if pool is None:
+        return
+    await pool.execute(
+        "UPDATE conversations SET title = $2 WHERE id = $1 AND title IS NULL",
+        conversation_id, title,
+    )
+
+
+async def rename_conversation(conversation_id: str, user_id: str, title: str) -> bool:
+    """True only if a row was actually renamed (existed AND owned by
+    user_id) — PATCH /conversations/{id} 404s on False."""
+    pool = await get_pool()
+    if pool is None:
+        return False
+    status = await pool.execute(
+        "UPDATE conversations SET title = $3, updated_at = $4 WHERE id = $1 AND user_id = $2",
+        conversation_id, user_id, title, datetime.now(timezone.utc),
+    )
+    return _affected_row_count(status) > 0
+
+
+async def delete_conversation(conversation_id: str, user_id: str) -> bool:
+    """Stage 3's simple version — ownership-checked delete; messages cascade
+    at the DB level (ON DELETE CASCADE). Stage 4 swaps this function's body
+    for one that also unwinds the conversation's contribution to
+    feedback/memes/lore_lexicon_terms — the public signature and every
+    caller (DELETE /conversations/{id}) stay unchanged."""
+    pool = await get_pool()
+    if pool is None:
+        return False
+    status = await pool.execute(
+        "DELETE FROM conversations WHERE id = $1 AND user_id = $2",
+        conversation_id, user_id,
+    )
+    return _affected_row_count(status) > 0

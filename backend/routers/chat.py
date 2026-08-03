@@ -102,6 +102,20 @@ def _sse(event: dict) -> str:
     return f"data: {json.dumps(event)}\n\n"
 
 
+_TITLE_MAX_CHARS = 48
+
+
+def _auto_title(text: str) -> str:
+    """Growth Phase H, Stage 3 — plain truncation, not an LLM call: matches
+    this codebase's cost-consciousness (segmentation's zero-LLM fast path
+    for the common case) and avoids a new failure mode (LLM down -> forever-
+    untitled) for a short sidebar label that doesn't need semantic quality."""
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= _TITLE_MAX_CHARS:
+        return collapsed
+    return collapsed[:_TITLE_MAX_CHARS].rsplit(" ", 1)[0] + "…"
+
+
 async def _stream_chat_turn(
     user_message: str,
     conversation_id: str,
@@ -109,6 +123,7 @@ async def _stream_chat_turn(
     surface: str | None = None,
     index: int = 0,
     total: int = 1,
+    conversation_row_id: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """The shared analyzing -> parse_intent -> rendering -> compose_meme ->
     log_usage -> done sequence for ONE situation (Mode 1: context). Yields
@@ -123,7 +138,13 @@ async def _stream_chat_turn(
     bundle, fetched ONCE per batch by the caller since it doesn't change
     turn-to-turn (unlike the in-memory recent-templates lookup below, which
     does). None when there's no anon id — every field on it is then treated
-    as empty."""
+    as empty.
+
+    conversation_row_id (Growth Phase H, Stage 3, optional): an already
+    ownership-checked persisted conversation (see handle_text_stream) — the
+    user message is written HERE, before generation even starts, so a
+    downstream failure (parse_intent/compose_meme raising) still leaves the
+    user's own message in their history rather than silently dropping it."""
     yield {
         "type": "thinking",
         "stage": "analyzing",
@@ -131,6 +152,9 @@ async def _stream_chat_turn(
         "total": total,
         "message": "Reading your vibe...",
     }
+
+    if conversation_row_id and ctx and ctx.user_id:
+        await db.insert_message(conversation_row_id, "user", user_message)
 
     try:
         intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx)
@@ -149,7 +173,9 @@ async def _stream_chat_turn(
     }
 
     try:
-        response = await _render_and_record_turn(intent, user_message, conversation_id, ctx, surface)
+        response = await _render_and_record_turn(
+            intent, user_message, conversation_id, ctx, surface, conversation_row_id
+        )
     except FileNotFoundError as exc:
         yield {"type": "error", "index": index, "total": total, "message": f"Template not found: {exc}"}
         return
@@ -189,6 +215,7 @@ async def _render_and_record_turn(
     conversation_id: str,
     ctx: db.PersonalizationContext | None = None,
     surface: str | None = None,
+    conversation_row_id: str | None = None,
 ) -> ChatResponse:
     """compose_meme -> log_usage/db.insert_meme -> build ChatResponse — the
     second half of a turn, given an already-resolved IntentResponse. Raises
@@ -218,6 +245,10 @@ async def _render_and_record_turn(
         user_id=ctx.user_id if ctx else None,
     )
 
+    if conversation_row_id and ctx and ctx.user_id:
+        await db.insert_message(conversation_row_id, "assistant", user_message, meme_id=saved.meme_id)
+        await db.set_conversation_title_if_unset(conversation_row_id, _auto_title(user_message))
+
     reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
     return ChatResponse(
         conversation_id=conversation_id,
@@ -237,7 +268,8 @@ async def generate_single_meme(
     just await and get a ChatResponse back or an exception). Chat/Lore's SSE
     path (_stream_chat_turn above) calls the same two halves directly
     instead, so it can yield a 'rendering' progress event between them; this
-    is just both halves back to back with nothing in between."""
+    is just both halves back to back with nothing in between. Never passes a
+    conversation_row_id — Discord has no persisted-conversation concept."""
     intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx)
     return await _render_and_record_turn(intent, user_message, conversation_id, ctx, surface)
 
@@ -247,6 +279,7 @@ async def _stream_batch(
     conversation_id: str,
     ctx: db.PersonalizationContext | None = None,
     surface: str | None = None,
+    conversation_row_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Runs each situation through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
@@ -265,7 +298,8 @@ async def _stream_batch(
     succeeded = 0
     for i, situation in enumerate(situations):
         async for event in _stream_chat_turn(
-            situation, conversation_id, ctx, surface, index=i, total=total
+            situation, conversation_id, ctx, surface, index=i, total=total,
+            conversation_row_id=conversation_row_id,
         ):
             if event.get("type") == "done":
                 succeeded += 1
@@ -282,6 +316,7 @@ async def _stream_canvas_turn(
     index: int = 0,
     total: int = 1,
     user_id: str | None = None,
+    conversation_row_id: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Mode 2 (canvas) — mirrors _stream_chat_turn's shape but skips RAG,
     parse_intent, add_turn, and log_usage entirely: there's no template_id
@@ -290,7 +325,11 @@ async def _stream_canvas_turn(
     ChromaDB, which a custom photo isn't part of. template_used stays None.
     db.insert_meme() (Growth Phase B) is NOT skipped, unlike the above —
     the durable memes table tracks every meme regardless of mode, since
-    canvas-mode memes get /m/{id} share pages too."""
+    canvas-mode memes get /m/{id} share pages too.
+
+    conversation_row_id (Growth Phase H, Stage 3): only writes the
+    ASSISTANT message here — the shared user message (if any) is written
+    once by the caller (_stream_canvas_batch), not once per photo."""
     yield {
         "type": "thinking",
         "stage": "rendering",
@@ -319,6 +358,11 @@ async def _stream_canvas_turn(
     # keying purposes (examples_store.upsert_example hashes on this text) —
     # distinct captions per photo avoid the same collision fixed for Mode 1.
     situation_text = f"{texts.get('top_text', '')} {texts.get('bottom_text', '')}".strip()
+
+    if conversation_row_id and user_id:
+        await db.insert_message(conversation_row_id, "assistant", situation_text, meme_id=saved.meme_id)
+        await db.set_conversation_title_if_unset(conversation_row_id, _auto_title(situation_text))
+
     reply = ChatMessage(role="assistant", content=situation_text, meme_url=saved.url, meme_id=saved.meme_id)
     response = ChatResponse(
         conversation_id=conversation_id,
@@ -336,6 +380,7 @@ async def _stream_canvas_batch(
     anon_user_id: str | None = None,
     surface: str | None = None,
     user_id: str | None = None,
+    conversation_row_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Mode 2 (canvas) batch — captions each surviving photo directly via
     generate_canvas_captions(), never touching resolve_contexts/parse_intent
@@ -345,6 +390,11 @@ async def _stream_canvas_batch(
     semantics don't transfer (segmentation splits one input into N
     synthetic situations; canvas mode's count is already fixed by how many
     photos survived ingestion)."""
+    if conversation_row_id and user_id and message:
+        # Written once for the whole batch — every photo shares this same
+        # accompanying text, unlike _stream_canvas_turn's per-photo reply.
+        await db.insert_message(conversation_row_id, "user", message)
+
     caption_results = await asyncio.gather(
         *[generate_canvas_captions(ci.image, message) for ci in clean_images]
     )
@@ -365,7 +415,7 @@ async def _stream_canvas_batch(
     for i, (clean_image, captions) in enumerate(pairs):
         async for event in _stream_canvas_turn(
             clean_image.image, captions, conversation_id, anon_user_id, surface,
-            index=i, total=total, user_id=user_id,
+            index=i, total=total, user_id=user_id, conversation_row_id=conversation_row_id,
         ):
             if event.get("type") == "done":
                 succeeded += 1
@@ -385,6 +435,21 @@ def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
     )
 
 
+async def _resolve_conversation_row_id(
+    conversation_row_id_in: str | None, user_id: str | None
+) -> str | None:
+    """Growth Phase H, Stage 3 — the one ownership check per request. A
+    client-supplied id that doesn't verify (wrong owner, doesn't exist, no
+    signed-in user at all) is silently ignored, not an error: the turn
+    just proceeds without persistence, exactly like today's anonymous
+    behavior, rather than failing an otherwise-normal chat request over a
+    stale or forged id."""
+    if not conversation_row_id_in or not user_id:
+        return None
+    owner = await db.fetch_conversation_owner(conversation_row_id_in)
+    return conversation_row_id_in if owner == user_id else None
+
+
 async def handle_text_stream(
     request: Request,
     message_in: str,
@@ -392,6 +457,7 @@ async def handle_text_stream(
     meme_count: int | None,
     remember_lore: bool,
     surface: str,
+    conversation_row_id_in: str | None = None,
 ) -> StreamingResponse:
     """Shared text-turn core for both /chat/ and /lore/ (Growth Phase D).
     Streams SSE events as one or more memes are generated — resolve_contexts
@@ -404,11 +470,14 @@ async def handle_text_stream(
     user_id = verified.user_id if verified else None
     ctx = await db.fetch_personalization(anon_user_id, user_id)
     conversation_id = conversation_id_in or ""
+    conversation_row_id = await _resolve_conversation_row_id(conversation_row_id_in, user_id)
     message = _clamp_dump_text(message_in) or ""
     if remember_lore:
         schedule_lexicon_extraction(anon_user_id, message, user_id)
     contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
-    return _sse_response(_stream_batch(contexts, conversation_id, ctx, surface))
+    return _sse_response(
+        _stream_batch(contexts, conversation_id, ctx, surface, conversation_row_id)
+    )
 
 
 async def handle_image_stream(
@@ -420,6 +489,7 @@ async def handle_image_stream(
     mode: str | None,
     remember_lore: bool,
     surface: str,
+    conversation_row_id_in: str | None = None,
 ) -> StreamingResponse:
     """Shared image-turn core for both /chat/image/ and /lore/image/
     (Growth Phase D). Uploads 1+ photos and generates memes from them, in one
@@ -449,6 +519,7 @@ async def handle_image_stream(
     user_id = verified.user_id if verified else None
     ctx = await db.fetch_personalization(anon_user_id, user_id)
     conv_id = conversation_id_in or ""
+    conversation_row_id = await _resolve_conversation_row_id(conversation_row_id_in, user_id)
     message = _clamp_dump_text(message_in)
     if remember_lore:
         schedule_lexicon_extraction(anon_user_id, message, user_id)
@@ -477,7 +548,7 @@ async def handle_image_stream(
             # rather than hard-refusing when the user's words are still usable.
             if message:
                 contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
-                async for event in _stream_batch(contexts, conv_id, ctx, surface):
+                async for event in _stream_batch(contexts, conv_id, ctx, surface, conversation_row_id):
                     yield event
                 return
             # No ModerationRejected made it this far (that check already
@@ -491,7 +562,8 @@ async def handle_image_stream(
 
         if resolved_mode == "canvas":
             async for event in _stream_canvas_batch(
-                clean_images, message, conv_id, anon_user_id, surface, user_id=user_id
+                clean_images, message, conv_id, anon_user_id, surface,
+                user_id=user_id, conversation_row_id=conversation_row_id,
             ):
                 yield event
             return
@@ -511,7 +583,7 @@ async def handle_image_stream(
             return
 
         contexts = await resolve_contexts(message, descriptions, meme_count, lexicon=ctx.lexicon)
-        async for event in _stream_batch(contexts, conv_id, ctx, surface):
+        async for event in _stream_batch(contexts, conv_id, ctx, surface, conversation_row_id):
             yield event
 
     return _sse_response(event_stream())
@@ -524,6 +596,7 @@ async def chat(request: Request, body: ChatRequest):
     return await handle_text_stream(
         request, body.message, body.conversation_id,
         meme_count=None, remember_lore=False, surface="chat",
+        conversation_row_id_in=body.conversation_row_id,
     )
 
 
@@ -535,9 +608,11 @@ async def chat_with_image(
     message: str | None = Form(None),
     conversation_id: str | None = Form(None),
     mode: str | None = Form(None),
+    conversation_row_id: str | None = Form(None),
 ):
     """Chat surface multimodal. No meme_count / remember_lore (Lore-only)."""
     return await handle_image_stream(
         request, images, message, conversation_id,
         meme_count=None, mode=mode, remember_lore=False, surface="chat",
+        conversation_row_id_in=conversation_row_id,
     )

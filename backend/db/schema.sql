@@ -10,6 +10,9 @@
 -- lore_lexicon (Growth Phase C) is the other deliberate exception: it
 -- stores short LLM-extracted phrases (names/nicknames/running jokes), never
 -- raw dump text, and only when the user opts in — see nlp/lexicon.py.
+-- messages (Growth Phase H, Stage 3) is a third, narrower exception:
+-- message content is stored, but ONLY for signed-in users with an active
+-- persisted conversation — anonymous use is completely unaffected.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -82,3 +85,41 @@ CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 -- feature that's already documented as "a light nudge, never a hard rule."
 ALTER TABLE lore_lexicon ADD COLUMN IF NOT EXISTS user_id text;
 CREATE INDEX IF NOT EXISTS idx_lore_lexicon_user_id ON lore_lexicon(user_id);
+
+-- Growth Phase H, Stage 3 — persisted chat history (signed-in only).
+-- conversations.id is a server-generated uuid, deliberately never the
+-- client-correlation `conversation_id` string every ChatRequest/LoreRequest
+-- already carries (that string has no server-side registry or ownership
+-- concept — see CLAUDE.md's "Growth Phase H" section for the reasoning).
+-- Every ownership-sensitive read/write in db/__init__.py pairs this id with
+-- user_id (`WHERE id = $1 AND user_id = $2`), never trusting a bare id.
+--
+-- PRIVACY NOTE: messages.content is a deliberate, explicit exception to
+-- this file's "never store situation/dump text" rule at the top — see
+-- memegpt-growth-master-prompt.md's Phase H section. Only ever written for
+-- signed-in users with an active conversation; anonymous use is completely
+-- unaffected (routers/chat.py never calls insert_message without both a
+-- verified user_id and an owned conversation_row_id).
+CREATE TABLE IF NOT EXISTS conversations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id text NOT NULL,
+    title text,
+    surface text NOT NULL DEFAULT 'chat',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- meme_id (not a new column on memes) carries the meme<->chat link — memes
+-- is shared across anon/signed-in/Discord/Arc and shouldn't grow a
+-- signed-in-only column; messages is signed-in-only by construction.
+CREATE TABLE IF NOT EXISTS messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id uuid NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role text NOT NULL,
+    content text NOT NULL,
+    meme_id text REFERENCES memes(id),
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id, created_at);
