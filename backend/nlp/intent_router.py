@@ -183,6 +183,11 @@ USE_WHEN: dict[str, str] = {
     "party_parrot":     "PURE HYPE CELEBRATION: A bobbing rainbow parrot losing its mind with excitement — unbridled, uncomplicated hype with zero nuance. E.g. the whole team losing it when the deploy finally goes green. NOT for a measured single win (success_kid) or an ironic/backhanded celebration (stonks).",
     "floss_dance":      "GOOFY VICTORY LAP: An exaggerated, silly little dance — showing off or celebrating a small win in a deliberately dorky, over-the-top way. E.g. smugly flossing after fixing a bug nobody else could. NOT for genuine unfiltered hype (party_parrot) or a smug comparison to someone else (drake).",
     "spinning_dancer":  "SAME THING, OPPOSITE PERCEPTIONS: A silhouette that famously appears to spin either direction depending on who's looking at it. Use when two people staring at the exact same situation walk away with completely different, equally confident readings of it — there's no objectively right side. NOT simple disagreement with a clear right/wrong (woman_yelling_at_cat) or two things that are secretly identical (theyre_the_same_picture).",
+    # --- Trend pipeline additions (review before merging) ---
+    "bernie_i_am_once_again_asking_for_your_support": "UNYIELDING DEMAND: A serious, repetitive plea or question that is being ignored or dismissed, emphasizing the persistence of the speaker despite the lack of response. NOT for a sudden realization of consequences (surprised_pikachu) or a smug rejection of an option (drake).",
+    "grim_reaper_knocking_door": "DRAFT FAILED — write this entry by hand before merging.",
+    "c_mon_do_something": "DRAFT FAILED — write this entry by hand before merging.",
+
 }
 
 
