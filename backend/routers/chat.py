@@ -38,6 +38,7 @@ from fastapi.responses import StreamingResponse
 from PIL import Image
 
 import db
+from auth import get_verified_user
 from config import get_settings
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme, compose_meme_on_image
@@ -214,6 +215,7 @@ async def _render_and_record_turn(
         mode="context",
         anon_user_id=ctx.anon_user_id if ctx else None,
         surface=surface,
+        user_id=ctx.user_id if ctx else None,
     )
 
     reply = ChatMessage(role="assistant", content=user_message, meme_url=saved.url, meme_id=saved.meme_id)
@@ -279,6 +281,7 @@ async def _stream_canvas_turn(
     surface: str | None = None,
     index: int = 0,
     total: int = 1,
+    user_id: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Mode 2 (canvas) — mirrors _stream_chat_turn's shape but skips RAG,
     parse_intent, add_turn, and log_usage entirely: there's no template_id
@@ -309,6 +312,7 @@ async def _stream_canvas_turn(
         mode="canvas",
         anon_user_id=anon_user_id,
         surface=surface,
+        user_id=user_id,
     )
 
     # The captions themselves are this meme's "situation" for feedback-
@@ -331,6 +335,7 @@ async def _stream_canvas_batch(
     conversation_id: str,
     anon_user_id: str | None = None,
     surface: str | None = None,
+    user_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Mode 2 (canvas) batch — captions each surviving photo directly via
     generate_canvas_captions(), never touching resolve_contexts/parse_intent
@@ -359,7 +364,8 @@ async def _stream_canvas_batch(
     succeeded = 0
     for i, (clean_image, captions) in enumerate(pairs):
         async for event in _stream_canvas_turn(
-            clean_image.image, captions, conversation_id, anon_user_id, surface, index=i, total=total
+            clean_image.image, captions, conversation_id, anon_user_id, surface,
+            index=i, total=total, user_id=user_id,
         ):
             if event.get("type") == "done":
                 succeeded += 1
@@ -394,11 +400,13 @@ async def handle_text_stream(
     remember_lore=False, surface="chat"; Lore passes its real values and
     surface="lore"."""
     anon_user_id = get_anon_user_id(request)
-    ctx = await db.fetch_personalization(anon_user_id)
+    verified = await get_verified_user(request)
+    user_id = verified.user_id if verified else None
+    ctx = await db.fetch_personalization(anon_user_id, user_id)
     conversation_id = conversation_id_in or ""
     message = _clamp_dump_text(message_in) or ""
     if remember_lore:
-        schedule_lexicon_extraction(anon_user_id, message)
+        schedule_lexicon_extraction(anon_user_id, message, user_id)
     contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
     return _sse_response(_stream_batch(contexts, conversation_id, ctx, surface))
 
@@ -437,11 +445,13 @@ async def handle_image_stream(
     that image and continues with the rest. This gate is identical for both
     modes and both surfaces."""
     anon_user_id = get_anon_user_id(request)
-    ctx = await db.fetch_personalization(anon_user_id)
+    verified = await get_verified_user(request)
+    user_id = verified.user_id if verified else None
+    ctx = await db.fetch_personalization(anon_user_id, user_id)
     conv_id = conversation_id_in or ""
     message = _clamp_dump_text(message_in)
     if remember_lore:
-        schedule_lexicon_extraction(anon_user_id, message)
+        schedule_lexicon_extraction(anon_user_id, message, user_id)
     if mode not in ("context", "canvas"):
         mode = None
     resolved_mode = mode or infer_mode(message)
@@ -480,7 +490,9 @@ async def handle_image_stream(
             return
 
         if resolved_mode == "canvas":
-            async for event in _stream_canvas_batch(clean_images, message, conv_id, anon_user_id, surface):
+            async for event in _stream_canvas_batch(
+                clean_images, message, conv_id, anon_user_id, surface, user_id=user_id
+            ):
                 yield event
             return
 

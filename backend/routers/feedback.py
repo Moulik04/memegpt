@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 
 import db
+from auth import get_verified_user
 from identity import get_anon_user_id
 from schemas import FeedbackRequest, FeedbackResponse
 from vector_db.examples_store import upsert_example
@@ -30,14 +31,21 @@ async def submit_feedback(request: Request, body: FeedbackRequest) -> FeedbackRe
     and silently dropped) — this is what lets the humor-profile aggregation
     in db.fetch_humor_profile() work without a lossy join through the
     nullable memes.meme_id relationship.
+
+    Growth Phase H, Stage 2: also stamps a verified user_id alongside
+    anon_user_id (never in place of it) when the request carries a valid
+    Supabase bearer token — same "stamp both, key exclusively off user_id
+    once present" pattern as every other Stage 2 write.
     """
     anon_user_id = get_anon_user_id(request)
+    verified = await get_verified_user(request)
     await db.insert_feedback(
         meme_id=body.meme_id,
         rating=body.rating,
         conversation_id=body.conversation_id,
         anon_user_id=anon_user_id,
         template_id=body.template_id,
+        user_id=verified.user_id if verified else None,
     )
 
     if body.rating == "up" and body.user_message and body.texts:

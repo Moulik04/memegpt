@@ -24,7 +24,7 @@ async def _fake_compose_meme(template_id, texts):
     return SavedMeme(meme_id="stubmeme01", url="/static/generated/stubmeme01.png", path=None)
 
 
-async def _fake_insert_meme(meme_id, url, template_id, mode, anon_user_id=None, surface=None):
+async def _fake_insert_meme(meme_id, url, template_id, mode, anon_user_id=None, surface=None, user_id=None):
     pass
 
 
@@ -80,7 +80,7 @@ async def test_surface_stamped_as_discord(monkeypatch):
     _fake_settings(monkeypatch, discord_worker_shared_secret="correct-secret")
     calls = []
 
-    async def capturing_insert_meme(meme_id, url, template_id, mode, anon_user_id=None, surface=None):
+    async def capturing_insert_meme(meme_id, url, template_id, mode, anon_user_id=None, surface=None, user_id=None):
         calls.append(surface)
 
     monkeypatch.setattr("routers.chat.parse_intent", _fake_parse_intent)

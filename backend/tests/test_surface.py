@@ -28,7 +28,7 @@ async def _fake_compose_meme(template_id, texts):
 async def _capture_surface(monkeypatch):
     calls = []
 
-    async def fake_insert_meme(meme_id, url, template_id, mode, anon_user_id=None, surface=None):
+    async def fake_insert_meme(meme_id, url, template_id, mode, anon_user_id=None, surface=None, user_id=None):
         calls.append(surface)
 
     monkeypatch.setattr("routers.chat.parse_intent", _fake_parse_intent)

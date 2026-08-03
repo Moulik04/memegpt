@@ -25,6 +25,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 import db
 from arc.copy import build_arc_stats
+from auth import get_verified_user
 from identity import get_anon_user_id
 from image_processing.compositor import compose_arc_card
 from rate_limit import limiter
@@ -33,12 +34,22 @@ from schemas import ArcCardResponse, ArcStats
 router = APIRouter()
 
 
-async def _stats_for(request: Request, tz: str) -> ArcStats:
+async def _identity_for(request: Request) -> tuple[str | None, str | None]:
     anon_user_id = get_anon_user_id(request)
-    if anon_user_id is None:
+    verified = await get_verified_user(request)
+    return anon_user_id, (verified.user_id if verified else None)
+
+
+async def _stats_for_identity(anon_user_id: str | None, user_id: str | None, tz: str) -> ArcStats:
+    if anon_user_id is None and user_id is None:
         return ArcStats(has_enough=False)
-    raw = await db.fetch_raw_arc_stats(anon_user_id, tz=tz)
+    raw = await db.fetch_raw_arc_stats(anon_user_id, user_id, tz=tz)
     return build_arc_stats(raw, tz=tz)
+
+
+async def _stats_for(request: Request, tz: str) -> ArcStats:
+    anon_user_id, user_id = await _identity_for(request)
+    return await _stats_for_identity(anon_user_id, user_id, tz)
 
 
 @router.get("", response_model=ArcStats)
@@ -54,8 +65,8 @@ async def create_arc_card(request: Request, tz: str = "UTC") -> ArcCardResponse:
     share. Rejects rather than rendering a hollow card for someone below
     the 5-meme minimum; the real UI only ever reaches this call from the
     reveal's final share step, which is itself gated on has_enough."""
-    anon_user_id = get_anon_user_id(request)
-    stats = await _stats_for(request, tz)
+    anon_user_id, user_id = await _identity_for(request)
+    stats = await _stats_for_identity(anon_user_id, user_id, tz)
     if not stats.has_enough:
         raise HTTPException(status_code=400, detail="Not enough data yet for an Arc card")
 
@@ -67,5 +78,6 @@ async def create_arc_card(request: Request, tz: str = "UTC") -> ArcCardResponse:
         mode="arc",
         anon_user_id=anon_user_id,
         surface=None,
+        user_id=user_id,
     )
     return ArcCardResponse(meme_id=saved.meme_id, url=saved.url)

@@ -158,6 +158,17 @@ class WhoAmIResponse(BaseModel):
     email: Optional[str] = None
 
 
+class LinkAnonResponse(BaseModel):
+    """POST /auth/link-anon's response — same shape/precedent as
+    ForgetMeResponse. migrated is False whenever there was nothing to link
+    (no anon id header, no verified user, or Postgres unconfigured) —
+    never an error, matching every other Stage 2 write's graceful-absence
+    contract."""
+
+    status: str
+    migrated: bool
+
+
 # ---------------------------------------------------------------------------
 # Generation layer
 # ---------------------------------------------------------------------------

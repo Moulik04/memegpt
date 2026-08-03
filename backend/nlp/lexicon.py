@@ -101,18 +101,27 @@ async def extract_lexicon(text: str) -> list[str]:
         return []
 
 
-async def _extract_and_store(anon_user_id: str, text: str) -> None:
+async def _extract_and_store(anon_user_id: str, text: str, user_id: str | None) -> None:
     terms = await extract_lexicon(text)
     if terms:
-        await db.upsert_lexicon(anon_user_id, terms)
+        await db.upsert_lexicon(anon_user_id, terms, user_id=user_id)
 
 
-def schedule_lexicon_extraction(anon_user_id: str | None, text: str | None) -> None:
+def schedule_lexicon_extraction(
+    anon_user_id: str | None, text: str | None, user_id: str | None = None
+) -> None:
     """No-ops if there's no anon id (nowhere to attribute the result) or the
     text is missing/trivially short. Fire-and-forget — the caller (a
-    routers/chat.py handler mid-SSE-stream) never awaits this."""
+    routers/chat.py handler mid-SSE-stream) never awaits this.
+
+    Growth Phase H, Stage 2: user_id, when present, is stamped onto the
+    upserted row alongside anon_user_id (still required — see
+    upsert_lexicon's docstring for why) so a signed-in user's lexicon is
+    reachable by user_id from then on. Still gated on anon_user_id, not
+    user_id, since the frontend always sends the anon header regardless of
+    sign-in state."""
     if not anon_user_id or not text or len(text) < _MIN_TEXT_CHARS:
         return
-    task = asyncio.create_task(_extract_and_store(anon_user_id, text))
+    task = asyncio.create_task(_extract_and_store(anon_user_id, text, user_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
