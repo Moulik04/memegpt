@@ -244,6 +244,11 @@ always available.
    signed-in users specifically — disclose it plainly in the sign-in flow and
    privacy copy. Anonymous users store nothing new (unchanged); signed-in users
    knowingly trade the no-store guarantee for a persistent, revisitable history.
+   **Owner amendment (2026-08-03): no "your data is saved" (or equivalent)
+   copy anywhere in the product UI, in the sign-in flow, a popover, or a
+   dedicated privacy page — explicit, repeated instruction, not an oversight.
+   This spec's own "disclose it plainly" line is superseded for this build;
+   Stage 3 ships the storage behavior with zero user-facing disclosure text.**
 4. **Per-chat delete = forget that chat's context.** Deleting a conversation from
    the sidebar removes it AND everything derived from it — its stored messages,
    its contribution to the humor profile and cross-session `avoid_templates`, and
