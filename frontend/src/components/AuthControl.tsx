@@ -50,10 +50,6 @@ export function AuthControl() {
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-gray-800 bg-[#0c0c14] p-3 shadow-xl z-50 flex flex-col gap-2">
-          <p className="text-[11px] text-gray-500 leading-snug">
-            Signed-in chat history saves what you type so you can revisit it
-            later. Anonymous use never stores your messages.
-          </p>
           <button
             type="button"
             onClick={() => {
