@@ -20,6 +20,16 @@ import re
 
 import httpx
 
+import circuit_breaker
+
+# Groq's rate limits are per-model (confirmed live against their docs —
+# separate RPM/RPD/TPM/TPD per model, not one shared account-wide pool),
+# so this is keyed by model name — tripping qwen's circuit must never
+# affect gpt-oss's independent one. 60s is a conservative per-minute-window
+# guess (Groq doesn't publish an exact reset cadence per model the way
+# Gemini's docs do).
+_GROQ_CIRCUIT_COOLDOWN_SECONDS = 60.0
+
 
 async def call_ollama(
     client: httpx.AsyncClient,
@@ -91,10 +101,15 @@ async def call_groq(
             await asyncio.sleep(min(retry_after, 8))
             continue
         response.raise_for_status()
+        circuit_breaker.reset(f"groq:{settings.groq_model}")
         return response.json()["choices"][0]["message"]["content"].strip()
     # Both attempts hit 429 — return empty so the caller falls through to its
     # own hard fallback rather than raising httpx.HTTPStatusError and
-    # bypassing that fallback entirely
+    # bypassing that fallback entirely. Also trip this model's circuit so
+    # a caller with multiple models to try (intent_router.py's secondary-
+    # model fallback) can skip straight past a model it already knows is
+    # currently rate-limited on a subsequent request.
+    circuit_breaker.trip(f"groq:{settings.groq_model}", _GROQ_CIRCUIT_COOLDOWN_SECONDS)
     return ""
 
 

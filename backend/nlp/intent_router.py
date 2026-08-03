@@ -17,12 +17,18 @@ import json
 import httpx
 from pydantic import ValidationError
 
+import circuit_breaker
 from config import get_settings
 from image_processing.template_configs import DEFAULT_BOX_DESCRIPTIONS, get_config
 from nlp.llm_client import call_llm, strip_markdown
 from schemas import IntentResponse
 from vector_db.chroma_client import list_template_ids, query_similar_memes
 from vector_db.examples_store import get_similar_examples
+
+# Both defined in nlp/llm_client.py's call_groq(), but re-derived here
+# purely for the "should we even try the primary model this request"
+# skip-ahead check — see the resilience block in _parse_intent_inner().
+_GROQ_CIRCUIT_PREFIX = "groq:"
 
 _FALLBACK_TEMPLATES = [
     "drake", "distracted_boyfriend", "this_is_fine", "change_my_mind",
@@ -424,41 +430,81 @@ async def _parse_intent_inner(
         lexicon_block=lexicon_block,
     )
 
-    async with httpx.AsyncClient() as client:
-        # Attempt 1 — rich prompt with few-shot + avoid block
-        try:
-            raw = await call_llm(client, settings, [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ])
-            raw = strip_markdown(raw)
-            data = json.loads(raw)
-            data = _normalize_llm_response(data, known_id_set)
-            result = IntentResponse(**data)
-            if result.template_id not in known_id_set:
-                raise ValueError(f"Hallucinated template_id: {result.template_id}")
-            return result
-        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
-            pass
+    retry_prompt = _RETRY_TEMPLATE.format(
+        user_message=user_message,
+        template_ids=", ".join(template_ids[:14]),
+    )
 
-        # Attempt 2 — minimal strict prompt at low temperature
-        retry_prompt = _RETRY_TEMPLATE.format(
-            user_message=user_message,
-            template_ids=", ".join(template_ids[:14]),
-        )
-        try:
-            raw = await call_llm(client, settings, [
-                {"role": "user", "content": retry_prompt},
-            ], temperature=0.2)
-            raw = strip_markdown(raw)
-            data = json.loads(raw)
-            data = _normalize_llm_response(data, known_id_set)
-            result = IntentResponse(**data)
-            if result.template_id not in known_id_set:
-                raise ValueError(f"Hallucinated template_id: {result.template_id}")
-            return result
-        except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
-            pass
+    # Resilience follow-up: Groq's rate limits are per-model (confirmed
+    # live — separate RPM/RPD/TPM/TPD per model, not a shared pool), so a
+    # second model is a genuine fallback rather than a no-op. Only
+    # meaningful when actually running Groq with a distinct fallback model
+    # configured — Ollama-only local dev has no equivalent concept.
+    has_fallback_model = bool(
+        settings.llm_provider == "groq"
+        and settings.groq_api_key
+        and settings.groq_fallback_model
+        and settings.groq_fallback_model != settings.groq_model
+    )
+    # If we already know (within the last cooldown window) that the
+    # primary model is rate-limited, don't pay its retry-with-wait tax
+    # again this request — skip straight to the fallback-model attempt.
+    skip_primary = has_fallback_model and circuit_breaker.is_open(
+        _GROQ_CIRCUIT_PREFIX + settings.groq_model
+    )
+
+    async with httpx.AsyncClient() as client:
+        if not skip_primary:
+            # Attempt 1 — rich prompt with few-shot + avoid block
+            try:
+                raw = await call_llm(client, settings, [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ])
+                raw = strip_markdown(raw)
+                data = json.loads(raw)
+                data = _normalize_llm_response(data, known_id_set)
+                result = IntentResponse(**data)
+                if result.template_id not in known_id_set:
+                    raise ValueError(f"Hallucinated template_id: {result.template_id}")
+                return result
+            except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
+                pass
+
+            # Attempt 2 — minimal strict prompt at low temperature, same model
+            try:
+                raw = await call_llm(client, settings, [
+                    {"role": "user", "content": retry_prompt},
+                ], temperature=0.2)
+                raw = strip_markdown(raw)
+                data = json.loads(raw)
+                data = _normalize_llm_response(data, known_id_set)
+                result = IntentResponse(**data)
+                if result.template_id not in known_id_set:
+                    raise ValueError(f"Hallucinated template_id: {result.template_id}")
+                return result
+            except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
+                pass
+
+        # Attempt 3 — same strict prompt, a genuinely different Groq model.
+        # Only reached if attempts 1+2 both failed, or were skipped
+        # entirely because we already knew the primary model was
+        # rate-limited this request.
+        if has_fallback_model:
+            fallback_settings = settings.model_copy(update={"groq_model": settings.groq_fallback_model})
+            try:
+                raw = await call_llm(client, fallback_settings, [
+                    {"role": "user", "content": retry_prompt},
+                ], temperature=0.2)
+                raw = strip_markdown(raw)
+                data = json.loads(raw)
+                data = _normalize_llm_response(data, known_id_set)
+                result = IntentResponse(**data)
+                if result.template_id not in known_id_set:
+                    raise ValueError(f"Hallucinated template_id: {result.template_id}")
+                return result
+            except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
+                pass
 
     # Hard fallback — always returns something rather than 500-ing
     return IntentResponse(
