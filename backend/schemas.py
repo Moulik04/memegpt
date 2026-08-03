@@ -146,6 +146,19 @@ class ForgetMeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Growth Phase H — optional accounts + chat history
+# ---------------------------------------------------------------------------
+
+class WhoAmIResponse(BaseModel):
+    """GET /auth/whoami's response — both fields null when Supabase Auth is
+    unconfigured, no bearer token was sent, or the token didn't verify.
+    Never distinguishes those cases from each other in the response."""
+
+    user_id: Optional[str] = None
+    email: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
 # Generation layer
 # ---------------------------------------------------------------------------
 

@@ -54,6 +54,16 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_embedding_model: str = "gemini-embedding-2"
 
+    # Supabase Auth (Growth Phase H) — optional accounts layered on top of
+    # Phase C's anonymous identity. Empty = disabled, matching every other
+    # optional integration's convention: no sign-in UI, backend verification
+    # always resolves to no user, app behaves exactly like Phase C.
+    # supabase_anon_key is a public, non-secret value (safe server-side) —
+    # only needed if Supabase's GET /auth/v1/user requires an apikey header
+    # alongside the caller's own bearer token.
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+
     # Durable storage (Growth Phase B) — see storage/ and db/.
     # All empty by default: local disk + no Postgres is the fully-functional
     # zero-cost fallback, not a degraded mode. Setting these switches

@@ -14,7 +14,7 @@ import json
 from config import get_settings
 from nlp.intent_router import USE_WHEN
 from rate_limit import limiter
-from routers import arc, chat, discord, explain, feedback, generate, lore, me, memes, share_intake
+from routers import arc, auth, chat, discord, explain, feedback, generate, lore, me, memes, share_intake
 from uploads.retention import periodic_purge_loop
 from vector_db.chroma_client import (
     init_chroma,
@@ -212,6 +212,7 @@ app.include_router(share_intake.router, prefix="/share-intake", tags=["share"])
 app.include_router(me.router, prefix="/me", tags=["me"])
 app.include_router(arc.router, prefix="/arc", tags=["arc"])
 app.include_router(discord.router, prefix="/discord", tags=["discord"])
+app.include_router(auth.router, prefix="/auth", tags=["auth"])
 
 
 @app.get("/health", tags=["meta"])
