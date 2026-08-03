@@ -11,6 +11,7 @@ import pytest
 from fastapi import UploadFile
 from PIL import Image
 
+import circuit_breaker
 from config import Settings, get_settings
 from rate_limit import limiter
 from storage import OUTPUT_DIR
@@ -64,6 +65,18 @@ def _isolate_chroma_from_real_local_data(tmp_path_factory):
     tmp_dir = tmp_path_factory.mktemp("chroma_test_data")
     chroma_client._DB_PATH = tmp_dir
     examples_store._DB_PATH = tmp_dir
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_circuit_breaker():
+    """circuit_breaker.py's state is a module-level dict shared by every
+    caller (Gemini + Groq resilience) — without resetting between tests, a
+    test that trips a circuit (e.g. simulating exhausted 429 retries)
+    leaves it open for whichever test happens to run next, in any file,
+    same class of cross-test leakage _reset_rate_limiter below already
+    guards against for slowapi's shared state."""
+    circuit_breaker._open_until.clear()
     yield
 
 

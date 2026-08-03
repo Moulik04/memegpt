@@ -37,6 +37,7 @@ from typing import Any
 import httpx
 from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 
+import circuit_breaker
 from config import Settings
 
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta"
@@ -75,6 +76,12 @@ _MAX_BACKOFF_SECONDS = 30.0
 # (_SEED_CHUNK_SIZE=20), but chunking transparently here means no future
 # caller has to independently know about or respect this limit.
 _MAX_ITEMS_PER_BATCH = 100
+# One shared circuit breaker name for both __call__ (documents) and
+# embed_query (queries) — they hit the same underlying Gemini quota, so a
+# rate-limit signal on either is a strong signal the other would currently
+# fail too. 60s ≈ Gemini's own per-minute rate-limit window.
+_CIRCUIT_NAME = "gemini"
+_CIRCUIT_COOLDOWN_SECONDS = 60.0
 
 
 class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
@@ -111,6 +118,15 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
     def _embed(self, texts: list[str], task_type: str, max_retries: int) -> Embeddings:
         if not texts:
             return []
+        if circuit_breaker.is_open(_CIRCUIT_NAME):
+            # We already know (within the last _CIRCUIT_COOLDOWN_SECONDS)
+            # that Gemini is rate-limited — skip the network call and
+            # retry dance entirely rather than re-discovering that on
+            # every single request during an outage window.
+            # query_similar_memes()/get_similar_examples() already catch
+            # any exception from this call and degrade to [], so raising
+            # here needs no new handling anywhere upstream.
+            raise RuntimeError("Gemini circuit breaker open (cooldown from a recent rate limit)")
         embeddings: Embeddings = []
         for i in range(0, len(texts), _MAX_ITEMS_PER_BATCH):
             embeddings.extend(
@@ -130,6 +146,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
         ]
         resp = self._post_with_429_retry(model_path, requests_body, max_retries)
         resp.raise_for_status()
+        circuit_breaker.reset(_CIRCUIT_NAME)  # a real success — un-gate any open circuit early
         data = resp.json()
         embeddings = data.get("embeddings")
         if not embeddings or len(embeddings) != len(texts):
@@ -160,6 +177,13 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
                 timeout=_TIMEOUT_SECONDS,
             )
             if resp.status_code != 429 or attempt == max_retries:
+                if resp.status_code == 429:
+                    # Retries exhausted on a genuine rate limit — trip the
+                    # breaker so the NEXT request (this one still has to
+                    # surface the failure to its own caller) skips the
+                    # whole retry dance instead of rediscovering the same
+                    # rate limit from scratch.
+                    circuit_breaker.trip(_CIRCUIT_NAME, _CIRCUIT_COOLDOWN_SECONDS)
                 return resp
             retry_after = resp.headers.get("Retry-After")
             delay = (

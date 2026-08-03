@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+import circuit_breaker as cb
 from config import Settings
 from vector_db import chroma_client, examples_store
 from vector_db import gemini_embedding_function as gef
@@ -206,3 +207,61 @@ def test_query_similar_memes_returns_empty_list_on_embedding_failure(monkeypatch
 def test_get_similar_examples_returns_empty_list_on_embedding_failure(monkeypatch):
     monkeypatch.setattr(examples_store, "_get_collection", lambda: _FailingCollection())
     assert examples_store.get_similar_examples("anything") == []
+
+
+# --- Circuit breaker integration (resilience follow-up) ---
+# conftest.py's autouse _reset_circuit_breaker fixture clears circuit_breaker
+# state before every test in this file, so no manual reset needed here.
+
+def test_exhausting_retries_trips_the_circuit(monkeypatch):
+    def _fake_post(url, params=None, json=None, timeout=None):
+        return _FakeResponse({}, status_code=429)
+
+    monkeypatch.setattr(gef.httpx, "post", _fake_post)
+    monkeypatch.setattr(gef.time, "sleep", lambda seconds: None)
+
+    ef = gef.GeminiEmbeddingFunction(model_name="gemini-embedding-2", api_key="fake-key")
+    with pytest.raises(RuntimeError):
+        ef(["one doc"])
+
+    assert cb.is_open(gef._CIRCUIT_NAME) is True
+
+
+def test_open_circuit_skips_the_network_call_entirely(monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(gef.httpx, "post", lambda *a, **k: calls.append(1) or _FakeResponse({}))
+    cb.trip(gef._CIRCUIT_NAME, cooldown_seconds=60)
+
+    ef = gef.GeminiEmbeddingFunction(model_name="gemini-embedding-2", api_key="fake-key")
+    with pytest.raises(RuntimeError, match="circuit breaker"):
+        ef(["one doc"])
+
+    assert calls == []  # httpx.post was never reached
+
+
+def test_a_success_resets_an_open_circuit(monkeypatch):
+    """Isolates "_embed_one_batch's success path calls reset()" from
+    "_embed's guard skips calls while open" (covered above) by calling
+    _embed_one_batch directly, which doesn't go through that guard."""
+    def _fake_post(url, params=None, json=None, timeout=None):
+        return _FakeResponse({"embeddings": [{"values": [0.1]}]})
+
+    monkeypatch.setattr(gef.httpx, "post", _fake_post)
+    cb.trip(gef._CIRCUIT_NAME, cooldown_seconds=60)
+
+    ef = gef.GeminiEmbeddingFunction(model_name="gemini-embedding-2", api_key="fake-key")
+    ef._embed_one_batch(["one doc"], "RETRIEVAL_DOCUMENT", max_retries=0)
+
+    assert cb.is_open(gef._CIRCUIT_NAME) is False
+
+
+def test_embed_query_also_respects_the_shared_circuit(monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(gef.httpx, "post", lambda *a, **k: calls.append(1) or _FakeResponse({}))
+    cb.trip(gef._CIRCUIT_NAME, cooldown_seconds=60)
+
+    ef = gef.GeminiEmbeddingFunction(model_name="gemini-embedding-2", api_key="fake-key")
+    with pytest.raises(RuntimeError, match="circuit breaker"):
+        ef.embed_query(["a query"])
+
+    assert calls == []
