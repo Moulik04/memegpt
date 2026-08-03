@@ -233,6 +233,24 @@ async def fetch_humor_profile(
 _LEXICON_MAX_TERMS = 40  # bounds future prompt-injection size
 
 
+def _dedupe_case_insensitive(terms: list[str], cap: int) -> list[str]:
+    """Shared by upsert_lexicon (merging new + existing terms) and Stage 4's
+    unwind_conversation_contribution (re-deriving the cache from whatever's
+    left in lore_lexicon_terms after a per-chat delete) — same
+    strip/case-insensitive-dedupe/cap logic, input order sets priority."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for term in terms:
+        key = term.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(term.strip())
+        if len(result) >= cap:
+            break
+    return result
+
+
 async def fetch_lexicon(anon_user_id: str | None, user_id: str | None = None) -> list[str]:
     """[] when Postgres is absent, the user has no row, or opted out —
     the Lore lexicon feature (nlp/lexicon.py) is what ever writes a row.
@@ -283,16 +301,7 @@ async def upsert_lexicon(
     if pool is None or not new_terms:
         return
     existing = await fetch_lexicon(anon_user_id, user_id)
-
-    seen: set[str] = set()
-    merged: list[str] = []
-    for term in [*new_terms, *existing]:
-        key = term.strip().lower()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        merged.append(term.strip())
-    merged = merged[:_LEXICON_MAX_TERMS]
+    merged = _dedupe_case_insensitive([*new_terms, *existing], _LEXICON_MAX_TERMS)
 
     await pool.execute(
         """
@@ -304,6 +313,27 @@ async def upsert_lexicon(
             updated_at = EXCLUDED.updated_at
         """,
         anon_user_id, json.dumps(merged), user_id, datetime.now(timezone.utc),
+    )
+
+
+async def insert_lexicon_terms(user_id: str, conversation_id: str | None, terms: list[str]) -> None:
+    """Growth Phase H, Stage 4 — the normalized provenance table
+    unwind_conversation_contribution() reads from to find exactly which
+    terms one conversation contributed. Only ever called alongside
+    upsert_lexicon() (the flat read-side cache, unchanged) for signed-in
+    extractions — anonymous schedule_lexicon_extraction calls never reach
+    this function at all, still only writing the flat cache exactly as
+    Phase C shipped. conversation_id may be None (remember_lore fired
+    outside an active persisted conversation) — those rows are tracked but,
+    per the documented Stage 4 limitation, can never be unwound by a later
+    per-chat delete since there's no conversation to match them against."""
+    pool = await get_pool()
+    if pool is None or not terms:
+        return
+    now = datetime.now(timezone.utc)
+    await pool.executemany(
+        "INSERT INTO lore_lexicon_terms (user_id, conversation_id, term, created_at) VALUES ($1, $2, $3, $4)",
+        [(user_id, conversation_id, term, now) for term in terms],
     )
 
 
@@ -761,16 +791,85 @@ async def rename_conversation(conversation_id: str, user_id: str, title: str) ->
 
 
 async def delete_conversation(conversation_id: str, user_id: str) -> bool:
-    """Stage 3's simple version — ownership-checked delete; messages cascade
-    at the DB level (ON DELETE CASCADE). Stage 4 swaps this function's body
-    for one that also unwinds the conversation's contribution to
-    feedback/memes/lore_lexicon_terms — the public signature and every
-    caller (DELETE /conversations/{id}) stay unchanged."""
+    """Growth Phase H, Stage 4 — "delete this chat" means forget it ever
+    happened, not just hide it from the sidebar: unwinds the conversation's
+    contribution to feedback/memes/lore_lexicon before removing the
+    conversation itself. Public signature unchanged from Stage 3's simple
+    version, so DELETE /conversations/{id} needed no changes at all."""
+    return await unwind_conversation_contribution(conversation_id, user_id)
+
+
+async def unwind_conversation_contribution(conversation_id: str, user_id: str) -> bool:
+    """False (no-op, matching every other ownership-checked function's
+    contract) with no pool, or when conversation_id doesn't exist or isn't
+    owned by user_id — checked FIRST, before any delete runs, so a
+    forged/foreign id fails closed rather than partially executing.
+
+    FK-safe ordering (non-obvious — got this wrong in the original plan
+    sketch, corrected here):
+    1. Collect this conversation's meme_ids from `messages` (read-only,
+       before any deletes touch that table).
+    2. Delete `feedback` rows referencing those memes. NOT via
+       feedback.conversation_id — that column holds the OLD client-
+       correlation conversation_id string (from FeedbackRequest), a
+       completely different id space than this function's conversation_id
+       (conversations.id, server-generated) — the two are never comparable.
+       feedback.meme_id -> memes.id has no ON DELETE clause (defaults to
+       RESTRICT), so this must run before deleting memes, below.
+    3. Delete `lore_lexicon_terms` rows for this conversation_id — must run
+       BEFORE deleting the conversation itself: that table's FK is
+       ON DELETE SET NULL, so deleting the conversation first would null
+       out conversation_id on those rows out from under this exact WHERE
+       clause, leaving them un-findable and never actually deleted.
+    4. Re-derive lore_lexicon.terms (the flat cache every reader still
+       uses) for user_id from whatever lore_lexicon_terms rows are left.
+    5. Delete the conversation — cascades `messages` (ON DELETE CASCADE),
+       which is what actually clears every messages.meme_id reference to
+       the memes this conversation generated.
+    6. Only now delete those `memes` rows — safe, since nothing references
+       them anymore (messages gone via cascade, feedback already deleted
+       in step 2). This un-teaches avoid_templates/humor profile for free:
+       both read live off memes/feedback, no separate cache to bust."""
     pool = await get_pool()
     if pool is None:
         return False
-    status = await pool.execute(
-        "DELETE FROM conversations WHERE id = $1 AND user_id = $2",
-        conversation_id, user_id,
-    )
-    return _affected_row_count(status) > 0
+    owner = await fetch_conversation_owner(conversation_id)
+    if owner != user_id:
+        return False
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            meme_rows = await conn.fetch(
+                "SELECT meme_id FROM messages WHERE conversation_id = $1 AND meme_id IS NOT NULL",
+                conversation_id,
+            )
+            meme_ids = [row["meme_id"] for row in meme_rows]
+
+            if meme_ids:
+                await conn.execute(
+                    "DELETE FROM feedback WHERE meme_id = ANY($1::text[])", meme_ids
+                )
+
+            await conn.execute(
+                "DELETE FROM lore_lexicon_terms WHERE conversation_id = $1", conversation_id
+            )
+
+            remaining = await conn.fetch(
+                "SELECT term FROM lore_lexicon_terms WHERE user_id = $1 ORDER BY created_at DESC",
+                user_id,
+            )
+            terms = _dedupe_case_insensitive([r["term"] for r in remaining], _LEXICON_MAX_TERMS)
+            await conn.execute(
+                "UPDATE lore_lexicon SET terms = $2::jsonb, updated_at = $3 WHERE user_id = $1",
+                user_id, json.dumps(terms), datetime.now(timezone.utc),
+            )
+
+            status = await conn.execute(
+                "DELETE FROM conversations WHERE id = $1 AND user_id = $2", conversation_id, user_id
+            )
+            deleted = _affected_row_count(status) > 0
+
+            if meme_ids:
+                await conn.execute("DELETE FROM memes WHERE id = ANY($1::text[])", meme_ids)
+
+    return deleted

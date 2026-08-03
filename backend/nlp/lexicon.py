@@ -101,14 +101,27 @@ async def extract_lexicon(text: str) -> list[str]:
         return []
 
 
-async def _extract_and_store(anon_user_id: str, text: str, user_id: str | None) -> None:
+async def _extract_and_store(
+    anon_user_id: str, text: str, user_id: str | None, conversation_row_id: str | None
+) -> None:
     terms = await extract_lexicon(text)
     if terms:
         await db.upsert_lexicon(anon_user_id, terms, user_id=user_id)
+        if user_id:
+            # Growth Phase H, Stage 4 — the normalized provenance write, so
+            # a later per-chat delete can find and unwind exactly these
+            # terms. conversation_row_id may be None (remember_lore fired
+            # outside an active persisted conversation) — still tracked,
+            # just never unwindable later; see insert_lexicon_terms's
+            # docstring for the documented limitation.
+            await db.insert_lexicon_terms(user_id, conversation_row_id, terms)
 
 
 def schedule_lexicon_extraction(
-    anon_user_id: str | None, text: str | None, user_id: str | None = None
+    anon_user_id: str | None,
+    text: str | None,
+    user_id: str | None = None,
+    conversation_row_id: str | None = None,
 ) -> None:
     """No-ops if there's no anon id (nowhere to attribute the result) or the
     text is missing/trivially short. Fire-and-forget — the caller (a
@@ -122,6 +135,6 @@ def schedule_lexicon_extraction(
     sign-in state."""
     if not anon_user_id or not text or len(text) < _MIN_TEXT_CHARS:
         return
-    task = asyncio.create_task(_extract_and_store(anon_user_id, text, user_id))
+    task = asyncio.create_task(_extract_and_store(anon_user_id, text, user_id, conversation_row_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

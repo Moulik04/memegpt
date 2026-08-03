@@ -17,6 +17,7 @@ import db
 class FakePool:
     def __init__(self):
         self.executed: list[tuple[str, tuple]] = []
+        self.executemany_calls: list[tuple[str, list]] = []
         self.fetch_calls: list[tuple[str, tuple]] = []
         self.fetchrow_calls: list[tuple[str, tuple]] = []
         self.fetch_return: list[dict] = []
@@ -26,6 +27,9 @@ class FakePool:
     async def execute(self, query, *args):
         self.executed.append((query, args))
         return self.execute_status
+
+    async def executemany(self, query, args_list):
+        self.executemany_calls.append((query, list(args_list)))
 
     async def fetch(self, query, *args):
         self.fetch_calls.append((query, args))
@@ -61,6 +65,12 @@ class FakeConn:
 
     async def execute(self, query, *args):
         return await self.pool.execute(query, *args)
+
+    async def fetch(self, query, *args):
+        return await self.pool.fetch(query, *args)
+
+    async def fetchrow(self, query, *args):
+        return await self.pool.fetchrow(query, *args)
 
     def transaction(self):
         return _NoopTransactionCM()
@@ -509,20 +519,22 @@ async def test_rename_conversation_false_when_nothing_matched(monkeypatch):
     assert await db.rename_conversation("conv-1", "user-1", "New title") is False
 
 
-async def test_delete_conversation_true_when_row_affected(monkeypatch):
+async def test_delete_conversation_false_when_not_owned(monkeypatch):
     fake_pool = FakePool()
-    fake_pool.execute_status = "DELETE 1"
-    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
-
-    assert await db.delete_conversation("conv-1", "user-1") is True
-
-
-async def test_delete_conversation_false_when_nothing_matched(monkeypatch):
-    fake_pool = FakePool()
-    fake_pool.execute_status = "DELETE 0"
+    fake_pool.fetchrow_return = {"user_id": "someone-else"}
     monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
 
     assert await db.delete_conversation("conv-1", "user-1") is False
+    # Fails closed BEFORE any delete runs.
+    assert fake_pool.executed == []
+
+
+async def test_delete_conversation_true_when_owned(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "user-1"}
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    assert await db.delete_conversation("conv-1", "user-1") is True
 
 
 async def test_fetch_conversation_returns_owned_row(monkeypatch):
@@ -536,3 +548,156 @@ async def test_fetch_conversation_returns_owned_row(monkeypatch):
     result = await db.fetch_conversation("conv-1", "user-1")
 
     assert result == {"id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now}
+
+
+# --- Growth Phase H, Stage 4 — per-chat delete cascade ---
+
+
+def test_dedupe_case_insensitive_removes_duplicates_ignoring_case():
+    result = db._dedupe_case_insensitive(["Big Steve", "big steve", "The Printer Incident"], cap=10)
+    assert result == ["Big Steve", "The Printer Incident"]
+
+
+def test_dedupe_case_insensitive_respects_input_order_as_priority():
+    result = db._dedupe_case_insensitive(["b", "a", "b"], cap=10)
+    assert result == ["b", "a"]
+
+
+def test_dedupe_case_insensitive_caps_output():
+    result = db._dedupe_case_insensitive(["a", "b", "c", "d"], cap=2)
+    assert result == ["a", "b"]
+
+
+def test_dedupe_case_insensitive_skips_blank_terms():
+    result = db._dedupe_case_insensitive(["  ", "a", ""], cap=10)
+    assert result == ["a"]
+
+
+async def test_insert_lexicon_terms_noops_with_no_pool(monkeypatch):
+    monkeypatch.setattr(db, "get_pool", _no_pool)
+
+    await db.insert_lexicon_terms("user-1", "conv-1", ["Big Steve"])
+
+
+async def test_insert_lexicon_terms_noops_with_empty_terms(monkeypatch):
+    fake_pool = FakePool()
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    await db.insert_lexicon_terms("user-1", "conv-1", [])
+
+    assert fake_pool.executemany_calls == []
+
+
+async def test_insert_lexicon_terms_issues_correct_sql(monkeypatch):
+    fake_pool = FakePool()
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    await db.insert_lexicon_terms("user-1", "conv-1", ["Big Steve", "the printer incident"])
+
+    assert len(fake_pool.executemany_calls) == 1
+    query, args_list = fake_pool.executemany_calls[0]
+    assert "INSERT INTO lore_lexicon_terms" in query
+    assert len(args_list) == 2
+    assert args_list[0][:3] == ("user-1", "conv-1", "Big Steve")
+    assert args_list[1][:3] == ("user-1", "conv-1", "the printer incident")
+
+
+async def test_unwind_conversation_contribution_false_with_no_pool(monkeypatch):
+    monkeypatch.setattr(db, "get_pool", _no_pool)
+
+    assert await db.unwind_conversation_contribution("conv-1", "user-1") is False
+
+
+async def test_unwind_conversation_contribution_false_when_not_owned(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "someone-else"}
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    result = await db.unwind_conversation_contribution("conv-1", "user-1")
+
+    assert result is False
+    assert fake_pool.executed == []
+
+
+async def test_unwind_conversation_contribution_full_flow_with_memes(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "user-1"}
+    # First fetch() call returns this conversation's meme_ids; the second
+    # (remaining lore_lexicon_terms after the delete) returns leftover terms.
+    fetch_returns = [
+        [{"meme_id": "meme-1"}, {"meme_id": "meme-2"}],
+        [{"term": "Big Steve"}],
+    ]
+    call_count = {"n": 0}
+
+    async def fake_fetch(query, *args):
+        fake_pool.fetch_calls.append((query, args))
+        result = fetch_returns[call_count["n"]]
+        call_count["n"] += 1
+        return [FakeRecord(r) for r in result]
+
+    fake_pool.fetch = fake_fetch
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    result = await db.unwind_conversation_contribution("conv-1", "user-1")
+
+    assert result is True
+    queries = [q for q, _ in fake_pool.executed]
+    assert any("DELETE FROM feedback" in q for q in queries)
+    assert any("DELETE FROM lore_lexicon_terms" in q for q in queries)
+    assert any("UPDATE lore_lexicon" in q for q in queries)
+    assert any("DELETE FROM conversations" in q for q in queries)
+    assert any("DELETE FROM memes" in q for q in queries)
+
+    # FK-safe ordering: conversations must be deleted (clearing messages'
+    # meme_id references via cascade) BEFORE memes itself is deleted.
+    conv_idx = next(i for i, q in enumerate(queries) if "DELETE FROM conversations" in q)
+    memes_idx = next(i for i, q in enumerate(queries) if "DELETE FROM memes" in q)
+    assert conv_idx < memes_idx
+
+    # lore_lexicon_terms deleted before conversations (ON DELETE SET NULL
+    # would otherwise null conversation_id out from under that WHERE clause).
+    lexterms_idx = next(i for i, q in enumerate(queries) if "DELETE FROM lore_lexicon_terms" in q)
+    assert lexterms_idx < conv_idx
+
+    # feedback deleted before memes (FK: feedback.meme_id -> memes.id).
+    feedback_idx = next(i for i, q in enumerate(queries) if "DELETE FROM feedback" in q)
+    assert feedback_idx < memes_idx
+
+    # The re-derived cache reflects whatever lore_lexicon_terms rows remained.
+    update_query, update_args = next(
+        (q, a) for q, a in fake_pool.executed if "UPDATE lore_lexicon" in q
+    )
+    assert update_args[0] == "user-1"
+    assert json.loads(update_args[1]) == ["Big Steve"]
+
+
+async def test_unwind_conversation_contribution_skips_feedback_and_memes_when_no_memes(monkeypatch):
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "user-1"}
+    fake_pool.fetch_return = []  # no memes in this conversation, no leftover lexicon terms
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    result = await db.unwind_conversation_contribution("conv-1", "user-1")
+
+    assert result is True
+    queries = [q for q, _ in fake_pool.executed]
+    assert not any("DELETE FROM feedback" in q for q in queries)
+    assert not any("DELETE FROM memes" in q for q in queries)
+    assert any("DELETE FROM lore_lexicon_terms" in q for q in queries)
+    assert any("DELETE FROM conversations" in q for q in queries)
+
+
+async def test_unwind_conversation_contribution_false_when_conversation_delete_matched_nothing(monkeypatch):
+    """A TOCTOU edge case: ownership checked out, but the conversation was
+    deleted by something else before the transaction's own DELETE ran —
+    the final row count is what decides success, not the earlier check."""
+    fake_pool = FakePool()
+    fake_pool.fetchrow_return = {"user_id": "user-1"}
+    fake_pool.fetch_return = []
+    fake_pool.execute_status = "DELETE 0"
+    monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
+
+    result = await db.unwind_conversation_contribution("conv-1", "user-1")
+
+    assert result is False

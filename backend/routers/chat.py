@@ -473,7 +473,7 @@ async def handle_text_stream(
     conversation_row_id = await _resolve_conversation_row_id(conversation_row_id_in, user_id)
     message = _clamp_dump_text(message_in) or ""
     if remember_lore:
-        schedule_lexicon_extraction(anon_user_id, message, user_id)
+        schedule_lexicon_extraction(anon_user_id, message, user_id, conversation_row_id)
     contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
     return _sse_response(
         _stream_batch(contexts, conversation_id, ctx, surface, conversation_row_id)
@@ -522,7 +522,7 @@ async def handle_image_stream(
     conversation_row_id = await _resolve_conversation_row_id(conversation_row_id_in, user_id)
     message = _clamp_dump_text(message_in)
     if remember_lore:
-        schedule_lexicon_extraction(anon_user_id, message, user_id)
+        schedule_lexicon_extraction(anon_user_id, message, user_id, conversation_row_id)
     if mode not in ("context", "canvas"):
         mode = None
     resolved_mode = mode or infer_mode(message)

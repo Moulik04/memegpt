@@ -123,3 +123,30 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id, created_at);
+
+-- Growth Phase H, Stage 4 — per-chat delete cascade. lore_lexicon.terms
+-- (the flat jsonb cache every reader — fetch_lexicon, parse_intent,
+-- fetch_personalization — already uses) stays the source of truth for
+-- READS, unchanged. This table is the new source of truth for WRITES,
+-- letting a per-chat delete find and remove exactly the terms one
+-- conversation contributed, then re-derive the cache. Only ever populated
+-- for signed-in, conversation-attributed extractions (nlp/lexicon.py) —
+-- anonymous schedule_lexicon_extraction calls never reach it, still only
+-- writing the flat jsonb cache exactly as Phase C shipped.
+-- ON DELETE SET NULL (not CASCADE): unwind_conversation_contribution()
+-- explicitly deletes the matching rows itself, before deleting the
+-- conversation — relying on cascade here would null conversation_id out
+-- from under that explicit DELETE's WHERE clause instead of removing the
+-- rows. SET NULL is just the safe default for any row this codepath
+-- doesn't reach (there shouldn't be any, but never orphan-reference a
+-- deleted conversation either way).
+CREATE TABLE IF NOT EXISTS lore_lexicon_terms (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id text,
+    conversation_id uuid REFERENCES conversations(id) ON DELETE SET NULL,
+    term text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lore_lexicon_terms_user_id ON lore_lexicon_terms(user_id);
+CREATE INDEX IF NOT EXISTS idx_lore_lexicon_terms_conversation_id ON lore_lexicon_terms(conversation_id);
