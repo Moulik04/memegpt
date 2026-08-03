@@ -441,13 +441,15 @@ async def test_fetch_messages_returns_rows_when_owned(monkeypatch):
     fake_pool.fetchrow_return = {"user_id": "user-1"}
     now = datetime.now(timezone.utc)
     fake_pool.fetch_return = [
-        {"id": "msg-1", "role": "user", "content": "hi", "meme_url": None, "created_at": now},
+        {"id": "msg-1", "role": "user", "content": "hi", "meme_url": None, "meme_id": None, "created_at": now},
     ]
     monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
 
     rows = await db.fetch_messages("conv-1", "user-1")
 
-    assert rows == [{"id": "msg-1", "role": "user", "content": "hi", "meme_url": None, "created_at": now}]
+    assert rows == [
+        {"id": "msg-1", "role": "user", "content": "hi", "meme_url": None, "meme_id": None, "created_at": now}
+    ]
 
 
 async def test_fetch_messages_owned_but_empty_conversation_returns_empty_list(monkeypatch):

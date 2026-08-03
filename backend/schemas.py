@@ -191,14 +191,17 @@ class ConversationSummary(BaseModel):
 
 class MessageOut(BaseModel):
     """One row of GET /conversations/{id}/messages — reopening a past chat
-    hydrates from a list of these. meme_url, not meme_id, so the frontend
-    doesn't need a second round trip through memeImageUrl() logic per
-    message; built server-side from the stored meme_id via db.fetch_meme()."""
+    hydrates from a list of these. Carries both meme_url (so the frontend
+    doesn't need a second round trip to resolve it — built server-side via
+    a JOIN in db.fetch_messages) AND meme_id (needed for feedback
+    attribution — FeedbackButtons keys off meme_id, same as a live SSE
+    "done" event's ChatMessage.meme_id already does)."""
 
     id: str
     role: Literal["user", "assistant"]
     content: str
     meme_url: Optional[str] = None
+    meme_id: Optional[str] = None
     created_at: datetime
 
 

@@ -683,7 +683,7 @@ async def fetch_messages(conversation_id: str, user_id: str) -> list[dict[str, A
     # call per message with an attached meme, at the cost of one join.
     rows = await pool.fetch(
         """
-        SELECT m.id, m.role, m.content, mm.url AS meme_url, m.created_at
+        SELECT m.id, m.role, m.content, m.meme_id, mm.url AS meme_url, m.created_at
         FROM messages m
         LEFT JOIN memes mm ON mm.id = m.meme_id
         WHERE m.conversation_id = $1
@@ -697,6 +697,7 @@ async def fetch_messages(conversation_id: str, user_id: str) -> list[dict[str, A
             "role": row["role"],
             "content": row["content"],
             "meme_url": row["meme_url"],
+            "meme_id": row["meme_id"],
             "created_at": row["created_at"],
         }
         for row in rows
