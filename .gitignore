@@ -52,5 +52,7 @@ memegpt-growth-master-prompt.md
 memegpt-lore-mode-spec.md
 memegpt-multimodal-master-prompt.md
 
+FEASIBILITY.md
+
 .vercel/
 .env*
