@@ -1,4 +1,3 @@
-# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -14,65 +13,44 @@ env/
 .env.local
 .env.*.local
 
-# ChromaDB persistent store (runtime, not committed). backend/data/* (not
-# backend/data/, no trailing wildcard) is deliberate — git can't re-include
-# a file via a negation pattern below if the parent directory itself is
-# excluded (a real, confirmed git limitation, not a style choice); this
-# excludes the directory's contents individually instead, which negation
-# patterns actually can override.
 backend/data/*
 !backend/data/curated_examples.jsonl
 !backend/data/template_embeddings.json
 
-# Generated meme output (runtime artifacts)
 backend/static/generated/*.png
 backend/static/generated/*.jpg
 
-# Fonts (add your own — not committed)
 backend/fonts/*.ttf
 backend/fonts/*.otf
 
-# Next.js
 frontend/.next/
 frontend/out/
 frontend/node_modules/
 frontend/.env*.local
 frontend/tsconfig.tsbuildinfo
 
-# pytest
 .pytest_cache/
 
-# macOS
 .DS_Store
 
-# IDE
 .vscode/
 .idea/
 *.swp
 
-# Docker volumes (runtime — model weights, ChromaDB, generated PNGs)
 volumes/
 
-# Claude Code memory (local dev assistant state)
 .claude/
 
-# Large Kaggle dataset files (download separately, not committed).
-# Anchored to the repo root (/data/, not data/) — an unanchored pattern
-# here also matched backend/data/ (a different directory, ChromaDB's own
-# ignore rule a few lines up already covers it), which silently blocked
-# backend/data/template_embeddings.json from ever being added despite its
-# own explicit negation exception below.
 /data/
 memes.json
 memes_data.tsv
 memes_reference_data.tsv
 
-# sed backup files
 *.bak
 
-# Vercel CLI's local project link metadata + env files (added automatically
-# by `vercel link`) — .env/.env.local/.env.*.local above already cover real
-# env files elsewhere; this was previously two unanchored rules (`.vercel`
-# and a bare `.env*`) that silently blocked every .env.example anywhere in
-# the repo from ever being tracked, not just this directory.
+memegpt-growth-master-prompt.md
+memegpt-lore-mode-spec.md
+memegpt-multimodal-master-prompt.md
+
 .vercel/
+.env*
