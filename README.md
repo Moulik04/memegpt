@@ -2,104 +2,135 @@
 
 # MemeGPT
 
-### A meme-first AI chatbot — LLM intent routing, RAG retrieval, and real-time image composition. Runs free, locally or in the cloud.
+### An AI chatbot that only talks in memes — LLM intent routing, RAG template retrieval, multimodal vision, and real-time image composition.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-memegpt--six.vercel.app-7C3AED?style=flat-square)](https://memegpt-six.vercel.app)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Ollama](https://img.shields.io/badge/Ollama-Llama_3.1_8B-74AA9C?style=flat-square)](https://ollama.com)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Postgres](https://img.shields.io/badge/Postgres-Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
 [![Groq](https://img.shields.io/badge/Groq-Cloud_LLM-F55036?style=flat-square)](https://groq.com)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-0.5.x-FF6B35?style=flat-square)](https://www.trychroma.com/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-RAG-FF6B35?style=flat-square)](https://www.trychroma.com/)
+[![Cloudflare R2](https://img.shields.io/badge/Cloudflare-R2%20%2B%20Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white)](https://developers.cloudflare.com/r2/)
+[![Discord](https://img.shields.io/badge/Discord-%2Fmeme-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
 
 </div>
 
 ---
 
-MemeGPT converts any natural-language message into a contextually appropriate meme. Type a message; the system routes it through an LLM structured-output pipeline, picks the best template from 120+ options via semantic search, renders captions using a pixel-accurate bounding-box compositor, and streams the result back to a dark-themed chat interface in real time.
+MemeGPT is a chatbot that communicates exclusively through memes. Type a message (or paste a whole group-chat dump, or upload a photo), and it routes through an LLM intent-parsing layer, does a RAG pre-filter over 120+ meme templates, picks the best match (or, for a photo, captions it directly), renders text onto the image with a pixel-accurate Pillow compositor, and streams the result back in real time.
 
 **[Try it live →](https://memegpt-six.vercel.app)**
 
-Two LLM backends, swappable via `LLM_PROVIDER`: **Ollama** (Llama 3.1 8B, 100% local, zero cost, no API key) for development, or **Groq** (free-tier cloud inference, ~400 tok/s) for production deployment where a GPU isn't available.
+The product has two real surfaces, plus a marketing front door:
+
+- **`/`** — a public landing page explaining the product and linking into the two surfaces below. Not the app itself.
+- **`/chat`** — a normal chatbot. The catch: it only replies in memes.
+- **`/lore`** — for big context dumps. Paste a whole group chat, upload a stack of screenshots, get several memes back — with explicit controls (meme count, drag-and-drop) that Chat deliberately doesn't expose.
+
+Optional accounts (email or Google, via Supabase Auth) unlock a persisted chat-history sidebar and cross-device memory. Everything also works fully anonymously — no signup required, ever.
+
+Two LLM backends, swappable via `LLM_PROVIDER`: **Ollama** (local, zero cost, no API key) for development, or **Groq** (free-tier cloud inference) for production, with an automatic secondary-model fallback and a circuit breaker for resilience during rate-limit windows.
 
 ---
 
 ## Demo
 
-| Prompt | Template chosen |
+| Input | What happens |
 |---|---|
-| `"when the intern pushes directly to main"` | Gru's Plan (4-panel) |
-| `"me trying to explain to my parents what I do for work"` | Distracted Boyfriend |
-| `"should I go to the gym or just watch Netflix"` | Two Buttons |
-| `"when I say I'll start the assignment early but it's due tomorrow"` | This Is Fine |
-| `"me pretending I read the terms and conditions"` | Hide the Pain Harold |
+| `"when the intern pushes directly to main"` | Matches Gru's Plan (4-panel) via RAG + LLM template selection |
+| A photo + `"make this a meme"` | Canvas mode — the photo becomes the meme directly, captioned top/bottom |
+| A long pasted group-chat thread | Segmented into 2-5 distinct meme-worthy moments, each rendered separately |
+| 👍 on a generated meme | Feeds a per-user humor profile that nudges future template picks |
+| `/meme <text>` in Discord | Same generation pipeline, delivered as a slash command reply |
 
 ---
 
 ## Architecture
 
 ```
-User message
-    │
-    ▼
-┌────────────────────────────────────────────────────────────┐
-│  POST /chat/   (FastAPI + SSE streaming)                   │
-│                                                            │
-│  ┌─────────────────────────┐                              │
-│  │  NLP Intent Router      │  Ollama — Llama 3.1 8B       │
-│  │  nlp/intent_router.py   │  local structured JSON out   │
-│  │                         │  → template_id + captions    │
-│  └────────────┬────────────┘                              │
-│               │                                            │
-│  ┌────────────▼────────────┐                              │
-│  │  RAG Template Search    │  ChromaDB cosine similarity  │
-│  │  vector_db/             │  semantic meme retrieval     │
-│  │  chroma_client.py       │  + few-shot example store    │
-│  └────────────┬────────────┘                              │
-│               │                                            │
-│  ┌────────────▼────────────┐                              │
-│  │  Pillow Compositor      │  Anton / Impact font         │
-│  │  image_processing/      │  per-template bounding boxes │
-│  │  compositor.py          │  8-directional stroke text   │
-│  └────────────┬────────────┘                              │
-│               │  /static/generated/<uuid>.png             │
-└───────────────┼────────────────────────────────────────────┘
-                │
-                ▼
-      Next.js 14 Chat UI  (SSE: thinking → rendering → done)
+Text and/or photos (Chat, Lore, or Discord /meme)
+      │
+      ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  POST /chat/ or /lore/  (FastAPI, SSE streaming)                     │
+│                                                                       │
+│  uploads/safe_ingest.py    every photo: size cap, magic-byte type    │
+│                              check, decompression-bomb guard, EXIF   │
+│                              strip, content moderation               │
+│                                                                       │
+│  nlp/vision.py             Mode 1 (context): describe the photo(s)   │
+│                              Mode 2 (canvas): caption the photo       │
+│                              directly, no template lookup             │
+│                                                                       │
+│  nlp/segmentation.py       splits one submission into 1..N distinct  │
+│                              meme-worthy situations                   │
+│                                                                       │
+│  ┌── per situation, sequentially ─────────────────────────────────┐ │
+│  │  vector_db/chroma_client.py   RAG: 8 semantically similar       │ │
+│  │                                 templates via ChromaDB           │ │
+│  │  nlp/intent_router.py         Groq / Ollama → structured JSON   │ │
+│  │                                 (template_id, captions) with a  │ │
+│  │                                 retry + secondary-model fallback│ │
+│  │  image_processing/compositor.py  Pillow: per-template text      │ │
+│  │                                 boxes, stroke, watermark         │ │
+│  │  storage/ + db/                R2 (or local disk) + Postgres    │ │
+│  │                                 as source of truth               │ │
+│  └───────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────┬───────────────────────────────────┘
+                                 │  SSE: thinking → plan → done × N → batch_done
+                                 ▼
+                 Next.js 14 UI — Chat carousel / Lore feed
+                 real-time, progressive, one meme at a time
 ```
 
 ---
 
 ## Features
 
-- **Zero-cost local LLM** — Ollama runs Llama 3.1 8B entirely on-device. No API key, no rate limits, works offline. GPU-accelerated on Apple Silicon (Metal) and NVIDIA (CUDA).
-- **Structured JSON output** — the model returns a typed JSON object (`template_id`, `texts`, `reasoning`) validated by Pydantic v2 before any image is touched. No regex heuristics. Retry logic handles malformed responses.
-- **RAG template retrieval** — ChromaDB indexes 120+ templates as natural-language documents. Every request does a cosine-similarity search to find semantically relevant candidates, then merges with a core set — keeping the prompt under 1,300 tokens (fits in Ollama's 4096-token context).
-- **Per-template text layout** — `template_configs.py` defines named bounding boxes (in % coordinates) per template ID. The compositor converts to pixels at runtime and auto-shrinks font to fit. Supports arbitrary multi-panel layouts: Drake 2-panel, Gru 4-panel, Boardroom 5-bubble, Distracted Boyfriend 3-label, and more.
-- **Classic meme typography** — Anton font (free Impact equivalent, OFL license) with 8-directional stroke pass. Falls back to LiberationSans-Bold → Pillow default.
-- **SSE streaming** — `/chat/` yields `thinking → rendering → done` events so the UI updates live as each stage completes.
-- **Few-shot RAG examples** — a second ChromaDB collection stores curated (prompt → meme) examples. Semantically similar examples are injected into the system prompt to guide the LLM toward better template choices.
-- **Docker Compose stack** — one command brings up backend, frontend, and ChromaDB with persistent named volumes and health checks. Native Ollama on Mac routed via `host.docker.internal` for Metal GPU access.
-- **Thumbs up/down feedback** — each generated meme has a feedback endpoint that logs ratings back to ChromaDB for future fine-tuning.
+**Core generation**
+- **LLM intent routing** — a structured-JSON call (Groq in production, Ollama locally) picks a template and writes captions, validated against the real template catalog before ever touching the compositor. Retries on hallucinated ids or malformed JSON; a secondary-model fallback and a per-model circuit breaker keep generation working through Groq rate-limit windows.
+- **RAG template retrieval** — ChromaDB semantic search over 120+ templates, precomputed embeddings checked into the repo so a cold start never re-pays the embedding cost.
+- **Multi-context, multi-meme generation** — a long dump or several photos gets segmented into distinct meme-worthy moments and rendered as separate memes in one streamed batch, not flattened into one.
+- **Multimodal input** — upload photos in either Mode 1 (context: described, then matched to a catalog template) or Mode 2 (canvas: the photo becomes the meme itself, captioned directly). Every upload passes through one hardened ingestion gate: size cap, magic-byte type sniffing, decompression-bomb guard, metadata stripping, and content moderation.
+- **Pixel-accurate compositor** — Pillow-based, per-template bounding boxes, auto-shrinking text, 8-directional stroke, animated GIF templates (frame-by-frame captioning), a brand watermark, and a PNG provenance tag on every render.
+
+**Product surfaces**
+- **Chat vs Lore** — one backend, two purpose-built frontends: Chat is minimal-chrome auto-everything; Lore exposes meme-count and drag-and-drop for big context dumps, plus an opt-in "remember lore" lexicon for recurring names/running jokes.
+- **Arc** — a roast-flavored personal recap ("aura" score, tiers, template roasts) rendered as a shareable card and a Stories-style tap-through reveal.
+- **Optional accounts** — email or Google sign-in via Supabase Auth links your anonymous history to a real account, unlocking a persisted chat-history sidebar with per-chat delete. Fully anonymous use (localStorage UUID, no signup) still works identically for anyone who skips sign-in.
+- **Discord `/meme`** — a Cloudflare Worker handles Discord's ed25519 handshake and forwards to the same generation pipeline.
+- **Share pages** — every generated meme gets a durable `/m/{id}` page with Open Graph tags, backed by R2 storage and Postgres (survives redeploys — Render's disk doesn't).
+
+**Personalization & memory**
+- No-signup anonymous memory: cross-session avoid-repeat template tracking, a feedback-derived humor profile, an opt-in lexicon for callback humor — all keyed off a `localStorage` UUID, no account needed.
+- A one-click "Forget me" erases everything tied to that identity; signed-in users get the same guarantee per-chat.
+
+**Reliability & ops**
+- Every LLM call site is bounded, retried, and has a safe hard fallback — `parse_intent()` never raises to the caller.
+- A weekly trend-discovery pipeline scans Imgflip for new templates, dedupes via perceptual hashing, drafts catalog entries with a vision model, and opens a human-reviewed PR — never auto-merges.
+- A `MAINTENANCE_MODE` flag swaps the entire site to a self-contained coming-soon page via middleware, no redeploy of app code required.
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Why |
-|---|---|---|
-| API framework | FastAPI + Uvicorn | Async-first, auto-generates OpenAPI docs, Pydantic-native |
-| LLM inference | Ollama (local) / Groq (cloud) | Ollama for free, offline, on-device dev; Groq for free-tier cloud inference in production |
-| Vector store | ChromaDB 1.x | Zero-infrastructure, cosine similarity, persistent on-disk |
-| Image processing | Pillow (PIL) | Full pixel-level control over text layout and stroke rendering |
-| Schema validation | Pydantic v2 | End-to-end type safety from API boundary to compositor inputs |
-| Frontend | Next.js 14 + TypeScript | App Router, built-in image optimization, `rewrites()` API proxy |
-| Styling | Tailwind CSS v3 | Utility-first, no CSS files to maintain |
-| Containerisation | Docker Compose | One-command full-stack startup with health checks and volumes |
+| Layer | Technology |
+|---|---|
+| API framework | FastAPI + Uvicorn, SSE streaming |
+| LLM inference | Groq (production) / Ollama (local dev) — swappable via `LLM_PROVIDER` |
+| Vision | Groq vision (primary), Anthropic (fallback) |
+| Vector store / RAG | ChromaDB, Gemini embeddings in production (local model in dev) |
+| Relational store | Postgres (Supabase), raw `asyncpg`, no ORM |
+| Object storage | Cloudflare R2 (S3-compatible), local disk fallback |
+| Auth | Supabase Auth (email + Google), verified server-side per request |
+| Image processing | Pillow — per-template layouts, stroke text, GIF frame compositing |
+| Frontend | Next.js 14 (App Router) + TypeScript + Tailwind CSS |
+| Bot integration | Cloudflare Worker (TypeScript) for Discord's `/meme` slash command |
+| CI | GitHub Actions — weekly trend-discovery pipeline |
+| Deployment | Render (backend), Vercel (frontend) |
 
 ---
 
@@ -107,112 +138,84 @@ User message
 
 ```
 memegpt/
-├── docker-compose.yml              Full stack: backend + frontend + ChromaDB
-├── .env.example                    Copy to .env — set OLLAMA_MODEL
+├── backend/                       FastAPI application (Python 3.11+)
+│   ├── main.py                    Entry point — routers, CORS, static mounts, auto-seed
+│   ├── routers/                   chat, lore, arc, explain, generate, feedback, memes,
+│   │                               me, auth, conversations, discord, share_intake
+│   ├── nlp/                       llm_client, intent_router, segmentation, vision, lexicon
+│   ├── uploads/                   safe_ingest — the one entry point for any uploaded image
+│   ├── image_processing/          compositor.py + per-template layout configs
+│   ├── vector_db/                 ChromaDB client + few-shot example store
+│   ├── db/                        Postgres pool + schema + all read/write functions
+│   ├── storage/                   R2 / local-disk meme storage
+│   ├── auth.py, identity.py       Supabase-verified users + anonymous identity
+│   ├── arc/                       aura scoring + roast copy
+│   ├── memory/                    in-memory per-conversation template history
+│   ├── scripts/                   eval harnesses, trend pipeline, embedding precompute
+│   ├── templates/                 120+ meme images (static + animated GIF)
+│   └── tests/                     pytest suite
 │
-├── backend/
-│   ├── Dockerfile
-│   ├── main.py                     FastAPI app — routers, CORS, static files, lifespan
-│   ├── schemas.py                  Pydantic v2 models (MemeTemplate, TextBox, ChatMessage…)
-│   ├── config.py                   Settings via pydantic-settings (.env / env vars)
-│   ├── pyproject.toml              Dependencies + Ruff / mypy config
-│   │
-│   ├── routers/
-│   │   ├── chat.py                 POST /chat/     — SSE streaming pipeline
-│   │   ├── explain.py              POST /explain/  — template metadata & history
-│   │   ├── generate.py             POST /generate/ — direct meme generation
-│   │   └── feedback.py             POST /feedback/ — thumbs up/down logging
-│   │
-│   ├── image_processing/
-│   │   ├── compositor.py           Pillow compositor (font, wrap, bbox, stroke)
-│   │   └── template_configs.py     Per-template bounding box definitions (~120 templates)
-│   │
-│   ├── vector_db/
-│   │   ├── chroma_client.py        ChromaDB singleton — dual-mode (local + HTTP)
-│   │   └── examples_store.py       Few-shot example store (separate collection)
-│   │
-│   ├── nlp/
-│   │   └── intent_router.py        Ollama → JSON → IntentResponse (RAG + retry logic)
-│   ├── memory/
-│   │   └── conversation_store.py   Per-conversation recent-template memory (anti-repetition)
-│   │
-│   ├── templates/                  ~120 base meme images (.jpg / .png)
-│   └── fonts/                      Drop Impact.ttf here to override Anton
-│
-├── frontend/
-│   ├── Dockerfile
+├── frontend/                      Next.js 14 + Tailwind (TypeScript)
 │   └── src/
-│       ├── app/                    Next.js App Router (layout, page, globals.css)
-│       │   ├── api/chat/route.ts   True SSE proxy to POST /chat/ (rewrites() alone buffers SSE)
-│       │   ├── api/feedback/route.ts
-│       │   └── share/page.tsx      PWA share-target page (Web Share API)
-│       ├── components/
-│       │   ├── ChatWindow.tsx      Stateful chat container, SSE consumer, send logic
-│       │   ├── MessageBubble.tsx   Per-message bubble (user right, meme left)
-│       │   ├── FeedbackButtons.tsx / ShareButtons.tsx / ThinkingBubble.tsx
-│       │   └── MemeDisplay.tsx     next/image wrapper for rendered memes
-│       ├── lib/api.ts              Typed fetch helpers (sendChat, generateMeme…)
-│       └── types/index.ts          TypeScript interfaces mirroring backend schemas
+│       ├── app/                   /, /chat, /lore, /arc, /m/[id], /auth, share-target
+│       ├── components/            ModeTabs, ChatWindow, LoreView, ArcView,
+│       │                           ConversationSidebar, AuthControl, LandingPage
+│       ├── hooks/                 useMemeStream (shared SSE logic, Chat + Lore)
+│       └── lib/                   api.ts, identity.ts, supabaseClient.ts
 │
-└── scripts/
-    ├── seed_templates.py           Seeds Imgflip's top-100 templates into ChromaDB (one-time bootstrap)
-    ├── seed_examples.py            Manually seeds backend/data/curated_examples.jsonl (older, separate
-    │                                from the 15 examples auto-seeded by examples_store.py)
-    ├── colab_ollama_server.ipynb   Run Ollama on Colab T4 GPU via ngrok HTTP tunnel
-    ├── bridges2_ollama_service.sh  SLURM job for Ollama on PSC Bridges-2 V100-32GB
-    ├── bridges2_job.sh             SLURM job for the fine-tuning run itself (see below)
-    ├── use_remote_ollama.sh        Switch OLLAMA_HOST and restart backend in one command
-    ├── finetune_unsloth.py         LoRA fine-tuning with Unsloth (auto-detects T4 / V100)
-    ├── prepare_finetune_dataset.py Converts Imgflip 100k CSV → ChatML JSONL
-    ├── ingest_imgflip_dataset.py   Downloads/prepares the raw Imgflip 100k dataset
-    ├── Modelfile                   Ollama Modelfile for loading a finished fine-tuned GGUF
-    └── dummy_template_test.py      Standalone Pillow PoC — no services required
+├── integrations/discord-worker/   Cloudflare Worker fronting Discord's /meme command
+├── .github/workflows/             weekly trend-discovery pipeline
+├── docs/                          uploads, fine-tune runbook, Discord setup
+├── scripts/                       template/example seeding, fine-tune data prep
+├── docker-compose.yml             Ollama + ChromaDB + backend + frontend, self-hosted
+└── render.yaml                    Render Blueprint
 ```
 
 ---
 
 ## Quick Start
 
-### Option A — Docker (recommended)
+### Backend
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Local LLM (free, default) — separate terminal:
+ollama pull llama3.1:8b && ollama serve
+
+# OR cloud LLM (no GPU needed):
+export LLM_PROVIDER=groq
+export GROQ_API_KEY=gsk_...
+
+uvicorn main:app --reload
+# → http://localhost:8000  (Swagger UI at /docs)
+# Templates auto-seed into ChromaDB on first startup if empty.
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:3000
+```
+
+Postgres (`DATABASE_URL`), R2 (`R2_*`), and Supabase Auth (`SUPABASE_URL` + friends) are all optional and feature-flagged — unset means local-disk storage, no durable persistence, and anonymous-only use. Nothing crashes without them; see `backend/.env.example`.
+
+### Docker Compose (full self-hosted stack)
 
 ```bash
 git clone https://github.com/Moulik04/memegpt.git && cd memegpt
 cp .env.example .env
-
-# Start native Ollama first (gets Metal / CUDA GPU access)
-brew install ollama          # macOS; see ollama.com for Linux / Windows
-ollama pull llama3.1:8b     # ~4.7 GB, one-time download
-ollama serve                 # keep this terminal open
-
-# Bring up the full stack
+ollama pull llama3.1:8b && ollama serve   # native, for Metal/CUDA access
 docker compose up -d --build
-
-# Seed templates into ChromaDB (first run only, ~30 seconds)
-docker exec memegpt-backend python scripts/seed_templates.py
+docker exec memegpt-backend python scripts/seed_templates.py   # first run only
 ```
 
-- **Chat UI:** `http://localhost:3000`
-- **API docs:** `http://localhost:8000/docs`
-- **ChromaDB:** `http://localhost:8001`
-
-### Option B — Native (development)
-
-```bash
-# Backend
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-uvicorn main:app --reload          # http://localhost:8000
-
-# Seed (separate terminal, venv active)
-python ../scripts/seed_templates.py
-
-# Frontend
-cd ../frontend
-npm install && npm run dev         # http://localhost:3000
-```
-
-### Verify the compositor (no Ollama needed)
+### Verify the compositor (no services needed)
 
 ```bash
 pip install Pillow
@@ -222,61 +225,54 @@ python scripts/dummy_template_test.py
 
 ---
 
-## Remote GPU Inference
-
-The backend reads `OLLAMA_HOST` at startup — point it to any Ollama instance.
-
-**Google Colab T4 (free):**
-Open `scripts/colab_ollama_server.ipynb` → Runtime → T4 GPU → run all cells → copy the printed URL → run locally:
-```bash
-./scripts/use_remote_ollama.sh https://xxxx.ngrok-free.app
-```
-
-**PSC Bridges-2 V100-32GB:**
-```bash
-sbatch scripts/bridges2_ollama_service.sh
-# Follow the SSH tunnel command printed in the job log, then:
-./scripts/use_remote_ollama.sh http://localhost:11434
-```
-
----
-
 ## API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/chat/` | Send a message, receive a meme — SSE stream |
+| `POST` | `/chat/`, `/chat/image/` | Chat surface — SSE stream, text and/or photos |
+| `POST` | `/lore/`, `/lore/image/` | Lore surface — same core, adds `meme_count` + lexicon opt-in |
+| `GET` | `/arc`, `POST /arc/card` | Personal meme stats + shareable recap card |
 | `POST` | `/generate/` | Generate a meme from `template_id` + `texts` directly |
-| `GET` | `/generate/file/{template_id}` | Returns raw template image |
-| `POST` | `/explain/` | Template metadata, tags, and usage history |
-| `POST` | `/feedback/` | Log thumbs up / down for a generated meme |
+| `POST` | `/explain/` | Template metadata and usage history |
+| `POST` | `/feedback/` | Thumbs up / down on a generated meme |
+| `GET` | `/memes/{id}` | Durable share-page lookup (`/m/{id}` on the frontend) |
+| `GET` | `/auth/whoami` | Verified identity for the current bearer token |
+| `POST` | `/auth/link-anon` | Link anonymous history to a signed-in account |
+| `GET/POST/PATCH/DELETE` | `/conversations` | Persisted chat history (signed-in only) |
+| `DELETE` | `/me` | Forget-me — erases all data tied to an identity |
+| `POST` | `/discord/generate` | Discord `/meme` slash-command backend |
+| `POST` | `/share-intake/` | PWA share-target stash/retrieve |
 | `GET` | `/health` | Liveness check |
 
 ### `POST /chat/` — SSE stream
 
 ```
-data: {"type": "thinking", "stage": "analyzing",  "message": "Reading your vibe..."}
-data: {"type": "thinking", "stage": "rendering",  "template_id": "drake", "message": "Crafting the perfect drake meme..."}
-data: {"type": "done",     "conversation_id": "…", "message": {"meme_url": "/static/generated/drake_3f2a.png", …}, "template_used": "drake"}
+data: {"type": "thinking", "stage": "analyzing", "message": "Reading your vibe..."}
+data: {"type": "thinking", "stage": "rendering", "template_id": "drake"}
+data: {"type": "done", "conversation_id": "…", "message": {"meme_url": "...", "meme_id": "..."}, "template_used": "drake"}
+data: {"type": "batch_done", "total": 1, "succeeded": 1}
 ```
 
 ---
 
 ## Roadmap
 
-- [x] SSE streaming (`thinking → rendering → done`)
-- [x] Docker Compose full-stack deployment
-- [x] Per-template bounding-box text layout (~120 templates)
-- [x] RAG pre-filtering to stay within 4096-token Ollama context
-- [x] Few-shot example store for improved template selection
-- [x] Remote GPU support (Colab T4 + Bridges-2 V100)
-- [x] Thumbs up / down feedback endpoint
-- [x] Groq cloud LLM backend + production deployment (Render backend, Vercel frontend)
-- [ ] `POST /templates/upload` — user-uploaded base images with auto-tagging
-- [x] Conversation-level anti-repetition memory (recent template ids passed to the LLM); full multi-turn message context still pending
-- [ ] Fine-tuned model on Imgflip 100k dataset (scripts ready, training pending)
-- [ ] Pytest suite with golden-image diff tests for the compositor
-- [ ] Rate limiting via `slowapi`
+All seven phases of the original growth plan (A–G) are shipped, plus an appended Phase H:
+
+- [x] **A** — Watermark + PNG provenance tag on every generated meme
+- [x] **B** — Durable storage (R2 + Postgres) and `/m/{id}` share pages with Open Graph tags
+- [x] **C** — Anonymous identity + memory (cross-session avoid-repeat, humor profile, opt-in lexicon, Forget-me)
+- [x] **D** — Arc: aura-scored, roast-flavored personal recap with a from-scratch share card
+- [x] **E** — Weekly trend-discovery pipeline (Imgflip scan → perceptual-hash dedup → vision-drafted PR)
+- [x] **F** — Fine-tune preparation (Imgflip 100k → ChatML pipeline verified, Colab runbook written; training itself deferred to the project owner's own GPU session)
+- [x] **G** — Animated GIF templates + a Discord `/meme` slash command via Cloudflare Worker
+- [x] **H** — Optional accounts (email + Google), linked anonymous history, persisted chat sidebar, per-chat delete
+
+**Not yet started:**
+- [ ] Multimodal Phase 3 — video input (ffmpeg availability confirmed on Render; time-budget architecture not yet decided)
+- [ ] User-uploaded custom templates (`POST /templates/upload`)
+- [ ] Fine-tuned model actually trained and swapped into production
+- [ ] `compositor.py` golden-image-diff test coverage
 
 ---
 
