@@ -78,6 +78,12 @@ memegpt-growth-master-prompt.md
 memegpt-lore-mode-spec.md
 memegpt-multimodal-master-prompt.md
 
+# Feasibility write-up tied to the removed multimodal prompt file above —
+# a legitimate engineering decision record, but its opening line cites
+# that file by name, which is a dangling reference once it's not public.
+# Kept locally for reference, same as the prompt files themselves.
+FEASIBILITY.md
+
 # Vercel CLI's local project link metadata + env files (added automatically
 # by `vercel link`) — .env/.env.local/.env.*.local above already cover real
 # env files elsewhere; this was previously two unanchored rules (`.vercel`
