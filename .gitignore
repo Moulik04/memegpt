@@ -70,9 +70,18 @@ memes_reference_data.tsv
 # sed backup files
 *.bak
 
+# Working prompts written TO an AI coding agent (second-person imperative
+# instructions, e.g. "wait for my approval before writing any code") — kept
+# locally for reference, deliberately not part of the public repo alongside
+# README.md/CLAUDE.md's polished documentation.
+memegpt-growth-master-prompt.md
+memegpt-lore-mode-spec.md
+memegpt-multimodal-master-prompt.md
+
 # Vercel CLI's local project link metadata + env files (added automatically
 # by `vercel link`) — .env/.env.local/.env.*.local above already cover real
 # env files elsewhere; this was previously two unanchored rules (`.vercel`
 # and a bare `.env*`) that silently blocked every .env.example anywhere in
 # the repo from ever being tracked, not just this directory.
 .vercel/
+.env*
