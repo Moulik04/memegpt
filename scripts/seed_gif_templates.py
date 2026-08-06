@@ -1,16 +1,14 @@
 """
-Growth master-prompt Phase G — seed the 3 curated animated GIF templates.
+Seed the 3 curated animated GIF templates.
 
 Unlike scripts/seed_templates.py's Imgflip fetch, Imgflip's own "gif" type
-templates turned out (confirmed live via a real API call) to be served as
-.mp4 internally, not actual .gif files — Pillow can't decode those, and
-converting them would need ffmpeg, contradicting the Pillow-only rendering
-path this phase deliberately chose after benchmarking it as fast enough.
-So these 3 are instead sourced from Wikimedia Commons, whose hosting
-policy requires freely-licensed or public-domain media — real, genuinely
+templates turn out to be served as .mp4 internally, not actual .gif files
+— Pillow can't decode those, and converting them would need ffmpeg,
+contradicting the Pillow-only rendering path this app uses elsewhere. So
+these 3 are instead sourced from Wikimedia Commons, whose hosting policy
+requires freely-licensed or public-domain media — real, genuinely
 multi-frame animated GIFs, each verified via Image.open(path).n_frames > 1
-before being accepted (matches this repo's standing "verify against real
-data before committing" discipline).
+before being accepted.
 
 Downloads into backend/templates/ and calls upsert_template() directly —
 NOT gated on ChromaDB being empty (unlike main.py's _auto_seed_if_empty),

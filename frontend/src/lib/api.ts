@@ -178,14 +178,13 @@ export async function postFeedback(req: FeedbackRequest): Promise<void> {
   await post("/feedback/", req);
 }
 
-// Growth Phase C — erases every row tied to this browser's anon id. No
-// hand-written /api/me route exists (or is needed): next.config.js's
-// generic /api/:path* rewrite forwards headers/method transparently, unlike
-// the hand-rolled /api/chat/ and /api/feedback/ routes above. No trailing
-// slash — Next normalizes one away before the rewrite even runs (found
-// while verifying Arc's endpoint end-to-end; matches backend/routers/me.py
-// being registered at "" for the same reason), so requesting it directly
-// skips two avoidable redirect hops.
+// Erases every row tied to this browser's anon id. No hand-written
+// /api/me route exists (or is needed): next.config.js's generic
+// /api/:path* rewrite forwards headers/method transparently, unlike the
+// hand-rolled /api/chat/ and /api/feedback/ routes above. No trailing
+// slash — Next normalizes one away before the rewrite even runs, and
+// backend/routers/me.py is registered at "" for the same reason — so
+// requesting it directly skips two avoidable redirect hops.
 export async function forgetMe(): Promise<void> {
   await fetch(`${BASE}/me`, {
     method: "DELETE",

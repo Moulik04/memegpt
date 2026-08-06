@@ -7,17 +7,16 @@ way to pick between them).
 
 1. Perceptual hash (dHash, pure Pillow, no new dependency): catches true
    pixel-level duplicates — same source image, different crop/compression/
-   watermark — reliably at similarity >= ~0.95. Confirmed by finding two
-   exact 1.000 matches this way, both verified visually as true duplicates.
+   watermark — reliably at similarity >= ~0.95.
 
 2. Description-text embedding similarity (reuses GeminiEmbeddingFunction,
    the same one wired into ChromaDB): catches the case dHash misses —
    the SAME meme concept, photographed/cropped differently enough that the
-   pixel gradient no longer lines up. This is exactly how the
-   look_at_me/i_m_the_captain_now duplicate was first found (by noticing
-   both USE_WHEN entries described "I am the captain now") — its dHash
-   similarity is only 0.605, nowhere near dHash's own duplicate threshold,
-   proving image hashing alone isn't sufficient here.
+   pixel gradient no longer lines up. The look_at_me/i_m_the_captain_now
+   pair is a real example: their dHash similarity is only 0.605, nowhere
+   near dHash's own duplicate threshold, but their USE_WHEN entries both
+   independently describe "I am the captain now," which description-text
+   similarity catches — proving image hashing alone isn't sufficient here.
 
 Neither pass auto-deletes anything — below each method's high-confidence
 band, matches increasingly reflect coincidental similarity (comparable

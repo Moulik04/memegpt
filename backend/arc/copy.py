@@ -1,11 +1,7 @@
 """
-Growth Phase D — Arc's scoring + roast-copy layer. Turns db.RawArcStats
-(pure aggregates, no opinions) into the voiced ArcStats API response: the
-aura score, tier, per-template roasts, busiest-hour/split/verdict lines.
-
-Design approved by the project owner via an Artifact walkthrough (concept
-v2) before this was written — the tier thresholds, roast vocabulary, and
-aura formula below are a direct port of that sign-off, not a first draft.
+Arc's scoring + roast-copy layer. Turns db.RawArcStats (pure aggregates,
+no opinions) into the voiced ArcStats API response: the aura score, tier,
+per-template roasts, busiest-hour/split/verdict lines.
 
 Coverage guarantee: every one of the ~118 catalog templates resolves to a
 non-blank roast. TEMPLATE_ROASTS hand-covers the ~30 most likely top
@@ -30,7 +26,7 @@ from vector_db.chroma_client import get_template_record
 
 _MIN_MEMES_FOR_ARC = 5
 
-# --- Tier ladder (exact thresholds approved by the project owner) ---
+# --- Tier ladder ---
 
 _TIER_THRESHOLDS: list[tuple[int, str]] = [
     (2_000, "npc arc"),

@@ -14,9 +14,9 @@ class Settings(BaseSettings):
     # Groq — cloud inference, free tier (https://console.groq.com)
     groq_api_key: str = ""
     groq_model: str = "qwen/qwen3.6-27b"
-    # Resilience follow-up: Groq's rate limits are per-model (confirmed
-    # live against their docs — each model gets its own separate RPM/RPD/
-    # TPM/TPD budget, not a shared account-wide pool), so a second model
+    # Resilience follow-up: Groq's rate limits are per-model (each model
+    # gets its own separate RPM/RPD/TPM/TPD budget, not a shared
+    # account-wide pool), so a second model
     # is a genuine fallback, not a no-op. openai/gpt-oss-120b is the exact
     # model scripts/eval_intent_models.py already evaluated as the best
     # available secondary — less reliable than qwen (~25%+ genuine

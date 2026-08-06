@@ -7,13 +7,12 @@ writes them to backend/data/template_embeddings.json — checked into git
 when someone edits USE_WHEN or adds a new template, a rare deliberate
 event. Before this script, that static text was being re-embedded live
 against Gemini's API on EVERY backend restart (Render's free-tier disk is
-ephemeral, so ChromaDB's collection never survives a restart), because
-Gemini's free tier caps at 100 requests/minute AND 1000/day, and a single
-122-template reseed in chunks of 20 could burn most of the per-minute
-budget by itself — real production incident, repeated restarts during one
-debugging session exhausted the daily cap entirely (see
-gemini_embedding_function.py's module docstring for the first time this
-happened, and CLAUDE.md's Growth Phase G section for the second).
+ephemeral, so ChromaDB's collection never survives a restart). Gemini's
+free tier caps at 100 requests/minute AND 1000/day, and a single
+122-template reseed in chunks of 20 burns most of the per-minute budget by
+itself — a handful of restarts in quick succession is enough to exhaust
+even the daily cap, since there's no short retry that gets past that one
+(see gemini_embedding_function.py's module docstring).
 
 With this file checked in, main.py's _auto_seed_if_empty() loads
 precomputed vectors directly instead of calling Gemini live for any
@@ -104,10 +103,9 @@ def main() -> None:
         # Drop entries for templates that no longer exist on disk, then
         # persist. Called after every chunk (not just at the end) so a
         # later chunk's rate-limit exhaustion can never lose earlier
-        # successfully-computed chunks — real bug, not hypothetical: hit
-        # this exact scenario running the script for real (chunk 6 of 7
-        # exhausted Gemini's retry budget after chunks 1-5 had already
-        # succeeded).
+        # successfully-computed chunks — without this, one late chunk
+        # exhausting its retry budget would discard every earlier chunk's
+        # already-computed work along with it.
         current_ids = {r["template_id"] for r in records}
         pruned = {tid: entry for tid, entry in existing.items() if tid in current_ids}
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

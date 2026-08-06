@@ -341,14 +341,13 @@ async def compose_meme_on_image(
     return await _finalize_and_save(img)
 
 
-# --- Growth Phase D — Arc share card ---
+# --- Arc share card ---
 #
 # Its own from-scratch rendering path (not a catalog template, not a user's
-# own photo) — designed in Artifacts with the project owner (concept v2,
-# approved) before being ported here. The visual language (violet -> magenta
-# -> pink aura glow behind a gradient-filled hero number, a mono-flavored
-# roast readout, a tier badge) mirrors that approved concept as closely as
-# Pillow's toolset allows; it isn't a pixel-exact port of the CSS mockup —
+# own photo). The visual language (violet -> magenta -> pink aura glow
+# behind a gradient-filled hero number, a mono-flavored roast readout, a
+# tier badge) approximates a hand-designed concept as closely as Pillow's
+# toolset allows; it isn't a pixel-exact port of the original mockup —
 # Pillow has no blend modes or native gradient-fill text, both approximated
 # below with a hand-rolled radial glow and a masked gradient-text helper.
 

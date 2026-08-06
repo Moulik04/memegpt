@@ -61,13 +61,12 @@ def _auto_seed_if_empty() -> None:
     into groups of _SEED_CHUNK_SIZE keeps peak memory low while still
     being far faster than one upsert call per template.
 
-    Deliberately NOT gated on "collection is completely empty" — a real
-    production incident (Growth Phase G, Discord integration) showed why:
-    Gemini's embedding API rate-limited hard enough during seeding to
-    exhaust the documented 6-attempt retry budget on one chunk, raising an
-    uncaught exception that killed every REMAINING chunk — but because the
-    collection wasn't empty anymore (the first successful chunk had already
-    landed), an empty-only guard would mean the catalog stays permanently
+    Deliberately NOT gated on "collection is completely empty": Gemini's
+    embedding API can rate-limit hard enough during seeding to exhaust the
+    documented 6-attempt retry budget on one chunk, raising an uncaught
+    exception that kills every remaining chunk — but if the collection
+    isn't empty anymore (an earlier chunk already landed successfully), an
+    empty-only guard would mean the catalog stays permanently
     partial forever, since this function would never run again. Instead,
     this runs every startup and the existing per-template `if tid in
     existing: continue` check below makes it naturally idempotent and

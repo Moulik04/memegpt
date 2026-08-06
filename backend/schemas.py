@@ -66,12 +66,13 @@ class ChatRequest(BaseModel):
     Lore's extra controls live on LoreRequest, not here."""
     message: str
     conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
-    # Growth Phase H, Stage 3 — a server-generated conversations.id (from
-    # POST /conversations), deliberately separate from conversation_id
-    # above (see CLAUDE.md's "Growth Phase H" section for why). None for
-    # anonymous use or a signed-in turn with no active persisted chat —
-    # routers/chat.py only ever writes messages when this AND a verified
-    # user_id are both present and ownership-checked.
+    # A server-generated conversations.id (from POST /conversations),
+    # deliberately separate from conversation_id above: that field has no
+    # server-side ownership registry (any client can send any string), so
+    # it can't double as an authorization primitive for persisted history.
+    # None for anonymous use or a signed-in turn with no active persisted
+    # chat — routers/chat.py only ever writes messages when this AND a
+    # verified user_id are both present and ownership-checked.
     conversation_row_id: Optional[str] = None
 
 

@@ -54,5 +54,10 @@ memegpt-multimodal-master-prompt.md
 
 FEASIBILITY.md
 
+CLAUDE.md
+
+docs/DISCORD_SETUP.md
+docs/FINETUNE_RUNBOOK.md
+
 .vercel/
 .env*

@@ -1,12 +1,12 @@
 """
-db/pool.py's loop-awareness — a real production bug found 2026-08-05:
-main.py's startup seeding calls asyncio.run(seed_examples()) inside a
-background thread, creating its own throwaway event loop. If that path
-reaches get_pool() first (it runs on every startup), the pool it creates
-is bound to a loop that's already destroyed by the time any real request
-arrives on the actual server loop — asyncpg's internal locks/futures are
-tied to their creating loop, so reusing it raises "Task ... attached to a
-different loop". get_pool() must detect this and transparently rebuild.
+db/pool.py's loop-awareness. main.py's startup seeding calls
+asyncio.run(seed_examples()) inside a background thread, creating its own
+throwaway event loop. If that path reaches get_pool() first (it runs on
+every startup), the pool it creates is bound to a loop that's already
+destroyed by the time any real request arrives on the actual server loop —
+asyncpg's internal locks/futures are tied to their creating loop, so
+reusing it raises "Task ... attached to a different loop". get_pool() must
+detect this and transparently rebuild.
 
 Mocks asyncpg.create_pool entirely (a fake pool that just tracks calls and
 supports the acquire()/execute() shape get_pool() needs) — no real network,

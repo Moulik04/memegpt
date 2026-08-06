@@ -264,7 +264,7 @@ All seven phases of the original growth plan (A–G) are shipped, plus an append
 - [x] **C** — Anonymous identity + memory (cross-session avoid-repeat, humor profile, opt-in lexicon, Forget-me)
 - [x] **D** — Arc: aura-scored, roast-flavored personal recap with a from-scratch share card
 - [x] **E** — Weekly trend-discovery pipeline (Imgflip scan → perceptual-hash dedup → vision-drafted PR)
-- [x] **F** — Fine-tune preparation (Imgflip 100k → ChatML pipeline verified, Colab runbook written; training itself deferred to the project owner's own GPU session)
+- [x] **F** — Fine-tune preparation (Imgflip 100k → ChatML pipeline verified, Colab runbook written; the actual training run is a deliberately separate, manual GPU step)
 - [x] **G** — Animated GIF templates + a Discord `/meme` slash command via Cloudflare Worker
 - [x] **H** — Optional accounts (email + Google), linked anonymous history, persisted chat sidebar, per-chat delete
 

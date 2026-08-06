@@ -587,15 +587,16 @@ async def fetch_raw_arc_stats(
     )
 
 
-# --- Growth Phase H, Stage 3 — persisted chat history (signed-in only) ---
+# --- Persisted chat history (signed-in only) ---
 #
 # Every ownership-sensitive function below pairs a client-supplied
 # conversation_id with a verified user_id (`WHERE id = $1 AND user_id = $2`,
 # or an explicit fetch_conversation_owner() check) — a bare conversation_id
-# is never trusted as proof of ownership on its own. See CLAUDE.md's
-# "Growth Phase H" section for why conversations.id is a separate,
-# server-generated id rather than reusing the client-correlation
-# conversation_id string every ChatRequest/LoreRequest already carries.
+# is never trusted as proof of ownership on its own. conversations.id is a
+# separate, server-generated id rather than a reuse of the client-
+# correlation conversation_id string every ChatRequest/LoreRequest already
+# carries, because that string has no server-side ownership registry an
+# authorization check could be built on — any client can send any value.
 
 
 async def create_conversation(user_id: str, surface: str) -> str | None:

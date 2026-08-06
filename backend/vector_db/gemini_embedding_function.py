@@ -13,19 +13,18 @@ Gemini API for embedding. This mirrors the existing Groq call already made
 for LLM intent-routing — no new persistent storage, this is transient
 per-request processing only. On Gemini's free tier, Google's terms permit
 using submitted content to improve products and allow human review (unlike
-Groq, whose no-training policy is account-wide); this tradeoff was
-disclosed to and accepted by the project owner. See CLAUDE.md's Vector DB
-section.
+Groq, whose no-training policy is account-wide) — a known tradeoff of
+staying on the free tier.
 
-Free-tier quota, confirmed live: 100 requests/minute AND a separate 1000
-requests/day cap — the daily cap got fully exhausted during this session's
-RAG/USE_WHEN eval work (repeated 118-template reseeds + 48-case eval runs,
-several times over in one day). Unlike the per-minute limit, there's no
-short retry that gets past an exhausted daily quota; it needs real time to
-reset. Local dev can route around it entirely by unsetting GEMINI_API_KEY
-(falls back to ChromaDB's local embedding model, zero Gemini calls) —
-useful specifically when iterating on USE_WHEN wording, since that
-question is independent of which embedding backend is active.
+Free-tier quota: 100 requests/minute AND a separate 1000 requests/day cap.
+Both are real constraints in practice — a handful of full-catalog reseeds
+plus eval runs in one day is enough to exhaust the daily cap. Unlike the
+per-minute limit, there's no short retry that gets past an exhausted daily
+quota; it needs real time to reset. Local dev can route around it entirely
+by unsetting GEMINI_API_KEY (falls back to ChromaDB's local embedding
+model, zero Gemini calls) — useful specifically when iterating on
+USE_WHEN wording, since that question is independent of which embedding
+backend is active.
 """
 
 from __future__ import annotations
@@ -42,16 +41,13 @@ from config import Settings
 
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 _TIMEOUT_SECONDS = 15.0
-# gemini-embedding-2's free tier is rate-limited at 100 requests/minute.
-# Empirically confirmed live: an isolated single-text call succeeds
-# immediately even right after a 20-text batchEmbedContents call gets
-# 429'd — consistent with each item in a batch counting individually
-# against that 100/minute budget, so one _SEED_CHUNK_SIZE=20 chunk can
-# burn a fifth of the window by itself.
+# gemini-embedding-2's free tier is rate-limited at 100 requests/minute,
+# and each item in a batch counts individually against that budget — one
+# _SEED_CHUNK_SIZE=20 chunk can burn a fifth of the window by itself.
 #
-# Two different retry budgets, not one — found via a real production-shaped
-# bug, not speculation: __call__ (documents — startup seeding, upsert on
-# feedback) only ever runs in a background thread or via asyncio.to_thread,
+# Two different retry budgets, not one: __call__ (documents — startup
+# seeding, upsert on feedback) only ever runs in a background thread or
+# via asyncio.to_thread,
 # never blocking a live request, so it can afford to be patient: capped
 # exponential backoff sized to outlast a full 60s rate-limit window (1, 2,
 # 4, 8, 16, 30s = 61s total across 6 retries). embed_query (the live RAG
@@ -69,10 +65,10 @@ _MAX_429_RETRIES_QUERY = 2
 _BASE_BACKOFF_SECONDS = 1.0
 _MAX_BACKOFF_SECONDS = 30.0
 # Gemini's batchEmbedContents hard-rejects (400) more than 100 requests in
-# one call ("at most 100 requests can be in one batch") — empirically hit
-# while embedding all 122 template descriptions in one shot for the
-# duplicate-template sweep (scripts/find_duplicate_templates.py). No
-# current production caller sends anywhere near 100 documents at once
+# one call ("at most 100 requests can be in one batch") — hit whenever a
+# caller embeds the full template catalog in one shot (e.g.
+# scripts/find_duplicate_templates.py, which embeds all descriptions at
+# once). No current production caller sends anywhere near 100 documents
 # (_SEED_CHUNK_SIZE=20), but chunking transparently here means no future
 # caller has to independently know about or respect this limit.
 _MAX_ITEMS_PER_BATCH = 100
@@ -160,15 +156,15 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
         self, model_path: str, requests_body: list[dict], max_retries: int
     ) -> httpx.Response:
         """Startup seeding fires several batch calls back-to-back (one per
-        _SEED_CHUNK_SIZE chunk) — empirically confirmed live, this alone is
-        enough to trip Gemini's free-tier rate limit on the very first
-        deploy/local run, well before any real per-request traffic. A bare
-        raise here would crash the whole seed (no per-chunk try/except in
-        main.py's _auto_seed_if_empty()), leaving the app stuck on the small
-        hardcoded template fallback until the next restart. Bounded
-        exponential backoff (honoring Retry-After when present) rides out a
-        transient rate-limit window instead — max_retries differs by caller,
-        see the module-level comment on _MAX_429_RETRIES_DOCUMENT/_QUERY."""
+        _SEED_CHUNK_SIZE chunk), which is enough on its own to trip Gemini's
+        free-tier rate limit on a fresh deploy or local run, well before any
+        real per-request traffic. Bounded exponential backoff (honoring
+        Retry-After when present) rides out a transient rate-limit window
+        instead of raising immediately — max_retries differs by caller, see
+        the module-level comment on _MAX_429_RETRIES_DOCUMENT/_QUERY.
+        main.py's _auto_seed_if_empty() also wraps each chunk in its own
+        try/except, so a chunk that exhausts its retry budget doesn't take
+        down every remaining chunk with it."""
         for attempt in range(max_retries + 1):
             resp = httpx.post(
                 f"{_API_BASE}/{model_path}:batchEmbedContents",

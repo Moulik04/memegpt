@@ -1,10 +1,9 @@
 """
-main.py's _auto_seed_if_empty() — real production incident (Growth Phase G,
-Discord integration): Gemini rate-limiting during startup seeding exhausted
-the retry budget on one chunk, raising uncaught and killing every
-remaining chunk. Because the collection wasn't empty anymore (an earlier
-chunk had already landed), the old "only seed when fully empty" guard meant
-the catalog stayed permanently partial — this function would never run
+main.py's _auto_seed_if_empty(): Gemini rate-limiting during startup
+seeding can exhaust the retry budget on one chunk, raising uncaught and
+killing every remaining chunk. If the collection isn't empty anymore (an
+earlier chunk already landed), an "only seed when fully empty" guard would
+mean the catalog stays permanently partial — this function would never run
 again. Covers the fix: not gated on emptiness, and one failing chunk
 doesn't prevent the rest from being attempted.
 """

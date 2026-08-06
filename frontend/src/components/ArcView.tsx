@@ -7,13 +7,11 @@ import { createArcCard, getArc, memeImageUrl } from "@/lib/api";
 import { ShareButtons } from "./ShareButtons";
 import type { ArcStats } from "@/types";
 
-// Growth Phase D — Arc. Story-style tap-through reveal (same pattern
-// Spotify Wrapped popularized for exactly this use case), ported from the
-// Artifact concept approved by the project owner across two review rounds
-// (share-card visual + roast voice, then the reveal pacing/navigation).
-// Colors are the approved aura palette, not this app's `brand` Tailwind
-// scale — kept as literal hex so the porting is exact, matching how the
-// rest of the app already reaches for arbitrary values (e.g. bg-[#13131e]).
+// Arc — Story-style tap-through reveal (same pattern Spotify Wrapped
+// popularized for exactly this use case). Colors are Arc's own aura
+// palette, not this app's `brand` Tailwind scale — kept as literal hex,
+// matching how the rest of the app already reaches for arbitrary values
+// (e.g. bg-[#13131e]).
 
 const STEP_DURATION_MS = 3800;
 

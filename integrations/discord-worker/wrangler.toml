@@ -10,4 +10,6 @@ BACKEND_URL = "https://memegpt-backend.onrender.com"
 # Secrets are NOT set here — never commit them. Set both with:
 #   wrangler secret put DISCORD_PUBLIC_KEY
 #   wrangler secret put DISCORD_WORKER_SHARED_SECRET
-# See ../../docs/DISCORD_SETUP.md for the full walkthrough.
+# DISCORD_PUBLIC_KEY comes from the Discord Developer Portal's General
+# Information page; DISCORD_WORKER_SHARED_SECRET must match the same
+# value set on the backend's DISCORD_WORKER_SHARED_SECRET env var.

@@ -34,8 +34,7 @@ async def test_hanging_llm_call_falls_back_within_the_timeout_ceiling(monkeypatc
 
 
 async def test_llm_returning_a_single_item_array_is_salvaged(monkeypatch):
-    """Real production incident (Growth Phase G, Discord integration):
-    Groq occasionally returns a JSON array (`[{...}]`) instead of an
+    """Groq occasionally returns a JSON array (`[{...}]`) instead of an
     object despite explicit instructions not to. _normalize_llm_response()
     used to call `.items()` unconditionally, raising an unhandled
     AttributeError that neither except clause in parse_intent() caught —

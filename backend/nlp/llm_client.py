@@ -1,9 +1,9 @@
 """
 Shared LLM dispatch — extracted from intent_router.py (pure refactor, no
-behavior change) so the new segmentation step (nlp/segmentation.py) can
-reuse the same Groq/Ollama call + retry + JSON-cleanup logic that's already
-been hardened this session (the Qwen <think>-token fix, the 429
-retry-after cap) without duplicating ~80 lines of it.
+behavior change) so the segmentation step (nlp/segmentation.py) can reuse
+the same hardened Groq/Ollama call + retry + JSON-cleanup logic (the Qwen
+<think>-token fix, the 429 retry-after cap) without duplicating ~80 lines
+of it.
 
 Both intent_router.py's parse_intent() and segmentation.py's
 segment_contexts() are the same shape of task — plain text in, JSON out —
@@ -22,9 +22,9 @@ import httpx
 
 import circuit_breaker
 
-# Groq's rate limits are per-model (confirmed live against their docs —
-# separate RPM/RPD/TPM/TPD per model, not one shared account-wide pool),
-# so this is keyed by model name — tripping qwen's circuit must never
+# Groq's rate limits are per-model (separate RPM/RPD/TPM/TPD per model, not
+# one shared account-wide pool), so this is keyed by model name — tripping
+# qwen's circuit must never
 # affect gpt-oss's independent one. 60s is a conservative per-minute-window
 # guess (Groq doesn't publish an exact reset cadence per model the way
 # Gemini's docs do).
