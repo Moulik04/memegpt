@@ -23,10 +23,10 @@ silently corrupting it.
 
 As shipped, "candidate" means today's live parse_intent() pipeline — this
 verifies the harness itself against a real baseline without waiting on a
-fine-tuned model to exist. To evaluate an actual fine-tuned model instead
-(docs/FINETUNE_RUNBOOK.md), point local dev's LLM_PROVIDER=ollama at it and
-rerun this unchanged — parse_intent() already dispatches through whichever
-provider config.py is set to.
+fine-tuned model to exist. To evaluate an actual fine-tuned model instead,
+point local dev's LLM_PROVIDER=ollama at it and rerun this unchanged —
+parse_intent() already dispatches through whichever provider config.py is
+set to.
 
 Paced like eval_template_matching.py (10s), but this makes 3 Groq calls per
 case (1 candidate generation + 2 judge rounds) instead of 1, so budget

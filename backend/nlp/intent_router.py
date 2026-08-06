@@ -209,9 +209,9 @@ def _normalize_llm_response(data, known_ids: set[str]) -> dict:
     2. Wrapped by template_id: {"drake": {"texts": {...}, "reasoning": "..."}}
     3. Field name aliases: {"id": "...", "captions": {...}}
     4. Wrapped in a single-element array despite explicit instructions not
-       to — real, confirmed in production (Groq occasionally returns
-       `[{...}]` instead of `{...}`), which crashed `.items()` below with
-       an unhandled AttributeError before this guard existed. Raising
+       to (Groq occasionally returns `[{...}]` instead of `{...}`), which
+       crashed `.items()` below with an unhandled AttributeError before
+       this guard existed. Raising
        ValueError here (rather than letting the AttributeError/TypeError
        propagate) is what lets the caller's existing except clause treat
        this exactly like any other malformed response — retry, then the

@@ -84,6 +84,21 @@ memegpt-multimodal-master-prompt.md
 # Kept locally for reference, same as the prompt files themselves.
 FEASIBILITY.md
 
+# CLAUDE.md — the working context/instructions file an AI coding agent
+# reads at the start of every session in this repo. Genuinely useful for
+# that purpose, but written in session-log voice (dated incident
+# narration, repeated references to "the project owner," design-approval
+# anecdotes) rather than as public documentation — same category as the
+# prompt files above, just much larger. Kept locally so agent sessions in
+# this working directory keep full context; never pushed.
+CLAUDE.md
+
+# Two runbooks with real, useful setup instructions, but written
+# second-person from the AI agent to the repo owner (one literally
+# addresses "me," the agent) rather than as public docs. Kept locally.
+docs/DISCORD_SETUP.md
+docs/FINETUNE_RUNBOOK.md
+
 # Vercel CLI's local project link metadata + env files (added automatically
 # by `vercel link`) — .env/.env.local/.env.*.local above already cover real
 # env files elsewhere; this was previously two unanchored rules (`.vercel`

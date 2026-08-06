@@ -86,13 +86,13 @@ CREATE INDEX IF NOT EXISTS idx_feedback_user_id ON feedback(user_id);
 ALTER TABLE lore_lexicon ADD COLUMN IF NOT EXISTS user_id text;
 CREATE INDEX IF NOT EXISTS idx_lore_lexicon_user_id ON lore_lexicon(user_id);
 
--- Growth Phase H, Stage 3 — persisted chat history (signed-in only).
--- conversations.id is a server-generated uuid, deliberately never the
--- client-correlation `conversation_id` string every ChatRequest/LoreRequest
--- already carries (that string has no server-side registry or ownership
--- concept — see CLAUDE.md's "Growth Phase H" section for the reasoning).
--- Every ownership-sensitive read/write in db/__init__.py pairs this id with
--- user_id (`WHERE id = $1 AND user_id = $2`), never trusting a bare id.
+-- Persisted chat history (signed-in only). conversations.id is a
+-- server-generated uuid, deliberately never the client-correlation
+-- `conversation_id` string every ChatRequest/LoreRequest already carries
+-- (that string has no server-side registry or ownership concept an
+-- authorization check could be built on). Every ownership-sensitive
+-- read/write in db/__init__.py pairs this id with user_id
+-- (`WHERE id = $1 AND user_id = $2`), never trusting a bare id.
 --
 -- PRIVACY NOTE: messages.content is a deliberate, explicit exception to
 -- this file's "never store situation/dump text" rule at the top — see

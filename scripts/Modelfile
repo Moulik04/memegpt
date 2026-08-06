@@ -10,8 +10,6 @@
 #   2. Run (from the repo root): ollama create memegpt -f scripts/Modelfile
 #   3. Update backend/config.py: ollama_model = "memegpt"
 #   4. Restart uvicorn
-#
-# Full walkthrough: docs/FINETUNE_RUNBOOK.md
 
 FROM ./memegpt.gguf
 

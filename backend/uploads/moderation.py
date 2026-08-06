@@ -4,17 +4,16 @@ Content moderation for uploaded images — Phase 0 safety gate, step 4.
 Uses the same already-verified vision-capable Groq model as nlp/vision.py
 (qwen/qwen3.6-27b) with a strict safety-classification rubric, rather than
 a dedicated Llama-Guard-style moderation model: Llama Guard's exact
-request/response contract on Groq could not be live-verified in this
-session (no GROQ_API_KEY available locally to make a real call), and
-shipping code against an unverified API contract risks silently failing
-OPEN if the parsed response format doesn't match reality — worse than not
-having a dedicated model at all. Reusing the general vision model is
-verified-workable (identical call shape to nlp/vision.py's own
-describe_image() calls) and is exactly the master prompt's explicitly
-allowed fallback: "if unavailable, use a vision model with a strict safety
-rubric." Swapping in meta-llama/llama-guard-4-12b later is a one-function
-change (_moderate_groq below) once its real output format is verified
-against a live key.
+request/response contract on Groq hasn't been verified against a live
+call, and shipping code against an unverified API contract risks silently
+failing OPEN if the parsed response format doesn't match reality — worse
+than not having a dedicated model at all. Reusing the general vision model
+is verified-workable (identical call shape to nlp/vision.py's own
+describe_image() calls) and is a standard fallback pattern: use a general
+vision model with a strict safety rubric when a dedicated moderation
+model's contract isn't confirmed. Swapping in meta-llama/llama-guard-4-12b
+later is a one-function change (_moderate_groq below) once its real
+output format is verified against a live key.
 """
 
 from __future__ import annotations

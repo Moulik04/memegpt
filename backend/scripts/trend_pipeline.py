@@ -1,5 +1,5 @@
 """
-Growth master prompt Phase E — weekly, human-in-the-loop template discovery.
+Weekly, human-in-the-loop template discovery.
 
 Fetches Imgflip's free public template list, diffs it against the ~118
 templates already in backend/templates/, and for genuinely new candidates
@@ -17,8 +17,8 @@ Run:
 Reuses (not reimplements) two existing precedents:
 - scripts/seed_templates.py's Imgflip fetch shape (public API, no auth).
 - scripts/find_duplicate_templates.py's dhash()/hamming() perceptual-hash
-  primitives (already validated on this exact catalog — see that file's
-  docstring for the confirmed real duplicate it caught).
+  primitives, already validated on this exact catalog (see that file's
+  docstring).
 """
 
 from __future__ import annotations
@@ -48,9 +48,9 @@ _DUPLICATE_THRESHOLD = 0.95  # same confirmed threshold as find_duplicate_templa
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
-# The same confusion-cluster knowledge already documented in CLAUDE.md's
-# USE_WHEN quality-pass notes — surfaced directly in every PR body so the
-# human reviewer doesn't have to go hunting for it.
+# The catalog's known confusion clusters (from the USE_WHEN cross-reference
+# notes in nlp/intent_router.py) — surfaced directly in every PR body so
+# the human reviewer doesn't have to go hunting for it.
 _KNOWN_CONFUSION_CLUSTERS = [
     "drake / evil_kermit / two_buttons",
     "distracted_boyfriend / left_exit_12 / uno_draw_25_cards",
@@ -102,14 +102,13 @@ def diff_new_candidates(memes: list[dict], existing_slugs: set[str]) -> list[dic
     """Pure — no network, no filesystem. `existing_slugs` should be the
     actual template_ids on disk (TEMPLATES_DIR file stems), not any
     historical/curated name-to-id mapping, since templates can be renamed,
-    removed (see the 2026-07-28 duplicate cleanup), or added by hand.
+    removed during catalog cleanup, or added by hand.
 
     Deliberately a CHEAP, imprecise pre-filter, not the real dedup: our
     curated template_ids (e.g. "drake") are almost never the literal slug of
     Imgflip's own display name (e.g. "Drake Hotline Bling" -> "drake_hotline_
-    bling") — confirmed while writing this file's tests, which first assumed
-    otherwise and were wrong. So most of the real catalog will slug-mismatch
-    and pass this filter every run; that's fine and expected. The actual
+    bling"). So most of the real catalog will slug-mismatch and pass this
+    filter every run; that's fine and expected. The actual
     "have we already got this" decision is the perceptual-hash comparison in
     _run() below, run against every survivor's downloaded image — this
     function's only job is to skip the (rare but free) exact-slug matches

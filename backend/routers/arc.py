@@ -1,5 +1,5 @@
 """
-GET /arc        — this anon user's personal meme stats + roast copy (Growth Phase D).
+GET /arc        — this anon user's personal meme stats + roast copy.
 POST /arc/card  — renders + persists a shareable Arc card, returns its /m/{id}.
 
 Both private by construction: only reachable with the caller's own
@@ -9,8 +9,7 @@ always returns a valid ArcStats with has_enough=False, which the frontend
 renders as the empty state rather than an error.
 
 The GET route is registered at "" (giving the exact path "/arc", not
-"/arc/") — found empirically while verifying the frontend end-to-end:
-Next.js's next.config.js /api/:path* rewrite normalizes away trailing
+"/arc/"): Next.js's next.config.js /api/:path* rewrite normalizes away trailing
 slashes on every request BEFORE rewriting (its trailingSlash default is
 false, applied globally, not just to page routes), so a bare-root endpoint
 registered the "natural" way (prefix + "/") never actually receives a

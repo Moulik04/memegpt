@@ -1,25 +1,20 @@
 name: Keep backend warm
 
-# Growth Phase G (Discord /meme) — Render's free tier spins the backend
-# down after ~15 minutes idle, and the resulting ~30s cold-start eats the
-# Cloudflare Worker's entire 30s ctx.waitUntil() budget before generation
-# even starts (a real failure discovered testing the Discord integration
-# live — see CLAUDE.md's "Growth Phase G — Discord" section). Pinging
-# /health every 10 minutes (under Render's 15-minute idle threshold) keeps
-# the instance warm so real requests — Discord's included — don't pay the
-# cold-start tax. Free: this is a GET request to a public health endpoint,
-# no secrets, no repo checkout even needed.
+# Render's free tier spins the backend down after ~15 minutes idle, and the
+# resulting ~30s cold-start can eat a downstream caller's own response-time
+# budget (e.g. the Discord integration's Cloudflare Worker only gets a 30s
+# ctx.waitUntil() window). Pinging /health every 10 minutes (under Render's
+# 15-minute idle threshold) keeps the instance warm so real requests don't
+# pay the cold-start tax. Free: this is a GET request to a public health
+# endpoint, no secrets, no repo checkout even needed.
 #
-# Retries added 2026-08-03 after real intermittent failures: Render's
-# *.onrender.com domains sit behind Cloudflare, and GitHub Actions runners
-# draw from a large, shared, rotating IP pool whose reputation with
-# Cloudflare varies request to request — confirmed live (curl from a
-# non-GitHub-Actions network succeeded immediately while the same run's
-# scheduled ping timed out with 0 bytes received, and a manual re-run
-# moments later succeeded in 8s). Not Render being down and not a GitHub
-# outage (checked githubstatus.com — all systems operational) — just a
-# transient per-IP block that a same-run retry (a fresh TCP connection,
-# often enough to dodge one bad edge/IP) absorbs.
+# Retries: Render's *.onrender.com domains sit behind Cloudflare, and
+# GitHub Actions runners draw from a large, shared, rotating IP pool whose
+# reputation with Cloudflare varies request to request, occasionally
+# causing a scheduled ping to time out with 0 bytes received even though
+# the backend itself is healthy and reachable from other networks. A
+# same-run retry (a fresh TCP connection, often enough to land on a
+# different edge/IP) absorbs this transient per-IP blocking.
 
 on:
   schedule:
