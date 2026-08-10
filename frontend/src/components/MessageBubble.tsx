@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { MemeDisplay } from "./MemeDisplay";
+import { MemeCard } from "./MemeCard";
 import { FeedbackButtons } from "./FeedbackButtons";
 import { ShareButtons } from "./ShareButtons";
 import type { ChatMessage, MemeItem } from "@/types";
@@ -64,17 +65,11 @@ export function MessageBubble({ message, onFeedback }: Props) {
 
         {memes.length === 1 && (
           /* Single meme — same layout as before multi-meme support existed */
-          <div className="rounded-2xl rounded-bl-sm bg-[#13131e] border border-gray-800/60
-                          p-3 shadow-lg">
-            <MemeDisplay url={memes[0].url} alt={memes[0].situationText} />
-
-            <div className="flex items-center justify-between mt-2">
-              <ShareButtons memeUrl={memes[0].url} />
-              {onFeedback && (
-                <FeedbackButtons onFeedback={(rating) => onFeedback(memes[0], rating)} />
-              )}
-            </div>
-          </div>
+          <MemeCard
+            url={memes[0].url}
+            alt={memes[0].situationText}
+            onFeedback={onFeedback ? (rating) => onFeedback(memes[0], rating) : undefined}
+          />
         )}
 
         {memes.length > 1 && (

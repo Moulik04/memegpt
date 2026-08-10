@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import { getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
-import { FeedbackButtons } from "./FeedbackButtons";
-import { MemeDisplay } from "./MemeDisplay";
-import { ShareButtons } from "./ShareButtons";
+import { MemeCard } from "./MemeCard";
 import { ThinkingBubble } from "./ThinkingBubble";
 import type { MemeItem, PersistedMessage } from "@/types";
 
@@ -394,16 +392,12 @@ export function LoreView() {
         <div className="flex flex-col gap-4">
           {feed.map((entry) =>
             entry.kind === "meme" ? (
-              <div
+              <MemeCard
                 key={entry.votedKey}
-                className="rounded-2xl bg-[#13131e] border border-gray-800/60 p-3 shadow-lg"
-              >
-                <MemeDisplay url={entry.meme.url} alt={entry.meme.situationText} />
-                <div className="flex items-center justify-between mt-2">
-                  <ShareButtons memeUrl={entry.meme.url} />
-                  <FeedbackButtons onFeedback={(rating) => handleFeedback(entry.meme, rating)} />
-                </div>
-              </div>
+                url={entry.meme.url}
+                alt={entry.meme.situationText}
+                onFeedback={(rating) => handleFeedback(entry.meme, rating)}
+              />
             ) : (
               <p
                 key={entry.key}

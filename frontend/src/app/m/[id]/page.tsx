@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MemeCard } from "@/components/MemeCard";
 
 // Server-side backend calls use BACKEND_URL (matches the existing route.ts
 // convention — may be a Docker-internal/localhost address). The image URL
@@ -77,15 +77,8 @@ export default async function SharedMemePage({ params }: Props) {
         MemeGPT
       </Link>
 
-      <div className="max-w-md w-full rounded-2xl overflow-hidden border border-gray-800/60 bg-[#13131e] p-3 shadow-lg">
-        <Image
-          src={imageUrl}
-          alt={meme.template_name ?? "A meme made with MemeGPT"}
-          width={600}
-          height={500}
-          className="w-auto h-auto max-w-full max-h-[65vh] object-contain mx-auto"
-          unoptimized
-        />
+      <div className="max-w-md w-full">
+        <MemeCard url={imageUrl} alt={meme.template_name ?? "A meme made with MemeGPT"} large />
       </div>
 
       <div className="text-center">
