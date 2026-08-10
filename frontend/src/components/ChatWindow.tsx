@@ -50,9 +50,17 @@ interface PendingImage {
 }
 
 export function ChatWindow() {
-  // Drawn once per mount (i.e. once per page load), not on every re-render
-  // — see pickRandomPrompts' pool for the full set this samples from.
-  const [examplePrompts] = useState(() => pickRandomPrompts(6));
+  // Populated client-side only, after mount — pickRandomPrompts() uses
+  // unseeded Math.random(), so picking it during the initial render (which
+  // runs on both the server and the client during hydration) produced two
+  // different chip sets and a React hydration mismatch on every page load.
+  // Starting empty on both passes and filling in via useEffect keeps the
+  // server and client's first render identical; the chips pop in a moment
+  // after mount instead.
+  const [examplePrompts, setExamplePrompts] = useState<string[]>([]);
+  useEffect(() => {
+    setExamplePrompts(pickRandomPrompts(6));
+  }, []);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
