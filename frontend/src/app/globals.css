@@ -113,6 +113,18 @@
   letter-spacing: -0.01em;
 }
 
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
 /* Thin scrollbar */
 .chat-scroll::-webkit-scrollbar        { width: 4px; }
 .chat-scroll::-webkit-scrollbar-track  { background: var(--scrollbar-track); }

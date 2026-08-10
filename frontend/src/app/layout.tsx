@@ -1,9 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Anton } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { AuthProvider } from "@/lib/AuthProvider";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+// GeistSans/GeistMono ship pre-built, already self-hosted font files —
+// independent of next/font/google's font list (which doesn't have Geist
+// on this Next.js version). Anton is real self-hosting too: Next.js
+// downloads it at build time and serves it same-origin, not a CDN link.
+const anton = Anton({ subsets: ["latin"], weight: "400", variable: "--font-display" });
 
 export const metadata: Metadata = {
   title: "MemeGPT",
@@ -29,8 +35,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} bg-gray-950 text-gray-100`}>
+    <html
+      lang="en"
+      className={`dark font-sans ${anton.variable} ${GeistSans.variable} ${GeistMono.variable}`}
+    >
+      <body>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
