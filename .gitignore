@@ -64,6 +64,12 @@ volumes/
 !.claude/hooks/
 !.claude/settings.json
 
+# A skill's own driver dependencies (e.g. run-memegpt's Playwright
+# install) aren't part of the skill's tracked content — same reasoning
+# as frontend/node_modules below. package.json/package-lock.json still
+# get tracked via the !.claude/skills/ negation above.
+.claude/skills/*/node_modules/
+
 # Large Kaggle dataset files (download separately, not committed).
 # Anchored to the repo root (/data/, not data/) — an unanchored pattern
 # here also matched backend/data/ (a different directory, ChromaDB's own
@@ -87,6 +93,7 @@ memegpt-lore-mode-spec.md
 memegpt-multimodal-master-prompt.md
 CLAUDE_CODE_SETUP.md
 FRONTEND_MASTER_PROMPT.md
+MEMEGPT_MASTER.md
 
 # Feasibility write-up tied to the removed multimodal prompt file above —
 # a legitimate engineering decision record, but its opening line cites
