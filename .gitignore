@@ -53,8 +53,16 @@ frontend/tsconfig.tsbuildinfo
 # Docker volumes (runtime — model weights, ChromaDB, generated PNGs)
 volumes/
 
-# Claude Code memory (local dev assistant state)
-.claude/
+# Claude Code — skills/hooks/settings.json are shared harness config and
+# travel with the repo; settings.local.json (personal permission
+# allowlist) and other local-only state stay ignored. `.claude/*` (not
+# `.claude/`) is deliberate — same reasoning as backend/data/* above: a
+# bare directory line excludes the whole tree before any negation pattern
+# is even considered.
+.claude/*
+!.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
 
 # Large Kaggle dataset files (download separately, not committed).
 # Anchored to the repo root (/data/, not data/) — an unanchored pattern
@@ -77,6 +85,8 @@ memes_reference_data.tsv
 memegpt-growth-master-prompt.md
 memegpt-lore-mode-spec.md
 memegpt-multimodal-master-prompt.md
+CLAUDE_CODE_SETUP.md
+FRONTEND_MASTER_PROMPT.md
 
 # Feasibility write-up tied to the removed multimodal prompt file above —
 # a legitimate engineering decision record, but its opening line cites
@@ -92,6 +102,11 @@ FEASIBILITY.md
 # prompt files above, just much larger. Kept locally so agent sessions in
 # this working directory keep full context; never pushed.
 CLAUDE.md
+
+# docs/DECISIONS.md — CLAUDE.md's narrative (design history, incidents,
+# rejected approaches), moved here verbatim. Same reason CLAUDE.md itself
+# is local-only. Kept for agent sessions; never pushed.
+docs/DECISIONS.md
 
 # Two runbooks with real, useful setup instructions, but written
 # second-person from the AI agent to the repo owner (one literally
