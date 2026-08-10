@@ -39,7 +39,10 @@ frontend/tsconfig.tsbuildinfo
 
 volumes/
 
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
 
 /data/
 memes.json
@@ -51,10 +54,14 @@ memes_reference_data.tsv
 memegpt-growth-master-prompt.md
 memegpt-lore-mode-spec.md
 memegpt-multimodal-master-prompt.md
+CLAUDE_CODE_SETUP.md
+FRONTEND_MASTER_PROMPT.md
 
 FEASIBILITY.md
 
 CLAUDE.md
+
+docs/DECISIONS.md
 
 docs/DISCORD_SETUP.md
 docs/FINETUNE_RUNBOOK.md
