@@ -1,8 +1,116 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 :root {
   --scrollbar-thumb: #2d2d3d;
   --scrollbar-track: transparent;
+
+  /* Design tokens — monochrome UI, the memes are the only color on
+     screen. Runtime CSS custom properties (not static Tailwind theme
+     values) so they stay swappable/inspectable independent of the
+     build step; the @theme inline block below bridges them into
+     Tailwind's utility-generating namespace. */
+  --ink-0: #0A0A0B;       /* page */
+  --ink-1: #141416;       /* raised surface (cards, sidebar) */
+  --ink-2: #1E1E21;       /* input, hover */
+  --line: #2A2A2F;        /* hairline borders */
+  --paper: #FAFAF7;       /* primary text */
+  --paper-dim: #8E8E94;   /* secondary text */
+  --stroke: #000000;      /* caption stroke */
+  --accent-color: #FF4D1C; /* interactive state only — never decoration */
+  --destructive-color: #EF4444;
+
+  /* shadcn semantic slots, mapped onto the tokens above. */
+  --background: var(--ink-0);
+  --foreground: var(--paper);
+  --card: var(--ink-1);
+  --card-foreground: var(--paper);
+  --popover: var(--ink-1);
+  --popover-foreground: var(--paper);
+  --primary: var(--accent-color);
+  --primary-foreground: var(--ink-0);
+  --secondary: var(--ink-2);
+  --secondary-foreground: var(--paper);
+  --muted: var(--ink-1);
+  --muted-foreground: var(--paper-dim);
+  --accent: var(--accent-color);
+  --accent-foreground: var(--ink-0);
+  --destructive: var(--destructive-color);
+  --destructive-foreground: var(--paper);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--accent-color);
+  --radius: 0.75rem;
+
+  --sidebar: var(--ink-1);
+  --sidebar-foreground: var(--paper);
+  --sidebar-primary: var(--accent-color);
+  --sidebar-primary-foreground: var(--ink-0);
+  --sidebar-accent: var(--ink-2);
+  --sidebar-accent-foreground: var(--paper);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--accent-color);
+}
+
+@theme inline {
+  --color-ink-0: var(--ink-0);
+  --color-ink-1: var(--ink-1);
+  --color-ink-2: var(--ink-2);
+  --color-line: var(--line);
+  --color-paper: var(--paper);
+  --color-paper-dim: var(--paper-dim);
+  --color-stroke: var(--stroke);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Meme caption treatment — mirrors backend/image_processing/compositor.py's
+   own rendering (white fill, heavy black stroke drawn behind the fill via
+   an 8-directional stroke pass). The one place brand and product share an
+   implementation. */
+.caption {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  color: #FFFFFF;
+  -webkit-text-stroke: 0.08em #000000;
+  paint-order: stroke fill;
+  letter-spacing: -0.01em;
 }
 
 /* Thin scrollbar */
