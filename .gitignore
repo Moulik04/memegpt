@@ -44,6 +44,8 @@ volumes/
 !.claude/hooks/
 !.claude/settings.json
 
+.claude/skills/*/node_modules/
+
 /data/
 memes.json
 memes_data.tsv
@@ -56,6 +58,7 @@ memegpt-lore-mode-spec.md
 memegpt-multimodal-master-prompt.md
 CLAUDE_CODE_SETUP.md
 FRONTEND_MASTER_PROMPT.md
+MEMEGPT_MASTER.md
 
 FEASIBILITY.md
 
