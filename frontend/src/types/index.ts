@@ -156,6 +156,7 @@ export interface ConversationSummary {
   surface: "chat" | "lore";
   created_at: string;
   updated_at: string;
+  thumbnail_url: string | null;
 }
 
 export interface PersistedMessage {
