@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { authEnabled } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
+import { Avatar } from "@/components/Avatar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
 
 function truncateEmail(email: string): string {
   return email.length > 22 ? `${email.slice(0, 19)}…` : email;
@@ -25,6 +32,7 @@ export function AuthControl() {
   if (user) {
     return (
       <div className="flex items-center gap-2">
+        <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
         <span className="text-[11px] text-gray-500" title={user.email ?? undefined}>
           {user.email ? truncateEmail(user.email) : "Signed in"}
         </span>
@@ -40,61 +48,64 @@ export function AuthControl() {
   }
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
-      >
-        Sign in
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border border-gray-800 bg-[#0c0c14] p-3 shadow-xl z-50 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              signInWithGoogle();
-            }}
-            className="text-xs font-medium rounded-lg px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-100 transition-colors"
-          >
-            Continue with Google
-          </button>
-          <div className="flex items-center gap-2 text-[10px] text-gray-600">
-            <div className="flex-1 h-px bg-gray-800" />
-            or
-            <div className="flex-1 h-px bg-gray-800" />
-          </div>
-          {sent ? (
-            <p className="text-[11px] text-gray-500">Check your email for a sign-in link.</p>
-          ) : (
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (!email.trim()) return;
-                await signInWithEmail(email.trim());
-                setSent(true);
-              }}
-              className="flex flex-col gap-2"
-            >
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="text-xs rounded-lg px-3 py-2 bg-card border border-border text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-accent"
-              />
-              <button
-                type="submit"
-                className="text-xs font-medium rounded-lg px-3 py-2 bg-accent hover:bg-accent/90 text-white transition-colors"
-              >
-                Send magic link
-              </button>
-            </form>
-          )}
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSent(false);
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+        >
+          Sign in
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-56">
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => {
+            setOpen(false);
+            signInWithGoogle();
+          }}
+        >
+          Continue with Google
+        </Button>
+        <div className="flex items-center gap-2 text-[10px] text-gray-600">
+          <div className="flex-1 h-px bg-border" />
+          or
+          <div className="flex-1 h-px bg-border" />
         </div>
-      )}
-    </div>
+        {sent ? (
+          <p className="text-[11px] text-gray-500">Check your email for a sign-in link.</p>
+        ) : (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!email.trim()) return;
+              await signInWithEmail(email.trim());
+              setSent(true);
+            }}
+            className="flex flex-col gap-2"
+          >
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="text-xs rounded-lg px-3 py-2 bg-card border border-border text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-accent"
+            />
+            <Button type="submit" className="w-full">
+              Send magic link
+            </Button>
+          </form>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }
