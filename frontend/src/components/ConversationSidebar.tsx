@@ -12,6 +12,15 @@ import {
   memeImageUrl,
   type Surface,
 } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import type { ConversationSummary } from "@/types";
 
 function surfaceFromPath(pathname: string | null): Surface {
@@ -32,6 +41,8 @@ export function ConversationSidebar() {
   const { conversationRowId, setConversationRowId, refreshToken } = useConversation();
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -61,11 +72,18 @@ export function ConversationSidebar() {
     refresh();
   }
 
-  async function handleDelete(id: string, e: React.MouseEvent) {
+  function requestDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    if (!window.confirm("Delete this chat? This can't be undone.")) return;
-    await deleteConversation(id).catch(() => {});
-    if (conversationRowId === id) setConversationRowId(undefined);
+    setDeleteTarget(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    await deleteConversation(deleteTarget).catch(() => {});
+    if (conversationRowId === deleteTarget) setConversationRowId(undefined);
+    setDeleting(false);
+    setDeleteTarget(null);
     refresh();
   }
 
@@ -115,7 +133,7 @@ export function ConversationSidebar() {
             </div>
             <button
               type="button"
-              onClick={(e) => handleDelete(c.id, e)}
+              onClick={(e) => requestDelete(c.id, e)}
               title="Delete"
               className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400
                          transition-opacity shrink-0"
@@ -128,6 +146,28 @@ export function ConversationSidebar() {
           <p className="text-[11px] text-gray-600 px-3 py-2">No chats yet.</p>
         )}
       </nav>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this chat?</DialogTitle>
+            <DialogDescription>
+              This also un-teaches what MemeGPT learned from it: the memes
+              it generated, any feedback on them, and any lore terms it
+              picked up get removed too — not just hidden from this list.
+              This can&apos;t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete chat"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
