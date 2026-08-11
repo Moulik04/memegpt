@@ -19,13 +19,19 @@ async function stableIndex(key: string, n: number): Promise<number> {
 }
 
 // Variants of the one accent hue (never a second color — the monochrome
-// rule applies here too), mixed with ink tones for spread.
+// rule applies here too), mixed toward paper (not ink) for spread. Mixing
+// toward ink/black was the original design here, but this avatar always
+// sits on the near-black header/sidebar background (--ink-0/--ink-1) — a
+// darkened accent blends straight into it. Mixing toward paper instead
+// keeps every stop a visibly lighter, warmer tint than the background at
+// any hash value, and the one non-filled variant uses a fully-opaque
+// (not /50) ring so it doesn't rely on fill contrast at all.
 const PALETTE = [
   "bg-accent",
-  "bg-[color-mix(in_oklch,var(--accent-color)_70%,var(--ink-1))]",
-  "bg-[color-mix(in_oklch,var(--accent-color)_45%,var(--ink-1))]",
-  "bg-[color-mix(in_oklch,var(--accent-color)_85%,black)]",
-  "bg-ink-2 border border-accent/50",
+  "bg-[color-mix(in_oklch,var(--accent-color)_80%,var(--paper))]",
+  "bg-[color-mix(in_oklch,var(--accent-color)_60%,var(--paper))]",
+  "bg-[color-mix(in_oklch,var(--accent-color)_45%,var(--paper))]",
+  "bg-ink-2 border-2 border-accent",
 ];
 
 interface Props {
