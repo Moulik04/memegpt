@@ -172,3 +172,4 @@ same effect, blanks more vars than this needs but works identically.)
 | Driver times out waiting for `.meme-reveal img` | Check `/tmp/memegpt-backend.log` — likely Groq rate-limited or `GROQ_API_KEY` isn't set in the ambient shell |
 | Driver's submit button never becomes enabled | Confirms the input isn't receiving real keystrokes — check the driver is using `page.keyboard.type()`, not `.fill()` |
 | Port 3000 or 8000 already in use | `lsof -ti:PORT \| xargs kill` before relaunching |
+| `npm run build` fails with `Attempted import error: '_class_apply_descriptor_get' is not exported` (or similar `@swc/helpers` export errors) from a `radix-ui`/`@radix-ui/*` import chain | Stale webpack build cache from before a dependency change — confirmed live: the actual `@swc/helpers` package on disk was internally consistent, the error only went away after `rm -rf frontend/.next` and rebuilding. Not a real version mismatch, don't chase one. |
