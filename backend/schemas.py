@@ -181,13 +181,17 @@ class LinkAnonResponse(BaseModel):
 class ConversationSummary(BaseModel):
     """One row of GET /conversations' sidebar list. title is None until the
     first exchange's auto-titling (or a user rename) sets it — the frontend
-    shows a placeholder like "New chat" for that case."""
+    shows a placeholder like "New chat" for that case. thumbnail_url is the
+    earliest meme-bearing message's meme url (via a LATERAL join in
+    db.fetch_conversations/fetch_conversation) — None for a conversation
+    with no memes yet, not an error."""
 
     id: str
     title: Optional[str] = None
     surface: str
     created_at: datetime
     updated_at: datetime
+    thumbnail_url: Optional[str] = None
 
 
 class MessageOut(BaseModel):

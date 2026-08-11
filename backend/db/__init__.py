@@ -614,6 +614,16 @@ async def create_conversation(user_id: str, surface: str) -> str | None:
     return str(row["id"]) if row else None
 
 
+_CONVERSATION_THUMBNAIL_JOIN = """
+    LEFT JOIN LATERAL (
+        SELECT mm.url FROM messages msg
+        JOIN memes mm ON mm.id = msg.meme_id
+        WHERE msg.conversation_id = c.id AND msg.meme_id IS NOT NULL
+        ORDER BY msg.created_at ASC LIMIT 1
+    ) thumb ON true
+"""
+
+
 async def fetch_conversations(
     user_id: str, surface: str | None = None, limit: int = 50
 ) -> list[dict[str, Any]]:
@@ -621,26 +631,35 @@ async def fetch_conversations(
     the sidebar's list. [] with no pool, same graceful-absence contract as
     every other fetch_* in this file (unlike create_conversation above,
     an empty list here is a perfectly normal "nothing to show yet" state,
-    not a broken feature)."""
+    not a broken feature).
+
+    thumbnail_url is the earliest meme-bearing message's meme url, via a
+    LATERAL join (not a subquery in the SELECT list) so it's one row per
+    conversation regardless of how many meme-bearing messages exist —
+    null for a conversation with no memes yet, not an error."""
     pool = await get_pool()
     if pool is None:
         return []
     if surface:
         rows = await pool.fetch(
-            """
-            SELECT id, title, surface, created_at, updated_at FROM conversations
-            WHERE user_id = $1 AND surface = $2
-            ORDER BY updated_at DESC
+            f"""
+            SELECT c.id, c.title, c.surface, c.created_at, c.updated_at, thumb.url AS thumbnail_url
+            FROM conversations c
+            {_CONVERSATION_THUMBNAIL_JOIN}
+            WHERE c.user_id = $1 AND c.surface = $2
+            ORDER BY c.updated_at DESC
             LIMIT $3
             """,
             user_id, surface, limit,
         )
     else:
         rows = await pool.fetch(
-            """
-            SELECT id, title, surface, created_at, updated_at FROM conversations
-            WHERE user_id = $1
-            ORDER BY updated_at DESC
+            f"""
+            SELECT c.id, c.title, c.surface, c.created_at, c.updated_at, thumb.url AS thumbnail_url
+            FROM conversations c
+            {_CONVERSATION_THUMBNAIL_JOIN}
+            WHERE c.user_id = $1
+            ORDER BY c.updated_at DESC
             LIMIT $2
             """,
             user_id, limit,
@@ -652,6 +671,7 @@ async def fetch_conversations(
             "surface": row["surface"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+            "thumbnail_url": row["thumbnail_url"],
         }
         for row in rows
     ]
@@ -673,14 +693,19 @@ async def fetch_conversation_owner(conversation_id: str) -> str | None:
 async def fetch_conversation(conversation_id: str, user_id: str) -> dict[str, Any] | None:
     """A single ownership-checked conversation row — used by PATCH
     /conversations/{id} to build its response after a rename, without the
-    caller needing to re-derive it from the full fetch_conversations() list."""
+    caller needing to re-derive it from the full fetch_conversations() list.
+    Same thumbnail_url shape as fetch_conversations() — a rename response
+    that dropped it would read as the conversation losing its thumbnail
+    until the next full list refetch."""
     pool = await get_pool()
     if pool is None:
         return None
     row = await pool.fetchrow(
-        """
-        SELECT id, title, surface, created_at, updated_at FROM conversations
-        WHERE id = $1 AND user_id = $2
+        f"""
+        SELECT c.id, c.title, c.surface, c.created_at, c.updated_at, thumb.url AS thumbnail_url
+        FROM conversations c
+        {_CONVERSATION_THUMBNAIL_JOIN}
+        WHERE c.id = $1 AND c.user_id = $2
         """,
         conversation_id, user_id,
     )
@@ -692,6 +717,7 @@ async def fetch_conversation(conversation_id: str, user_id: str) -> dict[str, An
         "surface": row["surface"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "thumbnail_url": row["thumbnail_url"],
     }
 
 

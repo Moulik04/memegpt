@@ -411,13 +411,21 @@ async def test_fetch_conversations_returns_rows(monkeypatch):
     fake_pool = FakePool()
     now = datetime.now(timezone.utc)
     fake_pool.fetch_return = [
-        {"id": "conv-1", "title": "hello", "surface": "chat", "created_at": now, "updated_at": now}
+        {
+            "id": "conv-1", "title": "hello", "surface": "chat", "created_at": now, "updated_at": now,
+            "thumbnail_url": "/static/generated/abc123.png",
+        }
     ]
     monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
 
     rows = await db.fetch_conversations("user-1")
 
-    assert rows == [{"id": "conv-1", "title": "hello", "surface": "chat", "created_at": now, "updated_at": now}]
+    assert rows == [
+        {
+            "id": "conv-1", "title": "hello", "surface": "chat", "created_at": now, "updated_at": now,
+            "thumbnail_url": "/static/generated/abc123.png",
+        }
+    ]
 
 
 async def test_fetch_conversation_owner_returns_user_id(monkeypatch):
@@ -541,13 +549,17 @@ async def test_fetch_conversation_returns_owned_row(monkeypatch):
     fake_pool = FakePool()
     now = datetime.now(timezone.utc)
     fake_pool.fetchrow_return = {
-        "id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now
+        "id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now,
+        "thumbnail_url": None,
     }
     monkeypatch.setattr(db, "get_pool", _pool_factory(fake_pool))
 
     result = await db.fetch_conversation("conv-1", "user-1")
 
-    assert result == {"id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now}
+    assert result == {
+        "id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now,
+        "thumbnail_url": None,
+    }
 
 
 # --- Growth Phase H, Stage 4 — per-chat delete cascade ---
