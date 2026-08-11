@@ -103,9 +103,25 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     message: string,
     memeCount?: number,
     rememberLore?: boolean,
+    // Overrides the conversationRowId this hook was called with — needed
+    // when the caller just created a conversation in the same submit
+    // handler (e.g. auto-create-on-first-message): conversationRowId is a
+    // plain closed-over param, so setConversationRowId() followed
+    // immediately by submitText() in one handler would otherwise still
+    // see the OLD value, since React state updates don't apply until the
+    // next render.
+    conversationRowIdOverride?: string,
   ): Promise<MemeStreamResult> {
     return run((onEvent) =>
-      sendStream(surface, message, conversationId, onEvent, memeCount, rememberLore, conversationRowId),
+      sendStream(
+        surface,
+        message,
+        conversationId,
+        onEvent,
+        memeCount,
+        rememberLore,
+        conversationRowIdOverride ?? conversationRowId,
+      ),
     );
   }
 
@@ -114,12 +130,19 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     message?: string,
     memeCount?: number,
     rememberLore?: boolean,
+    conversationRowIdOverride?: string,
   ): Promise<MemeStreamResult> {
     return run((onEvent) =>
       sendImageStream(
         surface,
         files,
-        { message, conversationId, memeCount, rememberLore, conversationRowId },
+        {
+          message,
+          conversationId,
+          memeCount,
+          rememberLore,
+          conversationRowId: conversationRowIdOverride ?? conversationRowId,
+        },
         onEvent,
       ),
     );

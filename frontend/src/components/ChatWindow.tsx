@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getConversationMessages, postFeedback } from "@/lib/api";
+import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
+import { useAuth } from "@/hooks/useAuth";
 import { pickRandomPrompts } from "@/lib/examplePrompts";
 import { MessageBubble } from "./MessageBubble";
 import { ThinkingBubble } from "./ThinkingBubble";
@@ -69,7 +70,8 @@ export function ChatWindow() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { conversationRowId, bumpRefresh } = useConversation();
+  const { user } = useAuth();
+  const { conversationRowId, setConversationRowId, bumpRefresh } = useConversation();
   const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream(
     "chat",
     conversationRowId,
@@ -179,9 +181,28 @@ export function ChatWindow() {
     if (fileInputRef.current) fileInputRef.current.value = "";
     setLocalError(null);
 
+    // Auto-create a conversation on first message when signed in with none
+    // active — otherwise a signed-in user who just starts typing (the
+    // natural thing to do, not "click + New chat first") gets zero
+    // persistence: routers/chat.py only writes messages when a verified
+    // user_id AND an ownership-checked conversation_row_id are both
+    // present. setConversationRowId(id) here won't be visible to
+    // submitText/submitImages below in this same call (conversationRowId
+    // is a plain closed-over param, React state doesn't apply until the
+    // next render) — pass activeConversationRowId as an explicit override
+    // instead of relying on it.
+    let activeConversationRowId = conversationRowId;
+    if (user && !activeConversationRowId) {
+      const created = await createConversation("chat").catch(() => null);
+      if (created) {
+        activeConversationRowId = created.id;
+        setConversationRowId(created.id);
+      }
+    }
+
     const { memes, plainReply } = images.length > 0
-      ? await submitImages(images.map((p) => p.file), text.trim() || undefined)
-      : await submitText(text.trim());
+      ? await submitImages(images.map((p) => p.file), text.trim() || undefined, undefined, undefined, activeConversationRowId)
+      : await submitText(text.trim(), undefined, undefined, activeConversationRowId);
 
     if (memes.length > 0) {
       setMessages((prev) => [
@@ -197,9 +218,8 @@ export function ChatWindow() {
 
     // Growth Phase H, Stage 3 — a persisted turn just landed a title and/or
     // moved to the top of the sidebar's newest-first order; a no-op when
-    // there's no active conversationRowId (anonymous use, or signed in with
-    // no chat selected).
-    if (conversationRowId) bumpRefresh();
+    // there's no active conversationRowId (anonymous use).
+    if (activeConversationRowId) bumpRefresh();
   }
 
   function handleSubmit(e: React.FormEvent) {

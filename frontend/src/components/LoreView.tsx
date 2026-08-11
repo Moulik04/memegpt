@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getConversationMessages, postFeedback } from "@/lib/api";
+import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
+import { useAuth } from "@/hooks/useAuth";
 import { MemeCard } from "./MemeCard";
 import { ThinkingBubble } from "./ThinkingBubble";
 import type { MemeItem, PersistedMessage } from "@/types";
@@ -93,7 +94,8 @@ export function LoreView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { conversationRowId, bumpRefresh } = useConversation();
+  const { user } = useAuth();
+  const { conversationRowId, setConversationRowId, bumpRefresh } = useConversation();
   const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream(
     "lore",
     conversationRowId,
@@ -220,10 +222,22 @@ export function LoreView() {
     setLocalError(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
+    // Same auto-create-on-first-message fix as ChatWindow.tsx — see that
+    // file's comment for why activeConversationRowId is passed explicitly
+    // rather than relying on setConversationRowId() being visible yet.
+    let activeConversationRowId = conversationRowId;
+    if (user && !activeConversationRowId) {
+      const created = await createConversation("lore").catch(() => null);
+      if (created) {
+        activeConversationRowId = created.id;
+        setConversationRowId(created.id);
+      }
+    }
+
     const { memes, plainReply } =
       images.length > 0
-        ? await submitImages(images.map((p) => p.file), submittedText || undefined, memeCount, rememberLore)
-        : await submitText(submittedText, memeCount, rememberLore);
+        ? await submitImages(images.map((p) => p.file), submittedText || undefined, memeCount, rememberLore, activeConversationRowId)
+        : await submitText(submittedText, memeCount, rememberLore, activeConversationRowId);
 
     if (memes.length > 0) {
       setFeed((prev) => [
@@ -238,7 +252,7 @@ export function LoreView() {
       setFeed((prev) => [...prev, { kind: "text", content: plainReply, key: `${Date.now()}` }]);
     }
 
-    if (conversationRowId) bumpRefresh();
+    if (activeConversationRowId) bumpRefresh();
   }
 
   const displayError = localError ?? error;
