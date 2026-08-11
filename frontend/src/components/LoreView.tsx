@@ -25,6 +25,25 @@ const MAX_IMAGES_PER_REQUEST = 6; // matches config.py's max_images_per_request
 // clamp is server-side (routers/chat.py's _clamp_dump_text). Never blocks
 // submission, just sets expectations.
 const MAX_DUMP_CHARS = 20000;
+// Matches config.py's segmentation_text_threshold_chars/max_memes_per_request
+// defaults — below this length the backend takes the zero-LLM-call fast
+// path (one situation, no segmentation call at all), so an estimate here
+// would just be noise.
+const SEGMENTATION_TEXT_THRESHOLD_CHARS = 240;
+const MAX_MEMES_PER_REQUEST = 5;
+
+// A rough proxy only — paragraph breaks are a cheap client-side heuristic,
+// not a reimplementation of the backend's actual semantic segmentation
+// call (nlp/segmentation.py's segment_contexts()). The two are allowed to
+// disagree; this exists to set expectations before submit, not to predict
+// the real result.
+function estimateMomentCount(text: string): number {
+  const blocks = text
+    .trim()
+    .split(/\n\s*\n/)
+    .filter((block) => block.trim().length > 0);
+  return Math.max(1, Math.min(MAX_MEMES_PER_REQUEST, blocks.length));
+}
 
 interface PendingImage {
   file: File;
@@ -254,6 +273,14 @@ export function LoreView() {
           {text.length > MAX_DUMP_CHARS && (
             <p className="text-[10px] text-amber-500">
               Long lore! Using the first ~{Math.round(MAX_DUMP_CHARS / 1000)}k characters.
+            </p>
+          )}
+
+          {text.length > SEGMENTATION_TEXT_THRESHOLD_CHARS && !memeCount && (
+            <p className="text-[10px] text-gray-600">
+              Looks like ~{estimateMomentCount(text)} moment
+              {estimateMomentCount(text) === 1 ? "" : "s"} worth memeing — rough
+              estimate, MemeGPT will decide for real.
             </p>
           )}
 
