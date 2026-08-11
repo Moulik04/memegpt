@@ -83,11 +83,11 @@ export function AuthControl() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="text-xs rounded-lg px-3 py-2 bg-[#13131e] border border-gray-800 text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-brand-600"
+                className="text-xs rounded-lg px-3 py-2 bg-card border border-border text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-accent"
               />
               <button
                 type="submit"
-                className="text-xs font-medium rounded-lg px-3 py-2 bg-brand-600 hover:bg-brand-500 text-white transition-colors"
+                className="text-xs font-medium rounded-lg px-3 py-2 bg-accent hover:bg-accent/90 text-white transition-colors"
               >
                 Send magic link
               </button>

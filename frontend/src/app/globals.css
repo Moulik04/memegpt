@@ -146,19 +146,11 @@
 .dot-2 { animation: blink 1.4s ease-in-out infinite 160ms; }
 .dot-3 { animation: blink 1.4s ease-in-out infinite 320ms; }
 
-/* Gradient text */
-.gradient-text {
-  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
 /* Prompt chips in empty state */
 .prompt-chip {
-  @apply text-xs text-gray-400 border border-gray-700/80 rounded-full px-3 py-1.5
-         hover:border-gray-500/60 hover:text-gray-300 cursor-pointer
-         transition-all duration-200 hover:bg-gray-500/5 select-none;
+  @apply text-xs text-gray-400 border border-border rounded-full px-3 py-1.5
+         hover:border-accent/60 hover:text-accent cursor-pointer
+         transition-all duration-200 hover:bg-accent/5 select-none;
 }
 
 /* Share / action buttons under memes */
@@ -168,5 +160,5 @@
          cursor-pointer border-0 bg-transparent;
 }
 .action-btn-primary {
-  @apply text-gray-300 hover:text-gray-100 hover:bg-gray-500/10;
+  @apply text-accent hover:text-accent/80 hover:bg-accent/10;
 }

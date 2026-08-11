@@ -73,7 +73,7 @@ export default async function SharedMemePage({ params }: Props) {
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-12 gap-8">
-      <Link href="/" className="text-xl font-extrabold tracking-tight gradient-text">
+      <Link href="/" className="caption text-xl">
         MemeGPT
       </Link>
 
@@ -85,8 +85,8 @@ export default async function SharedMemePage({ params }: Props) {
         <p className="text-sm text-gray-500 mb-4">Made with MemeGPT. It only replies in memes.</p>
         <Link
           href="/chat"
-          className="inline-block bg-brand-600 hover:bg-brand-500 transition-colors text-white
-                     font-semibold rounded-full px-8 py-3.5 text-base shadow-lg shadow-brand-900/40"
+          className="inline-block bg-accent hover:bg-accent/90 transition-colors text-white
+                     font-semibold rounded-full px-8 py-3.5 text-base shadow-lg"
         >
           Make your own
         </Link>

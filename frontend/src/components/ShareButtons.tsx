@@ -100,7 +100,7 @@ export function ShareButtons({ memeUrl, large = false }: Props) {
         {canShare && (
           <button
             onClick={handleShare}
-            className="w-full py-3 rounded-xl bg-brand-600 hover:bg-brand-700
+            className="w-full py-3 rounded-xl bg-accent hover:bg-accent/90
                        text-white font-semibold text-sm transition-colors"
           >
             ↗ Share to WhatsApp / Instagram / Snapchat
