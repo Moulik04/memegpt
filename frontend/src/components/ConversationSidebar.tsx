@@ -1,10 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useConversation } from "@/lib/ConversationContext";
-import { createConversation, deleteConversation, listConversations, type Surface } from "@/lib/api";
+import {
+  createConversation,
+  deleteConversation,
+  listConversations,
+  memeImageUrl,
+  type Surface,
+} from "@/lib/api";
 import type { ConversationSummary } from "@/types";
 
 function surfaceFromPath(pathname: string | null): Surface {
@@ -91,7 +98,21 @@ export function ConversationSidebar() {
                             : "text-gray-400 hover:bg-white/5 border border-transparent"
                         }`}
           >
-            <span className="truncate">{c.title ?? "New chat"}</span>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-ink-2">
+                {c.thumbnail_url && (
+                  <Image
+                    src={memeImageUrl(c.thumbnail_url)}
+                    alt=""
+                    width={28}
+                    height={28}
+                    unoptimized
+                    className="w-full h-full object-cover"
+                  />
+                )}
+              </div>
+              <span className="truncate">{c.title ?? "New chat"}</span>
+            </div>
             <button
               type="button"
               onClick={(e) => handleDelete(c.id, e)}
