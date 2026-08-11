@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { forgetMe } from "@/lib/api";
 import { forgetAnonId } from "@/lib/identity";
 import { AuthControl } from "@/components/AuthControl";
@@ -18,14 +19,51 @@ async function handleForgetMe() {
   window.location.reload();
 }
 
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /**
  * Shared header + Chat|Lore tab toggle. The URL is the source of truth for
  * which surface is active (/chat = Chat, /lore = Lore) rather than internal
  * client state — this is what makes /lore a genuine, refreshable,
  * bookmarkable deep link, and what Phase 3's share-target redirect lands on.
  * / is the public marketing landing page, not one of these two tabs.
+ *
+ * Tab clicks are wrapped in document.startViewTransition() when the
+ * browser supports it and prefers-reduced-motion isn't set — the plain
+ * browser API, not a Next.js feature: Next 14 on React 18 has no native
+ * View Transitions integration (that needs React 19's <ViewTransition>
+ * primitive). Link's real href is kept untouched so modified clicks
+ * (cmd/ctrl/middle-click "open in new tab") and keyboard/hover behavior
+ * are unaffected — only a plain left-click gets intercepted. Known rough
+ * edge, not swept under the rug: startViewTransition expects its callback
+ * to resolve once the DOM has actually updated, but router.push() here is
+ * an async App Router navigation, not a synchronous mutation — so the
+ * transition and the real navigation aren't rigorously synchronized the
+ * way they would be with React 19's native support. It still works
+ * (verified: navigation completes, no console errors) and looks
+ * reasonable for already-prefetched routes, but isn't the polished result
+ * native support would give.
  */
 export function ModeTabs({ active }: Props) {
+  const router = useRouter();
+
+  function navigate(e: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    if (!document.startViewTransition || prefersReducedMotion()) {
+      router.push(href);
+      return;
+    }
+    document.startViewTransition(() => {
+      router.push(href);
+    });
+  }
+
   return (
     <header className="shrink-0 flex items-center justify-between px-4 py-3
                        border-b border-border bg-background/80 backdrop-blur-sm">
@@ -45,6 +83,7 @@ export function ModeTabs({ active }: Props) {
         <nav className="flex items-center gap-1 bg-card border border-border rounded-full p-1">
           <Link
             href="/chat"
+            onClick={(e) => navigate(e, "/chat")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "chat"
                 ? "bg-accent text-white"
@@ -55,6 +94,7 @@ export function ModeTabs({ active }: Props) {
           </Link>
           <Link
             href="/lore"
+            onClick={(e) => navigate(e, "/lore")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "lore"
                 ? "bg-accent text-white"
@@ -65,6 +105,7 @@ export function ModeTabs({ active }: Props) {
           </Link>
           <Link
             href="/arc"
+            onClick={(e) => navigate(e, "/arc")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "arc"
                 ? "bg-accent text-white"
