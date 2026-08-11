@@ -63,13 +63,13 @@ export function ConversationSidebar() {
   }
 
   return (
-    <aside className="w-56 shrink-0 border-r border-gray-800/60 bg-gray-950/60 flex flex-col h-full">
+    <aside className="w-56 shrink-0 border-r border-border bg-background/60 flex flex-col h-full">
       <div className="p-3">
         <button
           type="button"
           onClick={handleNewChat}
-          className="w-full text-xs font-medium rounded-xl px-3 py-2 bg-[#13131e] border border-gray-800
-                     text-gray-300 hover:border-brand-600/60 hover:text-white transition-colors"
+          className="w-full text-xs font-medium rounded-xl px-3 py-2 bg-card border border-border
+                     text-gray-300 hover:border-accent/60 hover:text-white transition-colors"
         >
           + New chat
         </button>
@@ -87,7 +87,7 @@ export function ConversationSidebar() {
             className={`group flex items-center justify-between gap-2 text-xs rounded-lg px-3 py-2
                         cursor-pointer transition-colors ${
                           c.id === conversationRowId
-                            ? "bg-brand-600/15 text-white border border-brand-600/40"
+                            ? "bg-accent/15 text-white border border-accent/40"
                             : "text-gray-400 hover:bg-white/5 border border-transparent"
                         }`}
           >

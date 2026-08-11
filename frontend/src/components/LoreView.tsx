@@ -237,7 +237,7 @@ export function LoreView() {
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
           className={`rounded-2xl border-2 border-dashed p-4 flex flex-col gap-3 transition-colors ${
-            dragActive ? "border-brand-500 bg-brand-500/5" : "border-gray-800 bg-[#13131e]"
+            dragActive ? "border-accent bg-accent/5" : "border-border bg-card"
           }`}
         >
           <textarea
@@ -311,8 +311,8 @@ export function LoreView() {
               onChange={(e) => setMemeCount(e.target.value ? Number(e.target.value) : undefined)}
               disabled={loading}
               title="Number of memes"
-              className="shrink-0 bg-gray-900 border border-gray-800 rounded-xl px-2 py-2.5
-                         text-xs text-gray-400 focus:outline-none focus:border-brand-600
+              className="shrink-0 bg-ink-2 border border-border rounded-xl px-2 py-2.5
+                         text-xs text-gray-400 focus:outline-none focus:border-accent
                          disabled:opacity-40 transition-colors"
             >
               <option value="">Auto</option>
@@ -330,8 +330,8 @@ export function LoreView() {
               aria-pressed={rememberLore}
               className={`shrink-0 text-xs font-medium rounded-full px-3 py-2.5 transition-colors ${
                 rememberLore
-                  ? "bg-brand-600 text-white"
-                  : "bg-gray-900 border border-gray-800 text-gray-500 hover:text-gray-300"
+                  ? "bg-accent text-white"
+                  : "bg-ink-2 border border-border text-gray-500 hover:text-gray-300"
               } disabled:opacity-40`}
             >
               🧠 Remember lore
@@ -340,7 +340,7 @@ export function LoreView() {
             <button
               type="submit"
               disabled={loading || (!text.trim() && pendingImages.length === 0)}
-              className="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 transition-colors
+              className="bg-accent hover:bg-accent/90 disabled:opacity-40 transition-colors
                          text-white text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
             >
               Drop the lore
@@ -372,7 +372,7 @@ export function LoreView() {
                 <li key={i} className="flex items-start gap-2 text-xs">
                   <span
                     className={
-                      plan.doneIndices.has(i) ? "text-brand-400" : "text-gray-600"
+                      plan.doneIndices.has(i) ? "text-accent" : "text-gray-600"
                     }
                   >
                     {plan.doneIndices.has(i) ? "✓" : "○"}

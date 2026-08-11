@@ -321,14 +321,14 @@ export function ChatWindow() {
               pendingImages.length > 0 ? "Add a caption (optional)…" : "Type a message…"
             }
             disabled={loading}
-            className="flex-1 bg-[#13131e] border border-gray-800 rounded-xl px-4 py-2.5
-                       text-sm placeholder-gray-600 focus:outline-none focus:border-brand-600
+            className="flex-1 bg-card border border-border rounded-xl px-4 py-2.5
+                       text-sm placeholder-gray-600 focus:outline-none focus:border-accent
                        disabled:opacity-50 transition-colors"
           />
           <button
             type="submit"
             disabled={loading || (!input.trim() && pendingImages.length === 0)}
-            className="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 transition-colors
+            className="bg-accent hover:bg-accent/90 disabled:opacity-40 transition-colors
                        text-white text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
           >
             Send
