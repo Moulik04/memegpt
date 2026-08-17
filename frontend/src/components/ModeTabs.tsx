@@ -106,17 +106,6 @@ export function ModeTabs({ active }: Props) {
             Lore
           </Link>
           <Link
-            href="/arc"
-            onClick={(e) => navigate(e, "/arc")}
-            className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
-              active === "arc"
-                ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
-            }`}
-          >
-            Arc
-          </Link>
-          <Link
             href="/make"
             onClick={(e) => navigate(e, "/make")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
@@ -126,6 +115,17 @@ export function ModeTabs({ active }: Props) {
             }`}
           >
             Make
+          </Link>
+          <Link
+            href="/arc"
+            onClick={(e) => navigate(e, "/arc")}
+            className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
+              active === "arc"
+                ? "bg-accent text-white"
+                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+            }`}
+          >
+            Arc
           </Link>
         </nav>
         <AuthControl />
