@@ -51,6 +51,21 @@ def resolve_template_image_path(template_id: str) -> Path | None:
     return None
 
 
+def template_image_url(template_id: str) -> str | None:
+    """Public URL for a template's raw source image, servable as-is via
+    main.py's /static/templates mount. Was arc/copy.py's private
+    _template_image_url (Growth Phase D's "signature template" thumbnail)
+    until Phase 4 gave the explain/list-templates endpoint a second real
+    consumer — moved here, next to the file-resolution logic both agree
+    on, rather than duplicated. Relative path; the frontend prefixes it
+    with NEXT_PUBLIC_API_BASE, same as every other backend-served image
+    URL."""
+    path = resolve_template_image_path(template_id)
+    if path is None:
+        return None
+    return f"/static/templates/{path.name}"
+
+
 _FONT_CANDIDATES = [
     "Anton-Regular.ttf",          # downloaded in Render build / drop in backend/fonts/
     "Impact.ttf", "impact.ttf",

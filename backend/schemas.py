@@ -247,6 +247,15 @@ class ExplainRequest(BaseModel):
     conversation_id: Optional[str] = None
 
 
+class TextBoxInfo(BaseModel):
+    """One caption field the manual meme-maker (Phase 4, POST /generate/)
+    needs to render for a given template — label matches the key
+    /generate/ expects in its `texts` dict."""
+
+    label: str
+    description: str
+
+
 class ExplainResponse(BaseModel):
     template_id: str
     name: str
@@ -254,6 +263,14 @@ class ExplainResponse(BaseModel):
     tags: list[str]
     usage_count: int
     recent_uses: list[dict[str, Any]]
+    # Populated on both the bulk GET /explain/ list (thumbnails in the
+    # picker grid) and the single-template POST /explain/ — both are pure
+    # in-memory lookups (image_processing/template_configs.py's static
+    # catalog, a filesystem existence check for the extension), cheap
+    # enough that a template picked from the grid never needs a second
+    # round-trip to learn its caption fields.
+    image_url: Optional[str] = None
+    text_boxes: list[TextBoxInfo] = []
 
 
 # ---------------------------------------------------------------------------
