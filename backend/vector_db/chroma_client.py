@@ -286,3 +286,28 @@ def get_template_record(template_id: str) -> dict[str, Any] | None:
         "usage_count": int(meta.get("usage_count", 0)),
         "recent_uses": json.loads(meta.get("recent_uses", "[]")),
     }
+
+
+def list_all_template_records() -> list[dict[str, Any]]:
+    """Bulk-fetch every template's metadata in one call — one collection
+    read instead of N individual get_template_record() calls. Powers the
+    manual meme-maker's template picker (Phase 4, GET /explain/). Each
+    dict includes template_id alongside the same fields
+    get_template_record() returns, parsed the same way."""
+    col = _get_collection()
+    if col.count() == 0:
+        return []
+    result = col.get(include=["metadatas"])
+    records = []
+    for template_id, meta in zip(result["ids"], result["metadatas"]):
+        records.append(
+            {
+                "template_id": template_id,
+                "name": meta.get("name", ""),
+                "description": meta.get("description", ""),
+                "tags": json.loads(meta.get("tags", "[]")),
+                "usage_count": int(meta.get("usage_count", 0)),
+                "recent_uses": json.loads(meta.get("recent_uses", "[]")),
+            }
+        )
+    return records

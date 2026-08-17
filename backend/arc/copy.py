@@ -20,7 +20,7 @@ from datetime import date
 from zoneinfo import ZoneInfo
 
 from db import RawArcStats
-from image_processing.compositor import resolve_template_image_path
+from image_processing.compositor import template_image_url
 from schemas import ArcStats, ArcTemplate
 from vector_db.chroma_client import get_template_record
 
@@ -137,16 +137,6 @@ def _display_name(template_id: str) -> str:
     return template_id.replace("_", " ").title()
 
 
-def _template_image_url(template_id: str) -> str | None:
-    """The actual meme thumbnail for the "signature template" stat — reuses
-    compose_meme()'s own file-resolution logic so both agree on which file
-    backs a template_id. Relative path; the frontend prefixes it with
-    NEXT_PUBLIC_API_BASE, same as every other backend-served image URL."""
-    path = resolve_template_image_path(template_id)
-    if path is None:
-        return None
-    return f"/static/templates/{path.name}"
-
 
 # --- Busiest-hour roast (4 buckets, full 24h coverage, 2 lines each) ---
 
@@ -249,7 +239,7 @@ def build_arc_stats(raw: RawArcStats | None, tz: str = "UTC") -> ArcStats:
             display_name=_display_name(template_id),
             count=count,
             roast=_template_roast(template_id),
-            image_url=_template_image_url(template_id),
+            image_url=template_image_url(template_id),
         )
         for template_id, count in raw.top_templates
     ]
