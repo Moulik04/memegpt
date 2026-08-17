@@ -61,6 +61,29 @@ const STEPS = [
   },
 ];
 
+const MODES = [
+  {
+    label: "Chat",
+    title: "Talk to MemeGPT like any chatbot",
+    body: "Type a thought, attach a photo if you want, and get a meme back. MemeGPT never breaks character, every reply comes back as a meme.",
+  },
+  {
+    label: "Lore",
+    title: "Drop in the whole story",
+    body: "Paste a whole group chat or upload a stack of screenshots. Get back several memes, one for every moment worth remembering.",
+  },
+  {
+    label: "Make",
+    title: "Pick the template yourself",
+    body: "Skip the AI's judgment entirely. Search the full template library, write your own captions box by box, and render it exactly your way.",
+  },
+  {
+    label: "Arc",
+    title: "See your meme era",
+    body: "Your most-summoned template, your longest streak, an aura score that goes up whether you like it or not. Roast copy included, free of charge.",
+  },
+];
+
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   visible: { opacity: 1, y: 0 },
@@ -225,7 +248,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Two modes */}
+      {/* Four modes */}
       <section className="relative z-10 px-6 py-20 sm:py-28">
         <motion.div
           initial="hidden"
@@ -235,44 +258,27 @@ export function LandingPage() {
           transition={{ duration: 0.6 }}
           className="max-w-2xl mx-auto text-center mb-16"
         >
-          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">Two ways to use MemeGPT</h2>
-          <p className="mt-3 text-gray-500">Same brain underneath, different amount of chaos.</p>
+          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">Four ways to use MemeGPT</h2>
+          <p className="mt-3 text-gray-500">Same brain underneath, different amount of control.</p>
         </motion.div>
 
         <div className="max-w-4xl mx-auto grid gap-6 sm:grid-cols-2">
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-60px" }}
-            variants={fadeUp}
-            transition={{ duration: 0.6 }}
-            className="rounded-2xl bg-card border border-border p-8 transition-all duration-200
-                       hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
-          >
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Chat</span>
-            <h3 className="text-xl font-bold mt-2 mb-3">Talk to MemeGPT like any chatbot</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              Type a thought, attach a photo if you want, and get a meme back.
-              MemeGPT never breaks character, every reply comes back as a meme.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-60px" }}
-            variants={fadeUp}
-            transition={{ duration: 0.6, delay: 0.12 }}
-            className="rounded-2xl bg-card border border-border p-8 transition-all duration-200
-                       hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
-          >
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Lore</span>
-            <h3 className="text-xl font-bold mt-2 mb-3">Drop in the whole story</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              Paste a whole group chat or upload a stack of screenshots. Get
-              back several memes, one for every moment worth remembering.
-            </p>
-          </motion.div>
+          {MODES.map((mode, i) => (
+            <motion.div
+              key={mode.label}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, margin: "-60px" }}
+              variants={fadeUp}
+              transition={{ duration: 0.6, delay: i * 0.1 }}
+              className="rounded-2xl bg-card border border-border p-8 transition-all duration-200
+                         hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
+            >
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{mode.label}</span>
+              <h3 className="text-xl font-bold mt-2 mb-3">{mode.title}</h3>
+              <p className="text-sm text-gray-400 leading-relaxed">{mode.body}</p>
+            </motion.div>
+          ))}
         </div>
       </section>
 
