@@ -208,6 +208,26 @@ export function LandingPage() {
           >
             No sign up. No email. Just start typing.
           </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 24, rotate: -2 }}
+            animate={{ opacity: 1, y: 0, rotate: -2 }}
+            transition={{ duration: 0.7, delay: 0.75 }}
+            className="mt-14 inline-flex flex-col items-center gap-3"
+          >
+            <span className="text-xs text-gray-600 uppercase tracking-wide">
+              an actual MemeGPT reply
+            </span>
+            <div className="w-52 sm:w-64 rounded-2xl bg-card border border-border p-2 shadow-2xl shadow-black/50">
+              <Image
+                src="/landing/drake_example.png"
+                alt="Drake meme: rejecting 'explaining why you're right for 10 paragraphs', approving 'letting MemeGPT say it in one caption'"
+                width={600}
+                height={600}
+                className="w-full h-auto rounded-xl"
+              />
+            </div>
+          </motion.div>
         </div>
       </section>
 
