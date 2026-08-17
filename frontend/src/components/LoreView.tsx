@@ -354,7 +354,7 @@ export function LoreView() {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -408,12 +408,11 @@ export function LoreView() {
             >
               🧠 Remember lore
             </button>
-            <div className="flex-1" />
             <button
               type="submit"
               disabled={loading || (!text.trim() && pendingImages.length === 0)}
-              className="bg-accent hover:bg-accent/90 disabled:opacity-40 transition-colors
-                         text-white text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
+              className="w-full sm:w-auto sm:ml-auto bg-accent hover:bg-accent/90 disabled:opacity-40
+                         transition-colors text-white text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
             >
               Drop the lore
             </button>
