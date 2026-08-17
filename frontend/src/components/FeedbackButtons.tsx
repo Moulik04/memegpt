@@ -21,6 +21,7 @@ export function FeedbackButtons({ onFeedback }: Props) {
         onClick={() => handleVote("up")}
         disabled={!!voted}
         title="Good meme"
+        aria-label="Good meme"
         className={`action-btn text-base px-1.5 py-0.5 ${
           voted === "up"
             ? "opacity-100"
@@ -35,6 +36,7 @@ export function FeedbackButtons({ onFeedback }: Props) {
         onClick={() => handleVote("down")}
         disabled={!!voted}
         title="Bad meme"
+        aria-label="Bad meme"
         className={`action-btn text-base px-1.5 py-0.5 ${
           voted === "down"
             ? "opacity-100"

@@ -334,6 +334,7 @@ export function ChatWindow() {
                                border border-gray-700 text-gray-400 hover:text-gray-200
                                text-[10px] flex items-center justify-center leading-none"
                     title="Remove"
+                    aria-label="Remove image"
                   >
                     ✕
                   </button>
@@ -357,6 +358,7 @@ export function ChatWindow() {
             onClick={() => fileInputRef.current?.click()}
             disabled={loading}
             title="Attach photos"
+            aria-label="Attach photos"
             className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl
                        border border-gray-800 text-gray-400 hover:text-gray-200
                        hover:border-gray-600 disabled:opacity-40 transition-colors"
