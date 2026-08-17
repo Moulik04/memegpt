@@ -387,7 +387,7 @@ export function ArcView() {
 
         <div className="absolute top-6 left-4 right-4 z-20 flex items-center justify-between">
           <span className="text-[10px] font-mono text-gray-500 tracking-wide">YOUR ARC</span>
-          <Link href="/chat" className="text-gray-500 text-base leading-none" title="Exit">
+          <Link href="/chat" className="text-gray-500 text-base leading-none" title="Exit" aria-label="Exit to Chat">
             ✕
           </Link>
         </div>

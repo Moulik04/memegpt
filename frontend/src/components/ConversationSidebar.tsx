@@ -143,6 +143,7 @@ export function ConversationSidebar() {
                 type="button"
                 onClick={(e) => requestDelete(c.id, e)}
                 title="Delete"
+                aria-label="Delete this chat"
                 className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400
                            transition-opacity shrink-0"
               >
