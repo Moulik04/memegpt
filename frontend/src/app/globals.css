@@ -51,6 +51,17 @@
   --sidebar-accent-foreground: var(--paper);
   --sidebar-border: var(--line);
   --sidebar-ring: var(--accent-color);
+
+  /* ---- Redesign motion/type tokens (see MASTER.md at repo root) ----
+     The cream/paper color system that originally lived here was reverted
+     after real-browser review — see MASTER.md §0. These survived the
+     reversal since the dark system uses them too. */
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-settle: 280ms;
+  --duration-arrive: 320ms;
+
+  --text-display: clamp(1.75rem, 3.5vw, 2.5rem);
 }
 
 @theme inline {
@@ -113,6 +124,16 @@
   letter-spacing: -0.01em;
 }
 
+/* .caption's 0.08em stroke is tuned for actual meme-image captions
+   (rendered 40px+) — at small wordmark/logo sizes (text-xl and below)
+   that same proportional stroke eats into Anton's letterforms enough to
+   make them look chunky/blobby rather than crisp, since there isn't
+   enough counter space at that size to absorb a stroke from both edges.
+   Pair with .caption at logo scale to thin it back down. */
+.caption-mark {
+  -webkit-text-stroke: 0.03em #000000;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -137,20 +158,109 @@
 }
 .meme-reveal { animation: fadeUp 0.3s ease-out forwards; }
 
-/* Thinking dots */
-@keyframes blink {
-  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
-  40%           { opacity: 1;   transform: scale(1); }
+/* ---- Chat empty state, v2 ----
+   The cream/paper/poster direction above (MASTER.md's original Phase 4
+   spec) tested badly in the real app — validated fine in isolated
+   Artifact mockups, but read as an amateur "craft project" swap of one
+   genre for another rather than an improvement, per real-browser review.
+   Pivoted back to dark, grounded in real reference research (21st.dev's
+   AI Chat component category, Aceternity UI): well-regarded chat UIs
+   differentiate through motion/depth polish on a clean dark surface, not
+   decorative texture. See MASTER.md's "Pivot" section. Still zero
+   gradients/glow/neon per frontend-tokens' non-negotiables — depth here
+   is neutral box-shadow, motion is scale/opacity, nothing colored blurs. */
+.headline-poster {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  font-size: var(--text-display);
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+  color: var(--paper);
 }
-.dot-1 { animation: blink 1.4s ease-in-out infinite 0ms; }
-.dot-2 { animation: blink 1.4s ease-in-out infinite 160ms; }
-.dot-3 { animation: blink 1.4s ease-in-out infinite 320ms; }
+.headline-poster .hl {
+  color: var(--accent-color);
+}
 
-/* Prompt chips in empty state */
+.margin-note {
+  font-style: italic;
+  color: var(--paper-dim);
+  display: inline-block;
+}
+
+/* Prompt chips — dark card with real depth (neutral shadow, not a flat
+   border), lifts and gains an accent ring on hover/focus. */
 .prompt-chip {
-  @apply text-xs text-gray-400 border border-border rounded-full px-3 py-1.5
-         hover:border-accent/60 hover:text-accent cursor-pointer
-         transition-all duration-200 hover:bg-accent/5 select-none;
+  @apply text-[13px] leading-relaxed cursor-pointer select-none text-left;
+  position: relative;
+  overflow: hidden;
+  color: var(--paper-dim);
+  background: var(--ink-1);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: border-color var(--duration-fast) ease, transform var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease, color var(--duration-fast) ease,
+    background var(--duration-fast) ease;
+}
+/* Pointer-tracked highlight — a small, sharp-edged radial tint that
+   follows the cursor (JS sets --mx/--my in px via onMouseMove), not a
+   blurred glow: tight falloff, no filter:blur, respects the no-glow rule.
+   Sits behind the chip's own text via z-index on the text not being
+   needed — the chip has no other backgrounds stacked above it. */
+.prompt-chip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(120px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 77, 28, 0.16), transparent 70%);
+  transition: opacity var(--duration-fast) ease;
+  pointer-events: none;
+}
+.prompt-chip:hover::before {
+  opacity: 1;
+}
+.prompt-chip:hover {
+  border-color: var(--accent-color);
+  color: var(--paper);
+  background: var(--ink-2);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.prompt-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ink-0), 0 0 0 4px var(--accent-color);
+}
+
+/* Elements arriving — a clean settle, no rotation gimmick. */
+@keyframes settleIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.arrive-settle {
+  animation: settleIn var(--duration-arrive) var(--ease-settle) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .arrive-settle { animation: none; }
+}
+
+/* Thinking indicator — a single breathing orb (scale + opacity only, no
+   color bloom) instead of a flat 3-dot bounce or a glow effect. */
+@keyframes breathe {
+  0%, 100% { transform: scale(0.85); opacity: 0.55; }
+  50%      { transform: scale(1); opacity: 1; }
+}
+.thinking-orb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-orb { animation: none; opacity: 0.9; }
 }
 
 /* Share / action buttons under memes */

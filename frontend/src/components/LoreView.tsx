@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "motion/react";
 import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
 import { useAuth } from "@/hooks/useAuth";
 import { MemeCard } from "./MemeCard";
 import { ThinkingBubble } from "./ThinkingBubble";
+import { DecryptedText } from "./DecryptedText";
 import type { MemeItem, PersistedMessage } from "@/types";
 
 const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
@@ -91,6 +93,7 @@ export function LoreView() {
   const [feed, setFeed] = useState<FeedEntry[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -269,10 +272,28 @@ export function LoreView() {
           }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
-          className={`rounded-2xl border-2 border-dashed p-4 flex flex-col gap-3 transition-colors ${
-            dragActive ? "border-accent bg-accent/5" : "border-border bg-card"
+          className={`relative rounded-2xl border-2 p-4 flex flex-col gap-3 shadow-lg transition-all ${
+            dragActive
+              ? "border-accent border-solid bg-accent/5"
+              : "border-border border-dashed bg-card focus-within:border-accent/60"
           }`}
         >
+          <AnimatePresence>
+            {dragActive && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
+                           rounded-2xl bg-card/95 pointer-events-none"
+              >
+                <span className="text-2xl">📥</span>
+                <p className="text-sm font-semibold text-accent">Drop to add screenshots</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <textarea
             ref={textareaRef}
             value={text}
@@ -300,26 +321,36 @@ export function LoreView() {
 
           {pendingImages.length > 0 && (
             <div className="flex items-center gap-2 overflow-x-auto">
-              {pendingImages.map((p, i) => (
-                <div key={i} className="relative shrink-0">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.previewUrl}
-                    alt="Attached preview"
-                    className="w-14 h-14 rounded-lg object-cover border border-gray-700"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removePendingImage(i)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-900
-                               border border-gray-700 text-gray-400 hover:text-gray-200
-                               text-[10px] flex items-center justify-center leading-none"
-                    title="Remove"
+              <AnimatePresence mode="popLayout" initial={false}>
+                {pendingImages.map((p, i) => (
+                  <motion.div
+                    key={p.previewUrl}
+                    layout
+                    initial={{ opacity: 0, scale: 0.85 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.85 }}
+                    transition={{ duration: 0.15 }}
+                    className="relative shrink-0"
                   >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.previewUrl}
+                      alt="Attached preview"
+                      className="w-14 h-14 rounded-lg object-cover border border-gray-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePendingImage(i)}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-900
+                                 border border-gray-700 text-gray-400 hover:text-gray-200
+                                 text-[10px] flex items-center justify-center leading-none"
+                      title="Remove"
+                    >
+                      ✕
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           )}
 
@@ -404,7 +435,7 @@ export function LoreView() {
         )}
 
         {plan && plan.total > 1 && (
-          <div className="rounded-2xl bg-[#13131e] border border-gray-800/60 px-4 py-3">
+          <div className="rounded-2xl bg-card border border-border px-4 py-3">
             <p className="text-[10px] text-gray-500 mb-2 uppercase tracking-wide">
               Found {plan.total} moments worth memeing
             </p>
@@ -429,26 +460,58 @@ export function LoreView() {
 
         {thinking && <ThinkingBubble message={thinking.message} />}
 
-        {/* Flat feed — every meme its own permanently-visible card */}
+        {/* Flat feed — every meme its own permanently-visible card. Each
+            entry gets a staggered settle-in (capped so a long history
+            doesn't queue an absurd cumulative delay) — this is where it
+            matters most: one Lore submission routinely lands several memes
+            at once, and watching them cascade in one after another is a
+            better signal that something real happened than a batch of
+            cards just appearing. */}
         <div className="flex flex-col gap-4">
-          {feed.map((entry) =>
-            entry.kind === "meme" ? (
-              <MemeCard
+          {feed.map((entry, i) => {
+            const style = {
+              animationDelay: `${Math.min(i, 5) * 70}ms`,
+              animationFillMode: "backwards" as const,
+            };
+            // When several memes land from one submission, hovering one
+            // dims the rest instead of leaving them all at equal visual
+            // weight — draws focus to the one you're looking at without
+            // hiding the others, since they're all still worth a glance.
+            const dimmed = hoveredIndex !== null && hoveredIndex !== i;
+            const hoverProps = {
+              onMouseEnter: () => setHoveredIndex(i),
+              onMouseLeave: () => setHoveredIndex(null),
+            };
+            return entry.kind === "meme" ? (
+              <div
                 key={entry.votedKey}
-                url={entry.meme.url}
-                alt={entry.meme.situationText}
-                onFeedback={(rating) => handleFeedback(entry.meme, rating)}
-              />
+                className={`arrive-settle transition-[opacity,transform] duration-200 ${
+                  dimmed ? "opacity-50 scale-[0.98]" : "opacity-100 scale-100"
+                }`}
+                style={style}
+                {...hoverProps}
+              >
+                <MemeCard
+                  url={entry.meme.url}
+                  alt={entry.meme.situationText}
+                  templateId={entry.meme.templateId}
+                  onFeedback={(rating) => handleFeedback(entry.meme, rating)}
+                />
+              </div>
             ) : (
               <p
                 key={entry.key}
-                className="text-sm text-gray-300 bg-[#13131e] border border-gray-800/60
-                           rounded-2xl px-4 py-3"
+                className={`arrive-settle text-sm text-gray-300 bg-card border border-border
+                           rounded-2xl px-4 py-3 transition-[opacity,transform] duration-200 ${
+                             dimmed ? "opacity-50 scale-[0.98]" : "opacity-100 scale-100"
+                           }`}
+                style={style}
+                {...hoverProps}
               >
-                {entry.content}
+                <DecryptedText text={entry.content} />
               </p>
-            ),
-          )}
+            );
+          })}
         </div>
       </div>
     </div>

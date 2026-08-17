@@ -7,7 +7,7 @@ import { forgetAnonId } from "@/lib/identity";
 import { AuthControl } from "@/components/AuthControl";
 
 interface Props {
-  active: "chat" | "lore" | "arc";
+  active: "chat" | "lore" | "arc" | "make";
 }
 
 async function handleForgetMe() {
@@ -68,7 +68,7 @@ export function ModeTabs({ active }: Props) {
     <header className="shrink-0 flex items-center justify-between px-4 py-3
                        border-b border-border bg-background/80 backdrop-blur-sm">
       <Link href="/" className="block">
-        <h1 className="caption text-xl leading-none">
+        <h1 className="caption caption-mark text-xl leading-none">
           MemeGPT
         </h1>
         <p className="text-[11px] text-gray-600 mt-0.5">
@@ -76,7 +76,9 @@ export function ModeTabs({ active }: Props) {
             ? "Talk to it like any chatbot. It only speaks meme."
             : active === "lore"
             ? "Drop the lore. Get the highlight reel."
-            : "Your meme era, scored in aura."}
+            : active === "arc"
+            ? "Your meme era, scored in aura."
+            : "Pick a template. Write your own captions."}
         </p>
       </Link>
       <div className="flex items-center gap-3">
@@ -87,7 +89,7 @@ export function ModeTabs({ active }: Props) {
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "chat"
                 ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300"
+                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
             }`}
           >
             Chat
@@ -98,7 +100,7 @@ export function ModeTabs({ active }: Props) {
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "lore"
                 ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300"
+                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
             }`}
           >
             Lore
@@ -109,10 +111,21 @@ export function ModeTabs({ active }: Props) {
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "arc"
                 ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300"
+                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
             }`}
           >
             Arc
+          </Link>
+          <Link
+            href="/make"
+            onClick={(e) => navigate(e, "/make")}
+            className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
+              active === "make"
+                ? "bg-accent text-white"
+                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+            }`}
+          >
+            Make
           </Link>
         </nav>
         <AuthControl />

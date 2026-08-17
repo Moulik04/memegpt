@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { AnimatePresence, motion } from "motion/react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { useConversation } from "@/lib/ConversationContext";
@@ -94,54 +95,62 @@ export function ConversationSidebar() {
           type="button"
           onClick={handleNewChat}
           className="w-full text-xs font-medium rounded-xl px-3 py-2 bg-card border border-border
-                     text-gray-300 hover:border-accent/60 hover:text-white transition-colors"
+                     text-gray-300 hover:border-accent/60 hover:text-white hover:shadow-lg
+                     hover:-translate-y-0.5 transition-all duration-200"
         >
           + New chat
         </button>
       </div>
       <nav className="flex-1 overflow-y-auto chat-scroll px-2 pb-3 flex flex-col gap-1">
-        {conversations.map((c) => (
-          <div
-            key={c.id}
-            role="button"
-            tabIndex={0}
-            onClick={() => setConversationRowId(c.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") setConversationRowId(c.id);
-            }}
-            className={`group flex items-center justify-between gap-2 text-xs rounded-lg px-3 py-2
-                        cursor-pointer transition-colors ${
-                          c.id === conversationRowId
-                            ? "bg-accent/15 text-white border border-accent/40"
-                            : "text-gray-400 hover:bg-white/5 border border-transparent"
-                        }`}
-          >
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-ink-2">
-                {c.thumbnail_url && (
-                  <Image
-                    src={memeImageUrl(c.thumbnail_url)}
-                    alt=""
-                    width={28}
-                    height={28}
-                    unoptimized
-                    className="w-full h-full object-cover"
-                  />
-                )}
-              </div>
-              <span className="truncate">{c.title ?? "New chat"}</span>
-            </div>
-            <button
-              type="button"
-              onClick={(e) => requestDelete(c.id, e)}
-              title="Delete"
-              className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400
-                         transition-opacity shrink-0"
+        <AnimatePresence mode="popLayout" initial={false}>
+          {conversations.map((c, i) => (
+            <motion.div
+              key={c.id}
+              layout
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.2, delay: Math.min(i, 8) * 0.03 }}
+              role="button"
+              tabIndex={0}
+              onClick={() => setConversationRowId(c.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") setConversationRowId(c.id);
+              }}
+              className={`group flex items-center justify-between gap-2 text-xs rounded-lg px-3 py-2
+                          cursor-pointer transition-colors ${
+                            c.id === conversationRowId
+                              ? "bg-accent/15 text-white border border-accent/40"
+                              : "text-gray-400 hover:bg-white/5 border border-transparent"
+                          }`}
             >
-              ✕
-            </button>
-          </div>
-        ))}
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-ink-2">
+                  {c.thumbnail_url && (
+                    <Image
+                      src={memeImageUrl(c.thumbnail_url)}
+                      alt=""
+                      width={28}
+                      height={28}
+                      unoptimized
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                </div>
+                <span className="truncate">{c.title ?? "New chat"}</span>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => requestDelete(c.id, e)}
+                title="Delete"
+                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400
+                           transition-opacity shrink-0"
+              >
+                ✕
+              </button>
+            </motion.div>
+          ))}
+        </AnimatePresence>
         {loaded && conversations.length === 0 && (
           <p className="text-[11px] text-gray-600 px-3 py-2">No chats yet.</p>
         )}

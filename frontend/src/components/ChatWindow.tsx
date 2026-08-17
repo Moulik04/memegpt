@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
@@ -239,19 +240,39 @@ export function ChatWindow() {
       {/* Message list */}
       <div className="flex-1 overflow-y-auto px-4 py-4 chat-scroll">
         {messages.length === 0 && !thinking && (
-          <div className="flex flex-col items-center justify-center h-full gap-6 py-8">
-            <div className="text-center">
-              <p className="text-gray-500 text-sm">Talk to it like any chatbot.</p>
-              <p className="text-gray-600 text-xs mt-1">
-                It only speaks meme. Or pick a prompt below, or attach a photo ↓
+          <div className="flex flex-col items-center h-full gap-10 pt-[12vh] pb-8 text-center">
+            <div className="arrive-settle">
+              <h2 className="headline-poster max-w-md mx-auto">
+                say something.
+                <br />
+                get a meme <span className="hl">back.</span>
+              </h2>
+              <p
+                className="margin-note text-sm mt-4 arrive-settle"
+                style={{ animationDelay: "90ms", animationFillMode: "backwards" }}
+              >
+                it only speaks meme — pick a prompt below, or attach a photo ↓
               </p>
             </div>
-            <div className="flex flex-wrap gap-2 justify-center max-w-sm">
-              {examplePrompts.map((p) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
+              {examplePrompts.map((p, i) => (
                 <button
                   key={p}
                   onClick={() => handlePromptChip(p)}
-                  className="prompt-chip"
+                  onMouseMove={(e) => {
+                    // Direct DOM mutation, not React state — a mousemove
+                    // handler firing dozens of times a second has no
+                    // business triggering a re-render just to move a
+                    // radial-gradient position.
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    e.currentTarget.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+                    e.currentTarget.style.setProperty("--my", `${e.clientY - rect.top}px`);
+                  }}
+                  className="prompt-chip arrive-settle"
+                  style={{
+                    animationDelay: `${150 + i * 60}ms`,
+                    animationFillMode: "backwards",
+                  }}
                 >
                   {p}
                 </button>
@@ -276,7 +297,7 @@ export function ChatWindow() {
 
         {displayError && (
           <div className="flex justify-start mb-3">
-            <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/40
+            <p className="text-destructive text-xs bg-destructive/10 border border-destructive/30
                           rounded-xl px-3 py-2 max-w-[80%]">
               {displayError}
             </p>
@@ -289,26 +310,36 @@ export function ChatWindow() {
       <div className="shrink-0 border-t border-gray-800/60 px-3 py-3">
         {pendingImages.length > 0 && (
           <div className="flex items-center gap-2 mb-2 px-1 overflow-x-auto">
-            {pendingImages.map((p, i) => (
-              <div key={i} className="relative shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={p.previewUrl}
-                  alt="Attached preview"
-                  className="w-10 h-10 rounded-lg object-cover border border-gray-700"
-                />
-                <button
-                  type="button"
-                  onClick={() => removePendingImage(i)}
-                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-900
-                             border border-gray-700 text-gray-400 hover:text-gray-200
-                             text-[10px] flex items-center justify-center leading-none"
-                  title="Remove"
+            <AnimatePresence mode="popLayout" initial={false}>
+              {pendingImages.map((p, i) => (
+                <motion.div
+                  key={p.previewUrl}
+                  layout
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: 0.15 }}
+                  className="relative shrink-0"
                 >
-                  ✕
-                </button>
-              </div>
-            ))}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.previewUrl}
+                    alt="Attached preview"
+                    className="w-10 h-10 rounded-lg object-cover border border-gray-700"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePendingImage(i)}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-900
+                               border border-gray-700 text-gray-400 hover:text-gray-200
+                               text-[10px] flex items-center justify-center leading-none"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
         <form onSubmit={handleSubmit} className="flex items-center gap-2">
@@ -342,8 +373,9 @@ export function ChatWindow() {
             }
             disabled={loading}
             className="flex-1 bg-card border border-border rounded-xl px-4 py-2.5
-                       text-sm placeholder-gray-600 focus:outline-none focus:border-accent
-                       disabled:opacity-50 transition-colors"
+                       text-sm placeholder-gray-600 focus:outline-none
+                       focus:ring-2 focus:ring-accent/50 focus:border-accent
+                       disabled:opacity-50 transition-all"
           />
           <button
             type="submit"
