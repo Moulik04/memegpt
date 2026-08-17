@@ -57,6 +57,15 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { headers: await authHeaders() });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 /**
  * Read an SSE Response body, calling `onEvent` for each parsed event.
  * Shared by sendStream and sendImageStream.
@@ -214,6 +223,10 @@ export async function explainMeme(
   conversation_id?: string
 ): Promise<ExplainResponse> {
   return post<ExplainResponse>("/explain/", { template_id, conversation_id });
+}
+
+export async function listTemplates(): Promise<ExplainResponse[]> {
+  return get<ExplainResponse[]>("/explain/");
 }
 
 export function memeImageUrl(relativeUrl: string): string {

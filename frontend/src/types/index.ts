@@ -37,6 +37,11 @@ export interface MemeGenerationResponse {
   texts: Record<string, string>;
 }
 
+export interface TextBoxInfo {
+  label: string;
+  description: string;
+}
+
 export interface ExplainResponse {
   template_id: string;
   name: string;
@@ -44,6 +49,8 @@ export interface ExplainResponse {
   tags: string[];
   usage_count: number;
   recent_uses: Array<Record<string, string>>;
+  image_url: string | null;
+  text_boxes: TextBoxInfo[];
 }
 
 export interface FeedbackRequest {
