@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion } from "motion/react";
 import { AuthControl } from "@/components/AuthControl";
+import { templateLabel } from "@/lib/utils";
 
 // Every image here is a real template MemeGPT can actually pick for you.
 // A random 6 fill the hero's floating slots below on each page load, drawn
@@ -19,10 +20,6 @@ const FLOAT_POOL = [
   "is_this_a_pigeon", "one_does_not_simply", "trade_offer", "oprah", "monkey_puppet",
   "kiss_cam_caught",
 ];
-
-function templateLabel(id: string) {
-  return id.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 function templateSrc(id: string) {
   const png = new Set(["buff_doge_vs_cheems", "chill_guy", "flex_tape", "always_has_been", "bell_curve", "drunk_friend_caught", "mr_incredible_uncanny", "panik_kalm_panik", "kiss_cam_caught"]);
@@ -83,7 +80,7 @@ export function LandingPage() {
         transition={{ duration: 0.6 }}
         className="relative z-20 flex items-center justify-between px-6 py-5 sm:px-10"
       >
-        <span className="caption text-xl">MemeGPT</span>
+        <span className="caption caption-mark text-xl">MemeGPT</span>
         <div className="flex items-center gap-4">
           <AuthControl />
           <Link
@@ -214,7 +211,8 @@ export function LandingPage() {
               viewport={{ once: true, margin: "-60px" }}
               variants={fadeUp}
               transition={{ duration: 0.6, delay: i * 0.12 }}
-              className="rounded-2xl bg-card border border-border p-6"
+              className="rounded-2xl bg-card border border-border p-6 transition-all duration-200
+                         hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
             >
               <div className="w-9 h-9 rounded-full bg-accent/20 text-accent font-bold
                              flex items-center justify-center text-sm mb-4">
@@ -248,7 +246,8 @@ export function LandingPage() {
             viewport={{ once: true, margin: "-60px" }}
             variants={fadeUp}
             transition={{ duration: 0.6 }}
-            className="rounded-2xl bg-card border border-border p-8"
+            className="rounded-2xl bg-card border border-border p-8 transition-all duration-200
+                       hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
           >
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Chat</span>
             <h3 className="text-xl font-bold mt-2 mb-3">Talk to MemeGPT like any chatbot</h3>
@@ -264,7 +263,8 @@ export function LandingPage() {
             viewport={{ once: true, margin: "-60px" }}
             variants={fadeUp}
             transition={{ duration: 0.6, delay: 0.12 }}
-            className="rounded-2xl bg-card border border-border p-8"
+            className="rounded-2xl bg-card border border-border p-8 transition-all duration-200
+                       hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
           >
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Lore</span>
             <h3 className="text-xl font-bold mt-2 mb-3">Drop in the whole story</h3>

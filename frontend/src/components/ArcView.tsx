@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { motion } from "motion/react";
 import { createArcCard, getArc, memeImageUrl } from "@/lib/api";
 import { MemeCard } from "./MemeCard";
+import { Gauge } from "./charts/gauge";
 import type { ArcStats } from "@/types";
 
 // Arc — Story-style tap-through reveal (same pattern Spotify Wrapped
@@ -15,10 +17,61 @@ import type { ArcStats } from "@/types";
 
 const STEP_DURATION_MS = 3800;
 
+// Mirrors backend/arc/copy.py's _TIER_THRESHOLDS — the aura value just
+// below "aura farming god" (the uncapped top tier). Used only to give the
+// finale gauge a meaningful 100% mark ("how close to god-tier"), not a
+// real cap on the aura score itself.
+const AURA_GOD_TIER_THRESHOLD = 20_000;
+
 type Step =
-  | { kind: "stat"; kicker: string; big: string; small?: boolean; cap: React.ReactNode }
+  // `numeric` is set only for genuinely numeric stats (total memes, streak
+  // days) — it drives OdometerNumber's digit-roll. Steps whose `big` is
+  // free-form text (a time label, a template name, "3 / 5") leave it unset
+  // and just render `big` as plain text, same as before.
+  | { kind: "stat"; kicker: string; big: string; numeric?: number; small?: boolean; cap: React.ReactNode }
   | { kind: "image"; kicker: string; imageUrl: string; name: string; cap: React.ReactNode }
   | { kind: "finale" };
+
+// Odometer-style digit roll — each digit is its own sliding column (10
+// stacked 0-9 rows, translated by -{digit}em), non-digit characters
+// (commas, slashes) render as static text. em-based offset instead of a
+// measured pixel height, so it scales correctly across the different
+// font sizes stat slides use without a ResizeObserver.
+function OdometerDigit({ char }: { char: string }) {
+  if (!/[0-9]/.test(char)) {
+    return <span>{char}</span>;
+  }
+  const n = Number(char);
+  return (
+    <span className="inline-block h-[1em] overflow-hidden align-top">
+      <motion.span
+        className="flex flex-col"
+        initial={{ y: 0 }}
+        animate={{ y: `-${n}em` }}
+        transition={{ type: "spring", stiffness: 180, damping: 22 }}
+      >
+        {Array.from({ length: 10 }, (_, i) => (
+          <span key={i} className="h-[1em] leading-none">
+            {i}
+          </span>
+        ))}
+      </motion.span>
+    </span>
+  );
+}
+
+function OdometerNumber({ value }: { value: number }) {
+  return (
+    <span className="inline-flex tabular-nums">
+      {value
+        .toLocaleString()
+        .split("")
+        .map((char, i) => (
+          <OdometerDigit key={i} char={char} />
+        ))}
+    </span>
+  );
+}
 
 function formatShortDate(iso: string): string {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -41,6 +94,7 @@ function buildSteps(stats: ArcStats): Step[] {
       kind: "stat",
       kicker: "01 / VOLUME",
       big: String(stats.total_memes),
+      numeric: stats.total_memes,
       cap: <>memes generated this arc. <span className="text-accent">no thoughts, just memes.</span></>,
     },
   ];
@@ -82,6 +136,7 @@ function buildSteps(stats: ArcStats): Step[] {
     kind: "stat",
     kicker: "05 / STREAK",
     big: String(stats.longest_streak_days),
+    numeric: stats.longest_streak_days,
     cap: (
       <>
         consecutive days.{" "}
@@ -103,7 +158,7 @@ function ArcStatSlide({ step }: { step: Extract<Step, { kind: "stat" }> }) {
           step.small ? "text-4xl" : "text-6xl"
         }`}
       >
-        {step.big}
+        {step.numeric !== undefined ? <OdometerNumber value={step.numeric} /> : step.big}
       </span>
       <p className="mt-4 font-mono text-sm text-gray-400 leading-relaxed max-w-[26ch]">{step.cap}</p>
     </div>
@@ -145,12 +200,19 @@ function ArcFinaleSlide({ stats }: { stats: ArcStats }) {
         </div>
       )}
 
-      <div className="mt-8">
-        <span className="text-xl font-black align-top text-paper">+</span>
-        <span className="text-5xl font-black tracking-tight text-paper">
-          {stats.aura.toLocaleString()}
-        </span>
-        <div className="text-[9px] tracking-[0.3em] text-gray-500 mt-1">AURA FARMED</div>
+      <div className="mt-6 w-full max-w-[230px]">
+        <Gauge
+          value={Math.min(100, (stats.aura / AURA_GOD_TIER_THRESHOLD) * 100)}
+          centerValue={stats.aura}
+          prefix="+"
+          defaultLabel="AURA FARMED"
+          totalNotches={36}
+          activeFill="#FF4D1C"
+          inactiveFill="var(--line)"
+          inactiveFillOpacity={0.6}
+          width={230}
+          height={165}
+        />
       </div>
 
       <div className="mt-auto w-full font-mono text-[9.5px] text-gray-400 leading-relaxed border-t border-border pt-2.5 text-left space-y-0.5">
@@ -180,7 +242,7 @@ function ArcEmptyState({ totalMemes }: { totalMemes: number }) {
   const pct = Math.min(100, Math.round((totalMemes / 5) * 100));
   return (
     <div className="flex-1 flex items-center justify-center px-6">
-      <div className="relative max-w-sm w-full rounded-[26px] border border-border bg-card px-8 py-14 text-center overflow-hidden">
+      <div className="arrive-settle relative max-w-sm w-full rounded-[26px] border border-border bg-card px-8 py-14 text-center overflow-hidden">
         <div className="relative text-4xl mb-4">🔮</div>
         <h2 className="relative text-xl font-black tracking-tight mb-2">Your arc hasn&apos;t started yet.</h2>
         <p className="relative text-sm text-gray-400 leading-relaxed mb-6 max-w-[40ch] mx-auto">
@@ -207,7 +269,7 @@ function ArcEmptyState({ totalMemes }: { totalMemes: number }) {
 function ArcShareScreen({ url }: { url: string }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 gap-6">
-      <div className="max-w-sm w-full">
+      <div className="arrive-settle max-w-sm w-full">
         <MemeCard url={url} alt="My MemeGPT Arc" large />
       </div>
       <Link href="/chat" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
@@ -311,7 +373,7 @@ export function ArcView() {
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll flex flex-col items-center">
-      <div className="relative w-full max-w-[380px] aspect-[3.6/5] rounded-[28px] overflow-hidden border border-border bg-card shadow-2xl shadow-black/60 select-none">
+      <div className="arrive-settle relative w-full max-w-[380px] aspect-[3.6/5] rounded-[28px] overflow-hidden border border-border bg-card shadow-2xl shadow-black/60 select-none">
         <div className="absolute top-3 left-3 right-3 z-20 flex gap-1">
           {steps.map((_, i) => (
             <div key={i} className="flex-1 h-[3px] rounded-full bg-white/15 overflow-hidden">

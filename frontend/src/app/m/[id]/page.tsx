@@ -73,7 +73,7 @@ export default async function SharedMemePage({ params }: Props) {
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-12 gap-8">
-      <Link href="/" className="caption text-xl">
+      <Link href="/" className="caption caption-mark text-xl">
         MemeGPT
       </Link>
 
