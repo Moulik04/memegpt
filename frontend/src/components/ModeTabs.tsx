@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { forgetMe } from "@/lib/api";
 import { forgetAnonId } from "@/lib/identity";
 import { AuthControl } from "@/components/AuthControl";
+import { navigateWithTransition } from "@/lib/viewTransition";
 
 interface Props {
   active: "chat" | "lore" | "arc" | "make";
@@ -19,49 +20,34 @@ async function handleForgetMe() {
   window.location.reload();
 }
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
 /**
- * Shared header + Chat|Lore tab toggle. The URL is the source of truth for
- * which surface is active (/chat = Chat, /lore = Lore) rather than internal
- * client state — this is what makes /lore a genuine, refreshable,
- * bookmarkable deep link, and what Phase 3's share-target redirect lands on.
- * / is the public marketing landing page, not one of these two tabs.
+ * Shared header + Chat/Lore/Make/Arc pill nav (desktop only — MobileNav.tsx
+ * is the equivalent bottom tab bar below sm). The URL is the source of
+ * truth for which surface is active rather than internal client state —
+ * this is what makes each surface a genuine, refreshable, bookmarkable
+ * deep link, and what the share-target redirect lands on. / is the public
+ * marketing landing page, not one of these four tabs.
  *
- * Tab clicks are wrapped in document.startViewTransition() when the
- * browser supports it and prefers-reduced-motion isn't set — the plain
- * browser API, not a Next.js feature: Next 14 on React 18 has no native
- * View Transitions integration (that needs React 19's <ViewTransition>
- * primitive). Link's real href is kept untouched so modified clicks
- * (cmd/ctrl/middle-click "open in new tab") and keyboard/hover behavior
- * are unaffected — only a plain left-click gets intercepted. Known rough
- * edge, not swept under the rug: startViewTransition expects its callback
- * to resolve once the DOM has actually updated, but router.push() here is
- * an async App Router navigation, not a synchronous mutation — so the
- * transition and the real navigation aren't rigorously synchronized the
- * way they would be with React 19's native support. It still works
- * (verified: navigation completes, no console errors) and looks
- * reasonable for already-prefetched routes, but isn't the polished result
- * native support would give.
+ * Tab clicks go through navigateWithTransition() (lib/viewTransition.ts,
+ * shared with MobileNav), which wraps the navigation in
+ * document.startViewTransition() when supported and prefers-reduced-motion
+ * isn't set — the plain browser API, not a Next.js feature: Next 14 on
+ * React 18 has no native View Transitions integration (that needs React
+ * 19's <ViewTransition> primitive). Known rough edge, not swept under the
+ * rug: startViewTransition expects its callback to resolve once the DOM
+ * has actually updated, but router.push() here is an async App Router
+ * navigation, not a synchronous mutation — so the transition and the real
+ * navigation aren't rigorously synchronized the way they would be with
+ * React 19's native support. It still works (verified: navigation
+ * completes, no console errors) and looks reasonable for already-
+ * prefetched routes, but isn't the polished result native support would
+ * give.
  */
 export function ModeTabs({ active }: Props) {
   const router = useRouter();
 
   function navigate(e: React.MouseEvent<HTMLAnchorElement>, href: string) {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-    e.preventDefault();
-    if (!document.startViewTransition || prefersReducedMotion()) {
-      router.push(href);
-      return;
-    }
-    document.startViewTransition(() => {
-      router.push(href);
-    });
+    navigateWithTransition(router, e, href);
   }
 
   return (
@@ -82,7 +68,7 @@ export function ModeTabs({ active }: Props) {
         </p>
       </Link>
       <div className="flex items-center gap-3">
-        <nav className="flex items-center gap-1 bg-card border border-border rounded-full p-1">
+        <nav className="hidden sm:flex items-center gap-1 bg-card border border-border rounded-full p-1">
           <Link
             href="/chat"
             onClick={(e) => navigate(e, "/chat")}
