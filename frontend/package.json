@@ -10,6 +10,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@next/third-parties": "^14.2.3",
     "@number-flow/react": "^0.6.2",
     "@supabase/supabase-js": "^2.112.0",
     "@visx/pattern": "^4.0.1-alpha.0",

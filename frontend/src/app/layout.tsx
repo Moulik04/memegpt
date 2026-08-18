@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Anton } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { AuthProvider } from "@/lib/AuthProvider";
 import "./globals.css";
 
@@ -58,6 +59,8 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const gaId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+
   return (
     <html
       lang="en"
@@ -66,6 +69,7 @@ export default function RootLayout({
       <body>
         <AuthProvider>{children}</AuthProvider>
       </body>
+      {gaId && <GoogleAnalytics gaId={gaId} />}
     </html>
   );
 }

@@ -90,13 +90,24 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="Analytics">
+          <p>
+            MemeGPT uses Google Analytics to see aggregate things like which
+            pages get visited and roughly how much traffic the app gets —
+            not what you typed, uploaded, or generated. It's not linked to
+            any ad network, and it's separate from the anonymous id
+            described above.
+          </p>
+        </Section>
+
         <Section title="Who else touches this">
           <p>
             MemeGPT runs on Vercel (frontend) and Render (backend), with
-            Supabase for sign-in and Groq for the language model that reads
-            your message and picks a template. Each only sees what it
-            needs to do its one job — none of them are in the business of
-            selling your data, and neither is MemeGPT.
+            Supabase for sign-in, Groq for the language model that reads
+            your message and picks a template, and Google Analytics for
+            traffic stats. Each only sees what it needs to do its one job —
+            none of them are in the business of selling your data, and
+            neither is MemeGPT.
           </p>
         </Section>
 
