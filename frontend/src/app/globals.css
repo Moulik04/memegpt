@@ -18,7 +18,7 @@
   --paper: #FAFAF7;       /* primary text */
   --paper-dim: #8E8E94;   /* secondary text */
   --stroke: #000000;      /* caption stroke */
-  --accent-color: #FF4D1C; /* interactive state only — never decoration */
+  --accent-color: #F54F1B; /* interactive state only — never decoration */
   --destructive-color: #EF4444;
 
   /* shadcn semantic slots, mapped onto the tokens above. */
