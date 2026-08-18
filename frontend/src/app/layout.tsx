@@ -11,14 +11,37 @@ import "./globals.css";
 // downloads it at build time and serves it same-origin, not a CDN link.
 const anton = Anton({ subsets: ["latin"], weight: "400", variable: "--font-display" });
 
+const DESCRIPTION = "A chatbot that speaks exclusively in memes.";
+
+// Every route below gets this as its default og:image/twitter:image unless
+// it sets its own (the way /m/[id] already does with the actual meme being
+// shared) — a real rendered caption-on-template, not a screenshot or logo.
+const DEFAULT_SHARE_IMAGE = "/landing/drake_example.png";
+
 export const metadata: Metadata = {
-  title: "MemeGPT",
-  description: "A chatbot that speaks exclusively in memes.",
+  metadataBase: new URL("https://memegpt-six.vercel.app"),
+  title: {
+    default: "MemeGPT — A chatbot that only speaks meme.",
+    template: "%s — MemeGPT",
+  },
+  description: DESCRIPTION,
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "MemeGPT",
+  },
+  openGraph: {
+    title: "MemeGPT — A chatbot that only speaks meme.",
+    description: DESCRIPTION,
+    images: [{ url: DEFAULT_SHARE_IMAGE }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "MemeGPT — A chatbot that only speaks meme.",
+    description: DESCRIPTION,
+    images: [DEFAULT_SHARE_IMAGE],
   },
 };
 
