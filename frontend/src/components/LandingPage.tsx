@@ -397,6 +397,7 @@ export function LandingPage() {
             <Link href="/lore" className="hover:text-gray-400 transition-colors">Lore</Link>
             <Link href="/make" className="hover:text-gray-400 transition-colors">Make</Link>
             <Link href="/arc" className="hover:text-gray-400 transition-colors">Arc</Link>
+            <Link href="/privacy" className="hover:text-gray-400 transition-colors">Privacy</Link>
           </nav>
           <span>MemeGPT. Built for fun, not for profit.</span>
           <a
