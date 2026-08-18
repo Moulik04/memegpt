@@ -84,6 +84,29 @@ const MODES = [
   },
 ];
 
+const FAQS = [
+  {
+    q: "Is MemeGPT free?",
+    a: "Yes. Chat and Lore both work without signing in — no email, no account. Signing in only adds saved history across devices.",
+  },
+  {
+    q: "What's the difference between Chat, Lore, and Make?",
+    a: "Chat is a normal back-and-forth, one meme per reply. Lore is for big dumps — paste a whole group chat or a stack of screenshots and get several memes back at once. Make skips the AI's judgment entirely: you pick the template and write the captions yourself.",
+  },
+  {
+    q: "What if it picks the wrong template?",
+    a: "Thumbs it down. Every reply has feedback buttons, and MemeGPT learns from what actually lands over time.",
+  },
+  {
+    q: "Can I upload photos or screenshots?",
+    a: "Yes, in both Chat and Lore. Attach one photo in Chat, or a whole stack in Lore — MemeGPT reads what's in them the same way it reads text.",
+  },
+  {
+    q: "Does it work on my phone?",
+    a: "Yes — it's a full mobile site, and you can add it to your home screen for an app-like experience. (Android also lets you share a screenshot straight from Photos into Lore.)",
+  },
+];
+
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   visible: { opacity: 1, y: 0 },
@@ -302,6 +325,46 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* FAQ */}
+      <section className="relative z-10 px-6 py-20 sm:py-28">
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-80px" }}
+          variants={fadeUp}
+          transition={{ duration: 0.6 }}
+          className="max-w-2xl mx-auto text-center mb-12"
+        >
+          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">Questions, answered</h2>
+        </motion.div>
+
+        <motion.div
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-60px" }}
+          variants={fadeUp}
+          transition={{ duration: 0.6 }}
+          className="max-w-2xl mx-auto flex flex-col gap-3"
+        >
+          {FAQS.map((item) => (
+            <details
+              key={item.q}
+              className="group rounded-2xl bg-card border border-border p-5 transition-colors
+                         hover:border-gray-700 open:border-gray-700"
+            >
+              <summary className="flex items-center justify-between gap-4 cursor-pointer list-none
+                                   font-semibold text-gray-100">
+                {item.q}
+                <span className="shrink-0 text-gray-500 transition-transform duration-200 group-open:rotate-45">
+                  +
+                </span>
+              </summary>
+              <p className="mt-3 text-sm text-gray-400 leading-relaxed">{item.a}</p>
+            </details>
+          ))}
+        </motion.div>
+      </section>
+
       {/* Final CTA */}
       <section className="relative z-10 px-6 py-24 sm:py-32">
         <motion.div
@@ -327,8 +390,14 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 px-6 py-10 border-t border-border">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
+      <footer className="relative z-10 px-6 py-10 pb-24 sm:pb-10 border-t border-border">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-5 text-xs text-gray-600">
+          <nav className="flex items-center gap-4">
+            <Link href="/chat" className="hover:text-gray-400 transition-colors">Chat</Link>
+            <Link href="/lore" className="hover:text-gray-400 transition-colors">Lore</Link>
+            <Link href="/make" className="hover:text-gray-400 transition-colors">Make</Link>
+            <Link href="/arc" className="hover:text-gray-400 transition-colors">Arc</Link>
+          </nav>
           <span>MemeGPT. Built for fun, not for profit.</span>
           <a
             href="https://github.com/Moulik04/memegpt"
@@ -340,6 +409,20 @@ export function LandingPage() {
           </a>
         </div>
       </footer>
+
+      {/* Sticky mobile CTA */}
+      <div
+        className="sm:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border
+                   bg-background/95 backdrop-blur-sm px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+      >
+        <Link
+          href="/chat"
+          className="block w-full text-center bg-accent hover:bg-accent/90 transition-colors
+                     text-white font-semibold rounded-full px-8 py-3 text-base shadow-lg"
+        >
+          Start chatting
+        </Link>
+      </div>
     </div>
   );
 }
