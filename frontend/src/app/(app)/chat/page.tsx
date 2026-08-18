@@ -1,6 +1,12 @@
+import type { Metadata } from "next";
 import { ChatWindow } from "@/components/ChatWindow";
 import { ModeTabs } from "@/components/ModeTabs";
 import { MobileNav } from "@/components/MobileNav";
+
+export const metadata: Metadata = {
+  title: "Chat",
+  description: "Talk to MemeGPT like any chatbot. It only replies in memes.",
+};
 
 export default function ChatPage() {
   return (
