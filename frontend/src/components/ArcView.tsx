@@ -207,7 +207,7 @@ function ArcFinaleSlide({ stats }: { stats: ArcStats }) {
           prefix="+"
           defaultLabel="AURA FARMED"
           totalNotches={36}
-          activeFill="#FF4D1C"
+          activeFill="var(--accent-color)"
           inactiveFill="var(--line)"
           inactiveFillOpacity={0.6}
           width={230}
