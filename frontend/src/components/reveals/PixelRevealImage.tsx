@@ -8,6 +8,10 @@ interface Props {
   alt?: string;
   gridSize?: number;
   className?: string;
+  /** Overrides the default max-h-[65vh] — viewport-relative height is
+   * wrong for a caller with its own fixed-size stage (HeroLoop), where a
+   * consistent box matters more than filling available viewport space. */
+  maxHeightClassName?: string;
 }
 
 /**
@@ -27,7 +31,13 @@ interface Props {
  * inside max-h-[65vh], never crop) is preserved exactly, just wrapped
  * with the reveal grid instead of replaced.
  */
-export function PixelRevealImage({ src, alt = "", gridSize = 8, className }: Props) {
+export function PixelRevealImage({
+  src,
+  alt = "",
+  gridSize = 8,
+  className,
+  maxHeightClassName = "max-h-[65vh]",
+}: Props) {
   const gridRef = useRef<HTMLDivElement>(null);
   const cells = Array.from({ length: gridSize * gridSize });
 
@@ -66,7 +76,7 @@ export function PixelRevealImage({ src, alt = "", gridSize = 8, className }: Pro
       <img
         src={src}
         alt={alt}
-        className="block w-auto h-auto max-w-full max-h-[65vh] object-contain"
+        className={`block w-auto h-auto max-w-full ${maxHeightClassName} object-contain`}
       />
       <div
         ref={gridRef}
