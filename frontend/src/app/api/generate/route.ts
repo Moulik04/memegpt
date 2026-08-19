@@ -12,11 +12,16 @@ const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
 // chat/lore/feedback.
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const upstream = await fetch(`${BACKEND}/generate/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${BACKEND}/generate/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    return NextResponse.json({ detail: `Backend unreachable: ${err}` }, { status: 502 });
+  }
   const data = await upstream.json();
   return NextResponse.json(data, { status: upstream.status });
 }
