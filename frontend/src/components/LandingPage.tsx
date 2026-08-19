@@ -1,15 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "motion/react";
 import { AuthControl } from "@/components/AuthControl";
+import { HeroLoop } from "@/components/HeroLoop";
 import { templateLabel } from "@/lib/utils";
 
 // Every image here is a real template MemeGPT can actually pick for you.
-// A random 6 fill the hero's floating slots below on each page load, drawn
-// fresh from this pool instead of always showing the same six.
+// A random 6 fill the hero's floating slots on each page load, drawn
+// fresh from this pool instead of always showing the same six. Ambient
+// texture around HeroLoop's live centerpiece, not competing with it —
+// raw uncaptioned templates read as decoration, not as "the demo".
 const FLOAT_POOL = [
   "drake", "woman_yelling_at_cat", "hide_the_pain_harold", "two_buttons", "this_is_fine",
   "surprised_pikachu", "distracted_boyfriend", "buff_doge_vs_cheems", "expanding_brain",
@@ -113,9 +116,21 @@ const fadeUp = {
 };
 
 export function LandingPage() {
-  // Drawn once per mount (i.e. once per page load), so the six floating
-  // templates in the hero are different every time someone opens the page.
-  const [floatIds] = useState(() => pickRandomTemplates(FLOAT_SLOTS.length));
+  // Starts empty (matches server render exactly) and only fills in after
+  // mount — Math.random() during the initial render disagrees between
+  // server and client, which is a real hydration-mismatch crash, not a
+  // theoretical one (see HeroLoop.tsx's comment for the same fix applied
+  // to its shuffle). No floats is a fine, brief first paint; wrong floats
+  // that then swap out from under the user is not.
+  const [floatIds, setFloatIds] = useState<string[]>([]);
+  useEffect(() => {
+    // The infinite drift/rotate loop on these is purely decorative — no
+    // MotionConfig wraps this app to auto-gate Motion's animations on
+    // prefers-reduced-motion, so skip populating them at all rather than
+    // ship a non-essential animation reduced-motion users asked to avoid.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setFloatIds(pickRandomTemplates(FLOAT_SLOTS.length));
+  }, []);
 
   return (
     <div className="relative min-h-dvh overflow-x-hidden bg-background">
@@ -144,6 +159,7 @@ export function LandingPage() {
         <div aria-hidden className="absolute inset-0 -z-10">
           {FLOAT_SLOTS.map((slot, i) => {
             const id = floatIds[i];
+            if (!id) return null;
             return (
               <motion.div
                 key={id}
@@ -233,23 +249,15 @@ export function LandingPage() {
           </motion.p>
 
           <motion.div
-            initial={{ opacity: 0, y: 24, rotate: -2 }}
-            animate={{ opacity: 1, y: 0, rotate: -2 }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.75 }}
-            className="mt-14 inline-flex flex-col items-center gap-3"
+            className="mt-14 flex flex-col items-center gap-3"
           >
             <span className="text-xs text-gray-600 uppercase tracking-wide">
-              an actual MemeGPT reply
+              watch it happen
             </span>
-            <div className="w-52 sm:w-64 rounded-2xl bg-card border border-border p-2 shadow-2xl shadow-black/50">
-              <Image
-                src="/landing/drake_example.png"
-                alt="Drake meme: rejecting 'explaining why you're right for 10 paragraphs', approving 'letting MemeGPT say it in one caption'"
-                width={600}
-                height={600}
-                className="w-full h-auto rounded-xl"
-              />
-            </div>
+            <HeroLoop />
           </motion.div>
         </div>
       </section>
