@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PixelRevealImage } from "./reveals/PixelRevealImage";
 
 // Real templates, real captions, rendered once ahead of time the same way
@@ -39,30 +39,61 @@ const PAUSE_AFTER_TYPE_MS = 350;
 const THINKING_MS = 750;
 const HOLD_MS = 3000;
 
+// How long the card can sit scrolled-out-of-view before coming back
+// restarts the current item from scratch instead of just resuming it.
+const RESTART_AFTER_HIDDEN_MS = 8000;
+
 type Phase = "typing" | "thinking" | "revealed";
 
 /**
  * The hero's live centerpiece: types a real prompt, pauses on a thinking
- * beat, reveals a real rendered meme, holds, cycles to the next — "the
- * demo is the product" instead of describing the product in prose. Cycles
- * through all 12 real pairs in a random order per page load, looping back
- * once exhausted. Static on the first item's meme under
- * prefers-reduced-motion, no timers running at all in that case.
+ * beat, reveals a real rendered meme, holds, cycles — "the demo is the
+ * product" instead of describing the product in prose. Cycles through all
+ * 12 real pairs in a random order per page load, looping back once
+ * exhausted. Static on the first item's meme under prefers-reduced-motion,
+ * no timers running at all in that case.
+ *
+ * Two things fixed here after real user-reported bugs, not preemptively:
+ *
+ * 1. Fixed-height stage. The 12 source images range from 580x282 to
+ *    600x908 (ratio 2.06 down to 0.66) — with only a min-height, each
+ *    phase change actually resized the card and shoved the rest of the
+ *    landing page up/down while scrolling. `maxHeightClassName` (a
+ *    PixelRevealImage prop added for this) locks the image to this
+ *    card's own fixed stage height instead of the viewport-relative
+ *    max-h-[65vh] MemeDisplay uses for real chat output — object-contain
+ *    still never crops, it just letterboxes consistently now.
+ *
+ * 2. Pauses when scrolled out of view. An IntersectionObserver gates the
+ *    whole scheduling effect on `visible` — no timers get scheduled at
+ *    all while off-screen, which freezes progress exactly where it was
+ *    (state isn't touched, just un-scheduled) rather than continuing to
+ *    advance underneath content the user has scrolled down to read.
+ *    Coming back into view resumes from that frozen state if the trip
+ *    away was short; if it's been longer than RESTART_AFTER_HIDDEN_MS,
+ *    the current item restarts from typing instead of picking up
+ *    mid-sequence, since "where it left off" stops being legible after
+ *    that long.
  *
  * `order` MUST start as IDENTITY_ORDER (not shuffled) and only randomize
- * inside a useEffect — same reasoning as `reduced` below: the initial
- * render happens server-side too, where Math.random() would produce a
- * different sequence than the client's hydration pass and crash with a
- * hydration mismatch. This is the same bug class the old floating-
- * background templates had (see LandingPage.tsx) — fixed the same way
- * there: nothing Math.random()-derived is computed before mount.
+ * inside a useEffect — the initial render happens server-side too, where
+ * Math.random() would produce a different sequence than the client's
+ * hydration pass and crash with a hydration mismatch. This is the same
+ * bug class the old floating-background templates had (see
+ * LandingPage.tsx) — fixed the same way there: nothing Math.random()-
+ * derived is computed before mount.
  */
 export function HeroLoop() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const hiddenAtRef = useRef<number | null>(null);
+  const typedRef = useRef("");
+
   const [reduced, setReduced] = useState(false);
   const [order, setOrder] = useState<number[]>(IDENTITY_ORDER);
   const [position, setPosition] = useState(0);
   const [phase, setPhase] = useState<Phase>("typing");
   const [typed, setTyped] = useState("");
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -72,20 +103,65 @@ export function HeroLoop() {
     }
   }, []);
 
+  // Scroll visibility — pause while off-screen, restart-or-resume on return.
   useEffect(() => {
-    const item = HERO_LOOP[order[0]];
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), {
+      threshold: 0,
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
-    if (reduced) {
-      setPhase("revealed");
-      setTyped(item.prompt);
+  useEffect(() => {
+    typedRef.current = typed;
+  }, [typed]);
+
+  useEffect(() => {
+    if (!visible) {
+      hiddenAtRef.current = Date.now();
       return;
     }
+    const hiddenAt = hiddenAtRef.current;
+    hiddenAtRef.current = null;
+    if (hiddenAt !== null && Date.now() - hiddenAt > RESTART_AFTER_HIDDEN_MS) {
+      // Update the ref synchronously, not just via state — this effect and
+      // the scheduling effect below both run in the same commit once
+      // `visible` flips true, and the scheduling effect reads
+      // typedRef.current to decide where to resume from. If that read
+      // happened before this component's re-render had a chance to sync
+      // the ref to the new (reset) `typed` state, the resume logic would
+      // see the STALE pre-restart progress and silently resume instead of
+      // restarting — confirmed live: the restart branch never visibly
+      // took effect without this line, every "long absence" case still
+      // resumed mid-word instead of restarting.
+      typedRef.current = "";
+      setTyped("");
+      setPhase("typing");
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (reduced) {
+      setPhase("revealed");
+      setTyped(HERO_LOOP[order[0]].prompt);
+      return;
+    }
+
+    if (!visible) return; // paused — resumes when visible flips back true
 
     const current = HERO_LOOP[order[position % order.length]];
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     if (phase === "typing") {
-      let i = 0;
+      // Resume from wherever typing had gotten to (e.g. paused mid-word by
+      // scrolling away and back) rather than restarting the animation —
+      // only valid if the frozen text is actually a prefix of this item's
+      // prompt (a fresh cycle already reset typed to "" before this runs,
+      // so i=0 falls out naturally in that case too).
+      let i = current.prompt.startsWith(typedRef.current) ? typedRef.current.length : 0;
+      if (i > 0) setTyped(current.prompt.slice(0, i));
       const tick = () => {
         i += 1;
         setTyped(current.prompt.slice(0, i));
@@ -110,13 +186,16 @@ export function HeroLoop() {
 
     return () => timers.forEach(clearTimeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, position, order, reduced]);
+  }, [phase, position, order, reduced, visible]);
 
   const item = HERO_LOOP[order[position % order.length]];
 
   return (
-    <div className="w-full max-w-xs sm:max-w-sm rounded-2xl bg-card border border-border p-4 shadow-2xl shadow-black/50">
-      <div className="min-h-[3.5rem] flex items-start">
+    <div
+      ref={containerRef}
+      className="w-full max-w-xs sm:max-w-sm rounded-2xl bg-card border border-border p-4 shadow-2xl shadow-black/50"
+    >
+      <div className="h-14 flex items-start overflow-hidden">
         <p className="text-sm text-gray-300 leading-snug">
           {typed}
           {!reduced && phase === "typing" && (
@@ -125,7 +204,7 @@ export function HeroLoop() {
         </p>
       </div>
 
-      <div className="mt-3 min-h-[180px] flex items-center justify-center">
+      <div className="mt-3 h-56 flex items-center justify-center">
         {phase === "thinking" && !reduced ? (
           <div className="thinking-orb" aria-hidden />
         ) : phase === "revealed" || reduced ? (
@@ -134,6 +213,7 @@ export function HeroLoop() {
             src={item.image}
             alt={`Meme generated from: ${item.prompt}`}
             className="rounded-xl overflow-hidden"
+            maxHeightClassName="max-h-56"
           />
         ) : null}
       </div>
