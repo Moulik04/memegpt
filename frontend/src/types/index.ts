@@ -145,6 +145,7 @@ export interface ArcStats {
   hour_roast: string | null;
   chat_count: number;
   lore_count: number;
+  make_count: number;
   split_roast: string | null;
   longest_streak_days: number;
   verdict: string | null;

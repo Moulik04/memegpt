@@ -127,9 +127,9 @@ function buildSteps(stats: ArcStats): Step[] {
   steps.push({
     kind: "stat",
     kicker: "04 / THE SPLIT",
-    big: `${stats.chat_count} / ${stats.lore_count}`,
+    big: `${stats.chat_count} / ${stats.lore_count} / ${stats.make_count}`,
     small: true,
-    cap: <>chat / lore memes. {stats.split_roast && <span className="text-accent">{stats.split_roast}</span>}</>,
+    cap: <>chat / lore / make. {stats.split_roast && <span className="text-accent">{stats.split_roast}</span>}</>,
   });
 
   steps.push({

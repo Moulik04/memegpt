@@ -1,32 +1,55 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
+import db
+from auth import get_verified_user
+from identity import get_anon_user_id
 from image_processing.compositor import compose_meme
+from rate_limit import limiter
 from schemas import MemeGenerationRequest, MemeGenerationResponse
 
 router = APIRouter()
 
 
 @router.post("/", response_model=MemeGenerationResponse)
-async def generate(request: MemeGenerationRequest) -> MemeGenerationResponse:
+@limiter.limit("20/minute")
+async def generate(request: Request, body: MemeGenerationRequest) -> MemeGenerationResponse:
     """
-    On-demand meme generation endpoint.
+    On-demand meme generation endpoint — Make's manual template+caption
+    picker.
 
     Accepts a template_id and a dict of label→text pairs matching
     the template's TextBoxConfig labels (e.g. {"rejected_option": "...", "approved_option": "..."}).
+
+    Stamps identity + surface="make" on the resulting meme the same way
+    chat.py/lore.py do (was missing entirely before — Make usage was
+    invisible to Arc's stats and to "Forget me", since nothing tied a
+    Make-generated meme to any user at all).
     """
     try:
         saved = await compose_meme(
-            template_id=request.template_id,
-            texts=request.texts,
+            template_id=body.template_id,
+            texts=body.texts,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    anon_user_id = get_anon_user_id(request)
+    verified = await get_verified_user(request)
+    await db.insert_meme(
+        meme_id=saved.meme_id,
+        url=saved.url,
+        template_id=body.template_id,
+        mode="make",
+        anon_user_id=anon_user_id,
+        surface="make",
+        user_id=verified.user_id if verified else None,
+    )
+
     return MemeGenerationResponse(
         meme_url=saved.url,
-        template_id=request.template_id,
-        texts=request.texts,
+        template_id=body.template_id,
+        texts=body.texts,
     )
 
 

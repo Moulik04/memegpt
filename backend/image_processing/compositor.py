@@ -525,7 +525,10 @@ async def compose_arc_card(stats: ArcStats) -> SavedMeme:
         lines.append(f"top template: {top.display_name}  {top.roast}")
     if stats.busiest_time_label:
         lines.append(f"busiest: {stats.busiest_time_label}  {stats.hour_roast or ''}".strip())
-    lines.append(f"chat / lore: {stats.chat_count} / {stats.lore_count}  {stats.split_roast or ''}".strip())
+    lines.append(
+        f"chat / lore / make: {stats.chat_count} / {stats.lore_count} / {stats.make_count}"
+        f"  {stats.split_roast or ''}".strip()
+    )
     lines.append(f"longest streak: {stats.longest_streak_days} days")
 
     y = int(h * 0.56)
