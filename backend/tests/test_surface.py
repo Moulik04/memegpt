@@ -58,3 +58,33 @@ async def test_lore_endpoint_stamps_surface_lore(monkeypatch):
     calls = await _capture_surface(monkeypatch)
     await _post("/lore/", {"message": "hi"})
     assert calls == ["lore"]
+
+
+async def test_generate_endpoint_stamps_surface_make_and_identity(monkeypatch):
+    """Make's manual picker used to call compose_meme() and stop — no
+    db.insert_meme() call at all, so a Make-generated meme was never tied
+    to any user and was invisible to Arc's stats or "Forget me". Proves
+    the fix: surface="make", mode="make", and the anon id from the request
+    header all reach db.insert_meme."""
+    calls: list[dict] = []
+
+    async def fake_insert_meme(meme_id, url, template_id, mode, anon_user_id=None, surface=None, user_id=None):
+        calls.append({
+            "mode": mode,
+            "surface": surface,
+            "anon_user_id": anon_user_id,
+            "user_id": user_id,
+        })
+
+    monkeypatch.setattr("routers.generate.compose_meme", _fake_compose_meme)
+    monkeypatch.setattr(db, "insert_meme", fake_insert_meme)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/generate/",
+            json={"template_id": "drake", "texts": {"top_text": "a", "bottom_text": "b"}},
+            headers={"X-MemeGPT-User": "anon-test-id"},
+        )
+    assert resp.status_code == 200
+    assert calls == [{"mode": "make", "surface": "make", "anon_user_id": "anon-test-id", "user_id": None}]

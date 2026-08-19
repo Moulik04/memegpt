@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from arc.copy import _compute_aura, _tier_for_aura, build_arc_stats
+from arc.copy import _compute_aura, _split_roast, _tier_for_aura, build_arc_stats
 from db import RawArcStats, _longest_streak
 from httpx import ASGITransport, AsyncClient
 from main import app
@@ -35,6 +35,25 @@ def test_longest_streak_ignores_duplicates():
 def test_longest_streak_unsorted_input():
     dates = [date(2026, 7, 3), date(2026, 7, 1), date(2026, 7, 2)]
     assert _longest_streak(dates) == 3
+
+
+def test_split_roast_make_only():
+    # Make used to be untracked entirely — this is the case that was
+    # literally impossible to represent before: a real user with real
+    # memes, all three of chat/lore's old two buckets reading zero.
+    assert _split_roast(chat_count=0, lore_count=0, make_count=12) == "doesn't trust the AI's taste."
+
+
+def test_split_roast_make_dominant_not_exclusive():
+    assert _split_roast(chat_count=2, lore_count=1, make_count=20) == "control freak, and we respect it."
+
+
+def test_split_roast_balanced_three_way_is_range():
+    assert _split_roast(chat_count=10, lore_count=9, make_count=11) == "range."
+
+
+def test_split_roast_zero_total():
+    assert _split_roast(chat_count=0, lore_count=0, make_count=0) == "blank slate."
 
 
 def test_tier_boundaries_match_owner_spec():

@@ -474,6 +474,7 @@ class RawArcStats:
     distinct_templates: int = 0
     chat_count: int = 0
     lore_count: int = 0
+    make_count: int = 0
     top_templates: list[tuple[str, int]] = field(default_factory=list)  # (template_id, count), desc
     first_date: date | None = None
     last_date: date | None = None
@@ -526,6 +527,7 @@ async def fetch_raw_arc_stats(
                    COUNT(DISTINCT template_id) AS distinct_templates,
                    COUNT(*) FILTER (WHERE surface = 'chat') AS chat_count,
                    COUNT(*) FILTER (WHERE surface = 'lore') AS lore_count,
+                   COUNT(*) FILTER (WHERE surface = 'make') AS make_count,
                    (MIN(created_at) AT TIME ZONE $2)::date AS first_date,
                    (MAX(created_at) AT TIME ZONE $2)::date AS last_date
             FROM memes
@@ -578,6 +580,7 @@ async def fetch_raw_arc_stats(
         distinct_templates=totals_row["distinct_templates"],
         chat_count=totals_row["chat_count"],
         lore_count=totals_row["lore_count"],
+        make_count=totals_row["make_count"],
         top_templates=[(row["template_id"], row["cnt"]) for row in top_rows],
         first_date=totals_row["first_date"],
         last_date=totals_row["last_date"],

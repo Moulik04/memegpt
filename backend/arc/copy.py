@@ -48,6 +48,9 @@ def _compute_aura(raw: RawArcStats, busiest_local_hour: int | None) -> int:
         + raw.longest_streak_days * 250
         + raw.distinct_templates * 75
         + raw.lore_count * 50
+        + raw.make_count * 50  # hand-picking the template and writing every
+        # caption yourself is at least as much effort as a big Lore dump —
+        # same bonus weight, not a guess at a different number
     )
     if busiest_local_hour is not None and busiest_local_hour < 5:
         aura += _LATE_NIGHT_BONUS
@@ -155,19 +158,28 @@ def _hour_roast(hour: int, seed: str) -> str:
     return _HOUR_ROASTS[0][1][0]  # unreachable — ranges cover 0-23
 
 
-# --- Chat vs Lore split roast ---
+# --- Chat vs Lore vs Make split roast ---
 
-def _split_roast(chat_count: int, lore_count: int) -> str:
-    if chat_count == 0 and lore_count > 0:
-        return "chat who? you monologue."
-    if lore_count == 0 and chat_count > 0:
+def _split_roast(chat_count: int, lore_count: int, make_count: int) -> str:
+    total = chat_count + lore_count + make_count
+    if total == 0:
+        return "blank slate."
+    if chat_count == total:
         return "lore-allergic."
-    if chat_count == 0 and lore_count == 0:
-        return "range."
-    if lore_count > chat_count * 1.5:
+    if lore_count == total:
         return "you don't chat, you narrate."
-    if chat_count > lore_count * 1.5:
-        return "yappacino."
+    if make_count == total:
+        return "doesn't trust the AI's taste."
+
+    counts = {"chat": chat_count, "lore": lore_count, "make": make_count}
+    dominant = max(counts, key=lambda k: counts[k])
+    runner_up = max(v for k, v in counts.items() if k != dominant)
+    if runner_up == 0 or counts[dominant] > runner_up * 1.5:
+        return {
+            "chat": "yappacino.",
+            "lore": "you don't chat, you narrate.",
+            "make": "control freak, and we respect it.",
+        }[dominant]
     return "range."
 
 
@@ -260,7 +272,8 @@ def build_arc_stats(raw: RawArcStats | None, tz: str = "UTC") -> ArcStats:
         hour_roast=hour_roast,
         chat_count=raw.chat_count,
         lore_count=raw.lore_count,
-        split_roast=_split_roast(raw.chat_count, raw.lore_count),
+        make_count=raw.make_count,
+        split_roast=_split_roast(raw.chat_count, raw.lore_count, raw.make_count),
         longest_streak_days=raw.longest_streak_days,
         verdict=_verdict(raw, seed),
     )

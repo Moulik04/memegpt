@@ -344,6 +344,7 @@ class ArcStats(BaseModel):
     hour_roast: Optional[str] = None
     chat_count: int = 0
     lore_count: int = 0
+    make_count: int = 0
     split_roast: Optional[str] = None
     longest_streak_days: int = 0
     verdict: Optional[str] = None  # the closing line, e.g. "Character development: none detected. Arc continues."
