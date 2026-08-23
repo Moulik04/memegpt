@@ -13,6 +13,7 @@ import json
 import db
 from httpx import ASGITransport, AsyncClient
 from main import app
+from nlp.text_moderation import ModerationResult
 from schemas import IntentResponse
 from storage import SavedMeme
 
@@ -76,7 +77,11 @@ async def test_generate_endpoint_stamps_surface_make_and_identity(monkeypatch):
             "user_id": user_id,
         })
 
+    async def fake_moderate_text(text):
+        return ModerationResult(passed=True)
+
     monkeypatch.setattr("routers.generate.compose_meme", _fake_compose_meme)
+    monkeypatch.setattr("routers.generate.moderate_text", fake_moderate_text)
     monkeypatch.setattr(db, "insert_meme", fake_insert_meme)
 
     transport = ASGITransport(app=app)

@@ -44,6 +44,22 @@ async function authHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+// FastAPI's HTTPException bodies are `{"detail": "<user-facing message>"}`
+// (e.g. Make's moderation refusal) — surface that string directly instead
+// of the raw `"400 Bad Request: {\"detail\":...}"` blob callers used to
+// throw, since several call sites (MakeView's genError) render the
+// message as-is.
+async function _errorMessage(res: Response): Promise<string> {
+  const raw = await res.text();
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.detail === "string") return parsed.detail;
+  } catch {
+    // Not JSON — fall through to the raw body below.
+  }
+  return `${res.status} ${res.statusText}: ${raw}`;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
@@ -51,8 +67,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+    throw new Error(await _errorMessage(res));
   }
   return res.json() as Promise<T>;
 }
@@ -60,8 +75,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: await authHeaders() });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+    throw new Error(await _errorMessage(res));
   }
   return res.json() as Promise<T>;
 }
