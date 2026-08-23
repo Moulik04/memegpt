@@ -24,11 +24,13 @@ MemeGPT is a chatbot that communicates exclusively through memes. Type a message
 
 **[Try it live →](https://memegpt-six.vercel.app)**
 
-The product has two real surfaces, plus a marketing front door:
+The product has four real surfaces, plus a marketing front door:
 
-- **`/`** — a public landing page explaining the product and linking into the two surfaces below. Not the app itself.
+- **`/`** — a public landing page explaining the product and linking into the four surfaces below. Not the app itself.
 - **`/chat`** — a normal chatbot. The catch: it only replies in memes.
 - **`/lore`** — for big context dumps. Paste a whole group chat, upload a stack of screenshots, get several memes back — with explicit controls (meme count, drag-and-drop) that Chat deliberately doesn't expose.
+- **`/make`** — skips the AI's judgment entirely: search the full template library and write your own captions box by box. A separate, simpler direct template+caption→image path with no LLM/RAG involved — captions still pass through a content-moderation gate before rendering, since they never get an LLM's implicit judgment call the other surfaces do.
+- **`/arc`** — a roast-flavored personal recap (aura score, streaks, top template) scored across usage from all three surfaces above.
 
 Optional accounts (email or Google, via Supabase Auth) unlock a persisted chat-history sidebar and cross-device memory. Everything also works fully anonymously — no signup required, ever.
 
@@ -45,6 +47,7 @@ Two LLM backends, swappable via `LLM_PROVIDER`: **Ollama** (local, zero cost, no
 | A long pasted group-chat thread | Segmented into 2-5 distinct meme-worthy moments, each rendered separately |
 | 👍 on a generated meme | Feeds a per-user humor profile that nudges future template picks |
 | `/meme <text>` in Discord | Same generation pipeline, delivered as a slash command reply |
+| Picking a template + typing captions in Make | Renders directly, no LLM/RAG involved — just a content-safety check first |
 
 ---
 
@@ -86,6 +89,8 @@ Text and/or photos (Chat, Lore, or Discord /meme)
                  real-time, progressive, one meme at a time
 ```
 
+Make (`/generate/`) deliberately bypasses all of the above — no LLM, no RAG, no segmentation. A user picks a `template_id` and types captions directly; the only gate before `compositor.py` is a text content-moderation check, since Make's captions never get an LLM's implicit judgment call the way Chat/Lore's do.
+
 ---
 
 ## Features
@@ -99,7 +104,8 @@ Text and/or photos (Chat, Lore, or Discord /meme)
 
 **Product surfaces**
 - **Chat vs Lore** — one backend, two purpose-built frontends: Chat is minimal-chrome auto-everything; Lore exposes meme-count and drag-and-drop for big context dumps, plus an opt-in "remember lore" lexicon for recurring names/running jokes.
-- **Arc** — a roast-flavored personal recap ("aura" score, tiers, template roasts) rendered as a shareable card and a Stories-style tap-through reveal.
+- **Make** — the manual meme-maker: search the full 120+ template catalog and write your own captions box by box, no AI in the loop at all. Bypasses the whole intent-routing/RAG/segmentation pipeline; captions go through a Groq-based content-moderation gate (same fail-closed contract as the image pipeline) since they're the one place typed text lands on a public meme with no LLM's implicit judgment.
+- **Arc** — a roast-flavored personal recap ("aura" score, tiers, template roasts) scored across usage from Chat, Lore, and Make, rendered as a shareable card and a Stories-style tap-through reveal.
 - **Optional accounts** — email or Google sign-in via Supabase Auth links your anonymous history to a real account, unlocking a persisted chat-history sidebar with per-chat delete. Fully anonymous use (localStorage UUID, no signup) still works identically for anyone who skips sign-in.
 - **Discord `/meme`** — a Cloudflare Worker handles Discord's ed25519 handshake and forwards to the same generation pipeline.
 - **Share pages** — every generated meme gets a durable `/m/{id}` page with Open Graph tags, backed by R2 storage and Postgres (survives redeploys — Render's disk doesn't).
@@ -232,8 +238,8 @@ python scripts/dummy_template_test.py
 | `POST` | `/chat/`, `/chat/image/` | Chat surface — SSE stream, text and/or photos |
 | `POST` | `/lore/`, `/lore/image/` | Lore surface — same core, adds `meme_count` + lexicon opt-in |
 | `GET` | `/arc`, `POST /arc/card` | Personal meme stats + shareable recap card |
-| `POST` | `/generate/` | Generate a meme from `template_id` + `texts` directly |
-| `POST` | `/explain/` | Template metadata and usage history |
+| `GET`/`POST` | `/explain/` | Every template's metadata, or one template's + usage history — Make's picker |
+| `POST` | `/generate/` | Make — render `template_id` + `texts` directly, no LLM/RAG (moderation-gated) |
 | `POST` | `/feedback/` | Thumbs up / down on a generated meme |
 | `GET` | `/memes/{id}` | Durable share-page lookup (`/m/{id}` on the frontend) |
 | `GET` | `/auth/whoami` | Verified identity for the current bearer token |
