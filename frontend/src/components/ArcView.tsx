@@ -255,7 +255,7 @@ function ArcEmptyState({ totalMemes }: { totalMemes: number }) {
           <p className="mt-2 font-mono text-[11px] text-gray-600">{totalMemes} / 5 memes toward your first Arc</p>
         </div>
         <Link
-          href="/chat"
+          href="/make"
           className="relative inline-block bg-accent hover:bg-accent/90 transition-colors text-white
                      font-semibold text-sm px-6 py-3 rounded-full"
         >
@@ -272,7 +272,7 @@ function ArcShareScreen({ url }: { url: string }) {
       <div className="arrive-settle max-w-sm w-full">
         <MemeCard url={url} alt="My MemeGPT Arc" large />
       </div>
-      <Link href="/chat" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+      <Link href="/make" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
         Make another meme
       </Link>
     </div>
