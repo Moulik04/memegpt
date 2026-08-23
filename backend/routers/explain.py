@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from image_processing.compositor import template_image_url
 from image_processing.template_configs import get_config
+from rate_limit import limiter
 from schemas import ExplainRequest, ExplainResponse, TextBoxInfo
 from vector_db.chroma_client import get_template_record, list_all_template_records
 
@@ -33,7 +34,8 @@ def _build_response(record: dict, template_id: str) -> ExplainResponse:
 
 
 @router.get("/", response_model=list[ExplainResponse])
-async def list_templates() -> list[ExplainResponse]:
+@limiter.limit("30/minute")
+async def list_templates(request: Request) -> list[ExplainResponse]:
     """
     Every template's metadata in one call — powers the manual meme-maker's
     template picker (Phase 4, paired with POST /generate/).
@@ -45,7 +47,8 @@ async def list_templates() -> list[ExplainResponse]:
 
 
 @router.post("/", response_model=ExplainResponse)
-async def explain(request: ExplainRequest) -> ExplainResponse:
+@limiter.limit("30/minute")
+async def explain(request: Request, body: ExplainRequest) -> ExplainResponse:
     """
     Returns metadata, usage history, and caption-field structure for a
     given meme template.
@@ -53,11 +56,11 @@ async def explain(request: ExplainRequest) -> ExplainResponse:
     Useful for the frontend's "Why this meme?" tooltip / info drawer, and
     for the manual meme-maker once a template is picked from the grid.
     """
-    record = get_template_record(request.template_id)
+    record = get_template_record(body.template_id)
     if not record:
         raise HTTPException(
             status_code=404,
-            detail=f"Template '{request.template_id}' not found in vector store.",
+            detail=f"Template '{body.template_id}' not found in vector store.",
         )
 
-    return _build_response(record, request.template_id)
+    return _build_response(record, body.template_id)

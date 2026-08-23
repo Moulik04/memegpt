@@ -12,6 +12,7 @@ from fastapi import APIRouter, Request
 import db
 from auth import get_verified_user
 from identity import get_anon_user_id
+from rate_limit import limiter
 from schemas import LinkAnonResponse, WhoAmIResponse
 
 router = APIRouter()
@@ -26,6 +27,7 @@ async def whoami(request: Request) -> WhoAmIResponse:
 
 
 @router.post("/link-anon", response_model=LinkAnonResponse)
+@limiter.limit("10/minute")
 async def link_anon(request: Request) -> LinkAnonResponse:
     """Called once by the frontend on Supabase's SIGNED_IN event — never a
     hard requirement (a signed-in user with no anon header, or one whose
