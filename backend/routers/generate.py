@@ -5,10 +5,13 @@ import db
 from auth import get_verified_user
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme
+from nlp.text_moderation import moderate_text
 from rate_limit import limiter
 from schemas import MemeGenerationRequest, MemeGenerationResponse
 
 router = APIRouter()
+
+_GENERIC_CAPTION_REFUSAL = "That caption couldn't be used — try different text."
 
 
 @router.post("/", response_model=MemeGenerationResponse)
@@ -21,11 +24,22 @@ async def generate(request: Request, body: MemeGenerationRequest) -> MemeGenerat
     Accepts a template_id and a dict of label→text pairs matching
     the template's TextBoxConfig labels (e.g. {"rejected_option": "...", "approved_option": "..."}).
 
+    Unlike Chat/Lore, these captions never pass through an LLM before
+    landing on a public meme, so they go through nlp.text_moderation first
+    — the text equivalent of uploads/safe_ingest's image moderation gate.
+    Fails closed: a moderation-unavailable result blocks the request the
+    same as an actual unsafe classification (never echoes the category).
+
     Stamps identity + surface="make" on the resulting meme the same way
     chat.py/lore.py do (was missing entirely before — Make usage was
     invisible to Arc's stats and to "Forget me", since nothing tied a
     Make-generated meme to any user at all).
     """
+    combined_text = "\n".join(body.texts.values())
+    moderation = await moderate_text(combined_text)
+    if not moderation.passed:
+        raise HTTPException(status_code=400, detail=_GENERIC_CAPTION_REFUSAL)
+
     try:
         saved = await compose_meme(
             template_id=body.template_id,
