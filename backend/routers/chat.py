@@ -8,7 +8,10 @@ they share this module's streaming core via the `handle_text_stream` /
 `handle_image_stream` entry helpers (lore.py imports them). The only
 difference is which controls each surface exposes (Lore adds meme_count +
 remember_lore) and the `surface` value ("chat"/"lore") the endpoint stamps
-onto every db.insert_meme — which is what makes Arc's Chat-vs-Lore split real.
+onto every db.insert_meme — which is what makes Arc's chat/lore/make split
+real (routers/generate.py stamps "make" the same way; routers/discord.py
+stamps "discord", which counts toward Arc's total/aura but is intentionally
+left out of the three-way split shown to the user).
 
 Both surfaces' context-mode path flows through the same batch pipeline
 (_stream_batch): a submission resolves into 1..N distinct "situations"
@@ -590,6 +593,7 @@ async def handle_image_stream(
 
 
 @router.post("/")
+@limiter.limit("20/minute")
 async def chat(request: Request, body: ChatRequest):
     """Chat surface — minimal chrome, always auto-detects meme count, no Lore
     lexicon. Delegates to the shared core with surface="chat"."""

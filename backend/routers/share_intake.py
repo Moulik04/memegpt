@@ -24,9 +24,10 @@ import base64
 import time
 import uuid
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from config import get_settings
+from rate_limit import limiter
 
 router = APIRouter()
 
@@ -42,7 +43,9 @@ def _purge_expired() -> None:
 
 
 @router.post("/")
+@limiter.limit(get_settings().upload_rate_limit)
 async def stash_share(
+    request: Request,
     images: list[UploadFile] = File(default=[]),
     text: str | None = Form(None),
     title: str | None = Form(None),
