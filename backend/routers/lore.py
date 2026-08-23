@@ -7,7 +7,8 @@ with its own request model (LoreRequest, exposing meme_count + remember_lore
 that Chat deliberately doesn't). It shares the entire streaming core with
 Chat via routers/chat.py's handle_text_stream / handle_image_stream — the
 only differences are these extra controls and the surface="lore" stamp that
-gets written onto every generated meme (powering Arc's Chat-vs-Lore split).
+gets written onto every generated meme (powering Arc's chat/lore/make split
+alongside routers/generate.py's surface="make" stamp).
 
 routers/chat.py never imports this module, so importing its helpers here is
 cycle-free.
@@ -24,6 +25,7 @@ router = APIRouter()
 
 
 @router.post("/")
+@limiter.limit("20/minute")
 async def lore(request: Request, body: LoreRequest):
     """Lore surface — big-context dumps, explicit meme-count override, opt-in
     Lore lexicon. Delegates to Chat's shared core with surface="lore"."""

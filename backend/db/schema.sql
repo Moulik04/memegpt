@@ -45,8 +45,11 @@ CREATE TABLE IF NOT EXISTS few_shot_examples (
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS anon_user_id text;
 ALTER TABLE feedback ADD COLUMN IF NOT EXISTS template_id text;
 
--- Growth Phase D: which public surface generated this meme ("chat"/"lore"),
--- stamped by the endpoint that served it — powers Arc's Chat-vs-Lore split.
+-- Growth Phase D: which public surface generated this meme
+-- ("chat"/"lore"/"make"/"discord"), stamped by the endpoint that served
+-- it. Powers Arc's chat/lore/make split — "discord" counts toward Arc's
+-- total_memes/aura but is deliberately left out of that three-way split
+-- (Discord isn't one of the three modes a user picks in the app itself).
 -- NULL for pre-Phase-D rows and for Arc share cards themselves.
 ALTER TABLE memes ADD COLUMN IF NOT EXISTS surface text;
 

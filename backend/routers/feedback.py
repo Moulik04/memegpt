@@ -3,6 +3,7 @@ from fastapi import APIRouter, Request
 import db
 from auth import get_verified_user
 from identity import get_anon_user_id
+from rate_limit import limiter
 from schemas import FeedbackRequest, FeedbackResponse
 from vector_db.examples_store import upsert_example
 
@@ -10,6 +11,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=FeedbackResponse)
+@limiter.limit("20/minute")
 async def submit_feedback(request: Request, body: FeedbackRequest) -> FeedbackResponse:
     """
     Record user feedback on a generated meme.
