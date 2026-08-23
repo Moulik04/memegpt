@@ -90,7 +90,7 @@ const MODES = [
 const FAQS = [
   {
     q: "Is MemeGPT free?",
-    a: "Yes. Chat and Lore both work without signing in — no email, no account. Signing in only adds saved history across devices.",
+    a: "Yes. Every surface works without signing in — no email, no account. Signing in only adds saved history for Chat and Lore across devices.",
   },
   {
     q: "What's the difference between Chat, Lore, and Make?",

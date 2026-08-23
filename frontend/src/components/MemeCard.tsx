@@ -32,11 +32,12 @@ interface Props {
 
 /**
  * The single-meme card: image + actions row, in its own bordered surface.
- * Covers the two contexts that actually share this exact shape (Chat's
- * single-meme bubble, Lore's flat-feed entries) plus the public share page
- * in `large` mode. Chat's multi-meme carousel keeps its own structure —
- * one shared action bar for the whole scroll strip, not one per image —
- * genuinely different enough not to force through this same component.
+ * Used by Lore's flat-feed entries, Make's generate result, Arc's share
+ * screen, and the public share page (`large` mode). Chat's single-meme
+ * bubble uses it too, but Chat's multi-meme carousel keeps its own
+ * structure — one shared action bar for the whole scroll strip, not one
+ * per image — genuinely different enough not to force through this same
+ * component.
  */
 export function MemeCard({ url, alt, onFeedback, large, templateId }: Props) {
   // A card can land right under a cursor that's just resting there from

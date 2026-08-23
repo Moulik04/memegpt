@@ -113,8 +113,8 @@ export default function PrivacyPage() {
 
         <Section title="Forget me">
           <p>
-            The &quot;Forget me&quot; link in the header (Chat and Lore)
-            permanently deletes everything tied to your id — generated
+            The &quot;Forget me&quot; link in the header — on all four
+            surfaces — permanently deletes everything tied to your id — generated
             memes&apos; association with you, feedback history, and any
             saved lore — and clears the id from your device. The next
             request starts completely fresh.
