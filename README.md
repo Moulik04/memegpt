@@ -29,7 +29,7 @@ The product has four real surfaces, plus a marketing front door:
 - **`/`** — a public landing page explaining the product and linking into the four surfaces below. Not the app itself.
 - **`/chat`** — a normal chatbot. The catch: it only replies in memes.
 - **`/lore`** — for big context dumps. Paste a whole group chat, upload a stack of screenshots, get several memes back — with explicit controls (meme count, drag-and-drop) that Chat deliberately doesn't expose.
-- **`/make`** — skips the AI's judgment entirely: search the full template library and write your own captions box by box. A separate, simpler direct template+caption→image path with no LLM/RAG involved — captions still pass through a content-moderation gate before rendering, since they never get an LLM's implicit judgment call the other surfaces do.
+- **`/make`** — skips the AI's judgment entirely: search the full template library and write your own captions box by box. A separate, simpler direct template+caption→image path with no LLM/RAG involved — captions still pass through a content-moderation gate before rendering, since they never get the implicit judgment call an LLM gives the other surfaces' captions.
 - **`/arc`** — a roast-flavored personal recap (aura score, streaks, top template) scored across usage from all three surfaces above.
 
 Optional accounts (email or Google, via Supabase Auth) unlock a persisted chat-history sidebar and cross-device memory. Everything also works fully anonymously — no signup required, ever.
