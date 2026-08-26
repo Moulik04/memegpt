@@ -3,24 +3,43 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelRevealImage } from "./reveals/PixelRevealImage";
 
-// Real templates, real captions, rendered once ahead of time the same way
-// drake_example.png was (Pillow, not compose_meme()/save_meme() — this
-// isn't user-generated content) — see git history for the render scripts.
-// Prompts are drawn straight from lib/examplePrompts.ts's pool (or written
-// in the same voice) so it matches what Chat's own empty state shows.
+// Real templates, real captions, rendered once ahead of time through the
+// actual /chat/ pipeline (not compose_meme()/save_meme() directly — this
+// isn't user-generated content, but it is a real Groq round trip through
+// segmentation -> RAG -> intent routing -> the Pillow compositor, same as
+// a live request). Deliberately spans 20 unrelated contexts (sports,
+// movies/TV, music, pop culture, shopping, food, travel, pets, fitness,
+// school, weather, gaming, relationships, money, motivation, mood, work,
+// internet culture, family, algorithm/internet) rather than one theme —
+// an earlier version was 12 cards that were all software-engineering
+// in-jokes, which is a bad first impression for a general-audience app.
+// About 45% of real generation attempts for this batch came back with a
+// picked template but a blank/missing caption (a real, previously-
+// unknown reliability gap in intent_router's caption generation for
+// certain templates — worth its own investigation, out of scope here);
+// each entry below is the first attempt (of up to 3 retries) that
+// actually rendered real text.
 const HERO_LOOP = [
-  { prompt: "when you push straight to main by accident", image: "/landing/loop_1.png" },
-  { prompt: "waiting for my PR to get reviewed for 3 days", image: "/landing/loop_2.png" },
-  { prompt: "when the deploy finally works on first try", image: "/landing/loop_3.png" },
-  { prompt: "when the bug only happens in production", image: "/landing/loop_4.png" },
-  { prompt: "my resume vs my actual daily tasks", image: "/landing/loop_5.png" },
-  { prompt: "my manager asking who broke production", image: "/landing/loop_6.png" },
-  { prompt: "when the standup goes 45 minutes over", image: "/landing/loop_7.png" },
-  { prompt: "explaining to my non-tech friends what I do for a living", image: "/landing/loop_8.png" },
-  { prompt: "when someone says 'quick call' and it's 90 minutes", image: "/landing/loop_9.png" },
-  { prompt: "when the CI pipeline fails on the one thing you didn't touch", image: "/landing/loop_10.png" },
-  { prompt: "when a new framework drops the week before a deadline", image: "/landing/loop_11.png" },
-  { prompt: "my hottest take on tabs vs spaces", image: "/landing/loop_12.png" },
+  { prompt: "when your team blows a 20-point lead in the 4th quarter", image: "/landing/loop_1.png" },
+  { prompt: "when someone spoils the finale before you've watched it", image: "/landing/loop_2.png" },
+  { prompt: "waiting in line for merch longer than the concert itself", image: "/landing/loop_3.png" },
+  { prompt: "when the group chat explodes over one piece of celebrity news", image: "/landing/loop_4.png" },
+  { prompt: "adding things to my cart and never actually checking out", image: "/landing/loop_5.png" },
+  { prompt: "the last slice of pizza and everyone's too polite to take it", image: "/landing/loop_6.png" },
+  { prompt: "when the flight gets delayed for the third time", image: "/landing/loop_7.png" },
+  { prompt: "my dog destroyed the couch again", image: "/landing/loop_8.png" },
+  { prompt: "day 1 of the gym vs day 2", image: "/landing/loop_9.png" },
+  { prompt: "starting the essay the night before it's due", image: "/landing/loop_10.png" },
+  { prompt: "when the forecast says sunny and it immediately rains", image: "/landing/loop_11.png" },
+  { prompt: "when you finally beat the boss after 20 tries", image: "/landing/loop_12.png" },
+  { prompt: "when your friend cancels plans 20 minutes before", image: "/landing/loop_13.png" },
+  { prompt: "checking my savings account and immediately regretting it", image: "/landing/loop_14.png" },
+  { prompt: "saying I'll start Monday for the fifth Monday in a row", image: "/landing/loop_15.png" },
+  { prompt: "trying to fall asleep vs my brain at 3am", image: "/landing/loop_16.png" },
+  { prompt: "the meeting that could've been an email", image: "/landing/loop_17.png" },
+  { prompt: "the exact moment you realize you replied to the wrong chat", image: "/landing/loop_18.png" },
+  { prompt: "meeting your partner's parents for the first time", image: "/landing/loop_19.png" },
+  { prompt: "when the algorithm knows me better than my friends do", image: "/landing/loop_20.png" },
 ];
 
 const IDENTITY_ORDER = HERO_LOOP.map((_, i) => i);
@@ -49,14 +68,14 @@ type Phase = "typing" | "thinking" | "revealed";
  * The hero's live centerpiece: types a real prompt, pauses on a thinking
  * beat, reveals a real rendered meme, holds, cycles — "the demo is the
  * product" instead of describing the product in prose. Cycles through all
- * 12 real pairs in a random order per page load, looping back once
+ * 20 real pairs in a random order per page load, looping back once
  * exhausted. Static on the first item's meme under prefers-reduced-motion,
  * no timers running at all in that case.
  *
  * Two things fixed here after real user-reported bugs, not preemptively:
  *
- * 1. Fixed-height stage. The 12 source images range from 580x282 to
- *    600x908 (ratio 2.06 down to 0.66) — with only a min-height, each
+ * 1. Fixed-height stage. The 20 source images range from 700x325 to
+ *    600x908 (ratio 2.15 down to 0.66) — with only a min-height, each
  *    phase change actually resized the card and shoved the rest of the
  *    landing page up/down while scrolling. `maxHeightClassName` (a
  *    PixelRevealImage prop added for this) locks the image to this
