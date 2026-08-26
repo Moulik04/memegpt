@@ -1,0 +1,5 @@
+project_id = "your-gcp-project-id"
+
+# Uncomment to override defaults:
+# region       = "us-central1"
+# service_name = "memegpt-backend"
