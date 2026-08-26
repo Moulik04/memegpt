@@ -258,6 +258,56 @@ def _normalize_llm_response(data, known_ids: set[str]) -> dict:
     return data
 
 
+def _normalize_texts_to_box_labels(texts: dict, template_id: str) -> dict[str, str]:
+    """Maps caption keys onto the resolved template's real box labels,
+    case-insensitively. Only the rich first-attempt system prompt tells the
+    model each template's exact box labels (via _build_template_catalog's
+    "b" field) — a model that falls through to the retry-path prompt has
+    produced plausible-but-wrong-case keys (e.g. "BUTTON_1" instead of
+    "button_1") often enough to be worth salvaging here rather than
+    discarding a perfectly good caption and re-rolling.
+
+    Returns {} when NONE of the keys match any real label even
+    case-insensitively (e.g. the literal "BOX_LABEL" placeholder some
+    responses echo back) — that's not normalizable content, it's a miss,
+    and the caller treats an empty result as a failed attempt so it never
+    reaches compose_meme() (which would just silently render nothing for
+    every box: _draw_text_in_box skips any text that's blank/missing)."""
+    real_labels = [box.label for box in get_config(template_id).text_boxes]
+    label_by_lower = {label.lower(): label for label in real_labels}
+    normalized: dict[str, str] = {}
+    for key, value in texts.items():
+        if not isinstance(value, str) or not value.strip():
+            continue
+        real_label = label_by_lower.get(str(key).lower())
+        if real_label:
+            normalized[real_label] = value
+    return normalized
+
+
+def _format_box_labels(template_ids: list[str]) -> str:
+    lines = []
+    for tid in template_ids:
+        config = get_config(tid)
+        boxes = config.box_descriptions or DEFAULT_BOX_DESCRIPTIONS
+        lines.append(f"  {tid}: {', '.join(boxes.keys())}")
+    return "\n".join(lines)
+
+
+def _build_retry_prompt(user_message: str, template_ids: list[str]) -> str:
+    """The strict fallback prompt used once the rich first-attempt prompt
+    fails to parse. Used to list only template_ids and a generic
+    "BOX_LABEL" placeholder example — the model had no way to know the
+    real box labels for whichever template it picked, and either echoed
+    "BOX_LABEL" back literally or guessed a plausible name in the wrong
+    case. Now includes each candidate's real labels, the same information
+    _build_template_catalog already gives the rich prompt."""
+    return _RETRY_TEMPLATE.format(
+        user_message=user_message,
+        template_box_labels=_format_box_labels(template_ids[:14]),
+    )
+
+
 def _format_few_shot(examples: list[dict]) -> str:
     if not examples:
         return ""
@@ -292,13 +342,35 @@ Rules: use only template_ids and box labels listed above; captions under 80 char
 _RETRY_TEMPLATE = """\
 You are a JSON API. The user said: "{user_message}"
 
-Return ONLY this exact JSON, nothing else:
-{{"template_id": "PICK_ONE", "texts": {{"BOX_LABEL": "CAPTION"}}, "reasoning": "WHY"}}
+Pick ONE template_id below and use ITS EXACT box labels (shown after the
+colon) as the keys in "texts" — do not invent your own key names or change
+their case:
+{template_box_labels}
 
-Available template_ids: {template_ids}
+Return ONLY this exact JSON shape, nothing else:
+{{"template_id": "<id from above>", "texts": {{"<real box label>": "<caption>"}}, "reasoning": "WHY"}}
 
 Output raw JSON only — no markdown, no explanation.\
 """
+
+
+def _finalize_result(data: dict, known_id_set: set[str]) -> IntentResponse:
+    """Shared validation for all three parse attempts: a real, known
+    template_id AND at least one caption that actually matches one of that
+    template's real box labels. Raises ValueError on either failure so
+    every call site's existing except clause treats it exactly like a JSON
+    parse failure — retry, then the hard fallback — rather than silently
+    returning a response that would render as a blank meme (see
+    _normalize_texts_to_box_labels)."""
+    result = IntentResponse(**data)
+    if result.template_id not in known_id_set:
+        raise ValueError(f"Hallucinated template_id: {result.template_id}")
+    normalized_texts = _normalize_texts_to_box_labels(result.texts, result.template_id)
+    if not normalized_texts:
+        raise ValueError(
+            f"No usable captions for {result.template_id}'s box labels: {result.texts}"
+        )
+    return result.model_copy(update={"texts": normalized_texts})
 
 
 _OVERALL_TIMEOUT_SECONDS = 45.0
@@ -436,10 +508,7 @@ async def _parse_intent_inner(
         lexicon_block=lexicon_block,
     )
 
-    retry_prompt = _RETRY_TEMPLATE.format(
-        user_message=user_message,
-        template_ids=", ".join(template_ids[:14]),
-    )
+    retry_prompt = _build_retry_prompt(user_message, template_ids)
 
     # Resilience follow-up: Groq's rate limits are per-model (confirmed
     # live — separate RPM/RPD/TPM/TPD per model, not a shared pool), so a
@@ -470,10 +539,7 @@ async def _parse_intent_inner(
                 raw = strip_markdown(raw)
                 data = json.loads(raw)
                 data = _normalize_llm_response(data, known_id_set)
-                result = IntentResponse(**data)
-                if result.template_id not in known_id_set:
-                    raise ValueError(f"Hallucinated template_id: {result.template_id}")
-                return result
+                return _finalize_result(data, known_id_set)
             except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
                 pass
 
@@ -485,10 +551,7 @@ async def _parse_intent_inner(
                 raw = strip_markdown(raw)
                 data = json.loads(raw)
                 data = _normalize_llm_response(data, known_id_set)
-                result = IntentResponse(**data)
-                if result.template_id not in known_id_set:
-                    raise ValueError(f"Hallucinated template_id: {result.template_id}")
-                return result
+                return _finalize_result(data, known_id_set)
             except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
                 pass
 
@@ -505,10 +568,7 @@ async def _parse_intent_inner(
                 raw = strip_markdown(raw)
                 data = json.loads(raw)
                 data = _normalize_llm_response(data, known_id_set)
-                result = IntentResponse(**data)
-                if result.template_id not in known_id_set:
-                    raise ValueError(f"Hallucinated template_id: {result.template_id}")
-                return result
+                return _finalize_result(data, known_id_set)
             except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
                 pass
 

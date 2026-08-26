@@ -44,7 +44,7 @@ async def test_llm_returning_a_single_item_array_is_salvaged(monkeypatch):
     a perfectly good response just because of the wrapping."""
 
     async def array_call_llm(client, settings, messages, temperature=0.75):
-        return '[{"template_id": "drake", "texts": {"top_text": "a"}}]'
+        return '[{"template_id": "drake", "texts": {"rejected_option": "a"}}]'
 
     monkeypatch.setattr(intent_router, "call_llm", array_call_llm)
 
@@ -101,7 +101,7 @@ async def test_fallback_model_attempt_fires_when_primary_fails_twice(monkeypatch
 
     async def call_llm_by_model(client, settings, messages, temperature=0.75):
         if settings.groq_model == "openai/gpt-oss-120b":
-            return '{"template_id": "drake", "texts": {"top_text": "a"}}'
+            return '{"template_id": "drake", "texts": {"rejected_option": "a"}}'
         return "not valid json at all"  # primary model fails both its attempts
 
     monkeypatch.setattr(intent_router, "call_llm", call_llm_by_model)
@@ -139,7 +139,7 @@ async def test_open_primary_circuit_skips_straight_to_fallback_model(monkeypatch
 
     async def call_llm_track(client, settings, messages, temperature=0.75):
         calls.append(settings.groq_model)
-        return '{"template_id": "drake", "texts": {"top_text": "a"}}'
+        return '{"template_id": "drake", "texts": {"rejected_option": "a"}}'
 
     monkeypatch.setattr(intent_router, "call_llm", call_llm_track)
 
@@ -164,3 +164,94 @@ async def test_all_three_attempts_failing_still_reaches_hard_fallback(monkeypatc
 
     assert calls == ["qwen/qwen3.6-27b", "qwen/qwen3.6-27b", "openai/gpt-oss-120b"]
     assert result.template_id == "hide_the_pain_harold"
+
+
+# --- Blank-caption bug: retry-path responses whose texts don't match any
+# real box label for the resolved template must not be accepted as success.
+# Root cause: _RETRY_TEMPLATE's example JSON shows a literal "BOX_LABEL"
+# placeholder key and never lists the resolved template's real box labels
+# (unlike the rich first-attempt system prompt, which does) — so whenever
+# generation falls through to the retry path, the model either echoes back
+# "BOX_LABEL" literally or guesses a plausible name in the wrong case
+# (e.g. "BUTTON_1" instead of "button_1"). compose_meme()'s exact-match
+# `texts.get(box_cfg.label, "")` lookup then finds nothing for every real
+# box and silently renders a blank meme — no error anywhere in the pipeline.
+
+async def test_texts_matching_no_real_box_label_is_not_accepted(monkeypatch):
+    """Reproduces the actual observed failure: a real template_id with a
+    texts dict keyed by the literal 'BOX_LABEL' placeholder (which matches
+    no real box label for two_buttons) must be treated as a failed attempt,
+    not returned as a successful result that would render blank."""
+    monkeypatch.setattr(intent_router, "get_settings", lambda: _groq_settings(fallback=""))
+
+    async def call_llm_placeholder_key(client, settings, messages, temperature=0.75):
+        return '{"template_id": "two_buttons", "texts": {"BOX_LABEL": "some caption"}, "reasoning": "x"}'
+
+    monkeypatch.setattr(intent_router, "call_llm", call_llm_placeholder_key)
+
+    result = await parse_intent("adding things to my cart and never checking out")
+
+    assert result.template_id == "hide_the_pain_harold"
+    assert "Fallback" in result.reasoning
+
+
+async def test_case_mismatched_real_labels_are_salvaged_not_discarded(monkeypatch):
+    """Unlike the placeholder-key case above, BUTTON_1/BUTTON_2 are real
+    content just in the wrong case — worth normalizing back onto the
+    template's actual button_1/button_2 labels rather than throwing away a
+    perfectly good caption and re-rolling."""
+    monkeypatch.setattr(intent_router, "get_settings", lambda: _groq_settings(fallback=""))
+
+    async def call_llm_wrong_case(client, settings, messages, temperature=0.75):
+        return (
+            '{"template_id": "two_buttons", '
+            '"texts": {"BUTTON_1": "Add to cart", "BUTTON_2": "Checkout"}, '
+            '"reasoning": "x"}'
+        )
+
+    monkeypatch.setattr(intent_router, "call_llm", call_llm_wrong_case)
+
+    result = await parse_intent("adding things to my cart and never checking out")
+
+    assert result.template_id == "two_buttons"
+    assert result.texts == {"button_1": "Add to cart", "button_2": "Checkout"}
+
+
+async def test_normalize_texts_to_box_labels_matches_case_insensitively():
+    from nlp.intent_router import _normalize_texts_to_box_labels
+
+    result = _normalize_texts_to_box_labels(
+        {"BUTTON_1": "a", "BUTTON_2": "b"}, "two_buttons"
+    )
+    assert result == {"button_1": "a", "button_2": "b"}
+
+
+async def test_normalize_texts_to_box_labels_drops_unmatched_keys():
+    from nlp.intent_router import _normalize_texts_to_box_labels
+
+    result = _normalize_texts_to_box_labels({"BOX_LABEL": "some caption"}, "two_buttons")
+    assert result == {}
+
+
+async def test_normalize_texts_to_box_labels_ignores_blank_values():
+    from nlp.intent_router import _normalize_texts_to_box_labels
+
+    result = _normalize_texts_to_box_labels(
+        {"button_1": "  ", "button_2": "real caption"}, "two_buttons"
+    )
+    assert result == {"button_2": "real caption"}
+
+
+async def test_retry_prompt_includes_real_box_labels_for_available_templates():
+    """The actual root cause: the retry-path prompt used to list only
+    template_ids, never each one's real box labels, unlike the rich
+    first-attempt prompt — leaving a model that reaches this path with no
+    way to know the correct keys."""
+    from nlp.intent_router import _build_retry_prompt
+
+    prompt = _build_retry_prompt("anything", ["two_buttons", "drake"])
+
+    assert "button_1" in prompt
+    assert "button_2" in prompt
+    assert "rejected_option" in prompt
+    assert "approved_option" in prompt
