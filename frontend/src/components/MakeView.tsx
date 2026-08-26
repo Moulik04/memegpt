@@ -5,6 +5,18 @@ import { generateMeme, listTemplates, memeImageUrl } from "@/lib/api";
 import { MemeCard } from "./MemeCard";
 import type { ExplainResponse } from "@/types";
 
+/** Fisher-Yates — GET /explain/ always returns templates in the same
+ * fixed order (ChromaDB's insertion order), so without this the grid
+ * looked identical on every visit. */
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 /**
  * Make — the manual meme-maker (Phase 4, surfaces POST /generate/ +
  * GET /explain/, both fully built on the backend with typed frontend API
@@ -27,7 +39,7 @@ export function MakeView() {
     let cancelled = false;
     listTemplates()
       .then((data) => {
-        if (!cancelled) setTemplates(data);
+        if (!cancelled) setTemplates(shuffle(data));
       })
       .catch((err) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : "Couldn't load templates.");
