@@ -71,3 +71,7 @@ docs/FINETUNE_RUNBOOK.md
 
 .vercel/
 .env*
+
+**/.terraform/
+*.tfstate
+*.tfstate.*
