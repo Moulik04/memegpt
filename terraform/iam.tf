@@ -5,3 +5,12 @@ resource "google_service_account" "cloud_run_runtime" {
 
   depends_on = [google_project_service.apis]
 }
+
+resource "google_secret_manager_secret_iam_member" "runtime_secret_access" {
+  for_each = google_secret_manager_secret.backend
+
+  project   = var.project_id
+  secret_id = each.value.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.cloud_run_runtime.email}"
+}
