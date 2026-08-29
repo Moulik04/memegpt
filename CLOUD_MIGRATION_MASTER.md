@@ -2,9 +2,7 @@
 
 Move MemeGPT's backend off Render onto GCP, provisioned entirely with Terraform, with real CI/CD and real observability. Hand this to Claude Code in the memegpt directory.
 
-**Why this project:** cloud/IaC is the only gap named as a real, non-disqualifying weakness across all four role lanes in `LANE_ANALYSIS.md`. Everything else on that list unlocks one lane; this touches every one. And it converts "no hands-on cloud platform experience" — the single most repeated line across 74 fit analyses — into "operates a live production service on GCP with Terraform-managed infrastructure."
-
-This rationale survived the 2026-08-26 recompute intact: it rests on the requirement-tier analysis (which gaps JDs name, per lane), not on the retracted lane-trend claim. With the corrected picture — both AI/LLM and DS/Analyst healthy and the strategy staying broad across both — a gap that appears in every lane is worth strictly more than one that serves a single lane.
+**Why this project:** MemeGPT has shipped product features across eight growth phases, but has no real cloud/infrastructure story — everything runs on Render's managed platform with no IaC, no CI/CD beyond a couple of scheduled workflows, and no observability beyond uptime pings. This project closes that gap directly: it converts "no hands-on cloud platform experience" into "operates a live production service on GCP with Terraform-managed infrastructure, real CI/CD, and real observability."
 
 **Why it's safe to run alongside the frontend rebuild:** the backend is a separate deployable. This work touches `backend/`, `terraform/`, and `.github/workflows/`. It does not touch `frontend/` except for one environment variable at cutover. The two efforts are orthogonal.
 
