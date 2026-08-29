@@ -30,6 +30,7 @@ variable "secret_names" {
     "R2_PUBLIC_BASE_URL",
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
+    "DISCORD_WORKER_SHARED_SECRET",
   ]
 }
 

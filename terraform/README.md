@@ -42,6 +42,15 @@ echo -n "actual-value" | gcloud secrets versions add GROQ_API_KEY \
   --project=YOUR_PROJECT_ID --data-file=-
 ```
 
+`google_secret_manager_secret.backend` carries `lifecycle { prevent_destroy
+= true }`, so `terraform destroy` (and the destroy/apply round-trip this
+phase's own README documents as its standard verification ritual) will
+refuse to remove these secrets once any real value has been added.
+Removing an entry from `var.secret_names` is therefore a deliberate
+two-step action, never an accident: first set `prevent_destroy = false` on
+the resource and `apply` that change, then remove the entry from the list
+and `apply` again.
+
 ## What's here vs. later phases
 
 This directory currently covers Phase 1 only: state backend, APIs,
