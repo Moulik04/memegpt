@@ -128,3 +128,9 @@ docs/FINETUNE_RUNBOOK.md
 # the repo from ever being tracked, not just this directory.
 .vercel/
 .env*
+
+# Terraform (terraform/ has its own .gitignore too — belt and suspenders
+# in case a *.tfvars-style file ever gets created outside that directory)
+**/.terraform/
+*.tfstate
+*.tfstate.*
