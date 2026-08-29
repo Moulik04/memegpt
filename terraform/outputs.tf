@@ -12,3 +12,8 @@ output "secret_ids" {
   description = "Secret Manager secret ids provisioned as empty containers — no values."
   value       = [for s in google_secret_manager_secret.backend : s.secret_id]
 }
+
+output "cloud_run_url" {
+  description = "Live URL of the Cloud Run backend service."
+  value       = google_cloud_run_v2_service.backend.uri
+}
