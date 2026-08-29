@@ -8,6 +8,11 @@ backend/.ruff_cache
 backend/data/chroma
 backend/static/generated
 backend/.env
+.env
 frontend/
 volumes/
 .git/
+.claude/
+terraform/
+docs/
+*.md
