@@ -10,6 +10,21 @@ resource "google_cloud_run_v2_service" "backend" {
   location = var.region
   project  = var.project_id
 
+  # Service-level scaling — distinct from (and in addition to) the
+  # per-revision `template.scaling` block below. The google-beta provider's
+  # `google_cloud_run_v2_service` schema has both: this top-level block only
+  # carries `min_instance_count` (floor shared across all revisions
+  # receiving traffic), while `template.scaling` carries both min and max
+  # for the revision being created. The live Cloud Run API always reports a
+  # value for the service-level `scaling.minInstanceCount` (0 by default);
+  # leaving this block out of config left Terraform perpetually planning to
+  # null it back out on every `plan`/`apply`. Setting it explicitly here,
+  # mirrored to the same variable as the per-revision floor, makes `plan`
+  # converge to "No changes".
+  scaling {
+    min_instance_count = var.cloud_run_min_instances
+  }
+
   template {
     # Explicit, non-default runtime identity — Phase 1's whole least-privilege
     # story (per-secret secretAccessor, nothing else) only holds if this is
@@ -37,7 +52,7 @@ resource "google_cloud_run_v2_service" "backend" {
       # revision serving traffic.) Pinning to a digest is what actually
       # guarantees a new `terraform apply` picks up new image content — this
       # is standard Cloud-Run-via-Terraform practice, not a one-off patch.
-      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.service_name}/${var.service_name}@sha256:8525c246e4de369dbe3f418bc2eaa67360a06f1d129e47a886962fe742730320"
+      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.service_name}/${var.service_name}@sha256:${var.cloud_run_image_digest}"
 
       resources {
         limits = {

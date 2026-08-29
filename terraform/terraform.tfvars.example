@@ -1,5 +1,11 @@
 project_id = "your-gcp-project-id"
 
+# Required: SHA256 digest (no "sha256:" prefix) of the backend image already
+# pushed to Artifact Registry. See terraform/README.md's bootstrap steps for
+# how to build, push, and read the digest back with `gcloud artifacts docker
+# images describe`.
+# cloud_run_image_digest = "8525c246e4de369dbe3f418bc2eaa67360a06f1d129e47a886962fe742730320"
+
 # Uncomment to override defaults:
 # region       = "us-central1"
 # service_name = "memegpt-backend"

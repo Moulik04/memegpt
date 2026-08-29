@@ -1,9 +1,11 @@
 # terraform/
 
-Provisions MemeGPT backend's GCP foundation: enabled APIs, Artifact
-Registry, a least-privilege Cloud Run runtime service account, and empty
-Secret Manager containers. See `../CLOUD_MIGRATION_MASTER.md` for the full
-migration plan this is Phase 1 of.
+Provisions MemeGPT backend's GCP foundation and the live Cloud Run
+service: enabled APIs, Artifact Registry, a least-privilege Cloud Run
+runtime service account, empty Secret Manager containers (Phase 1), and
+the `google_cloud_run_v2_service` itself, pinned to a specific image
+digest (Phase 2, `cloud_run.tf`). See `../CLOUD_MIGRATION_MASTER.md` for
+the full migration plan.
 
 ## Bootstrap from zero
 
@@ -30,7 +32,32 @@ migration plan this is Phase 1 of.
    cp backend.hcl.example backend.hcl             # fill in bucket name
    terraform init -backend-config=backend.hcl
    ```
-6. `terraform apply`.
+6. Create the Artifact Registry repo before anything can be pushed to it.
+   `cloud_run.tf`'s `google_cloud_run_v2_service` needs a real image digest
+   for even a targeted `apply` to evaluate (`cloud_run_image_digest` has no
+   default), so pass a placeholder here — it's only used by resources this
+   target excludes:
+   ```bash
+   terraform apply -target=google_artifact_registry_repository.backend \
+     -var="cloud_run_image_digest=placeholder"
+   ```
+7. Build and push the backend image (needed before the *full* apply, since
+   `cloud_run.tf` references a specific image digest via
+   `var.cloud_run_image_digest`):
+   ```bash
+   gcloud auth configure-docker us-central1-docker.pkg.dev
+   docker build -t memegpt-backend:local -f backend/Dockerfile .   # from repo root
+   docker tag memegpt-backend:local \
+     us-central1-docker.pkg.dev/YOUR_PROJECT_ID/memegpt-backend/memegpt-backend:latest
+   docker push \
+     us-central1-docker.pkg.dev/YOUR_PROJECT_ID/memegpt-backend/memegpt-backend:latest
+   gcloud artifacts docker images describe \
+     us-central1-docker.pkg.dev/YOUR_PROJECT_ID/memegpt-backend/memegpt-backend:latest \
+     --format="value(image_summary.digest)"
+   # copy the digest (without the "sha256:" prefix) into terraform.tfvars as cloud_run_image_digest
+   ```
+8. `terraform apply` (full — creates the Cloud Run service against the real
+   digest now in `terraform.tfvars`).
 
 ## Adding a real secret value
 
@@ -53,6 +80,9 @@ and `apply` again.
 
 ## What's here vs. later phases
 
-This directory currently covers Phase 1 only: state backend, APIs,
-Artifact Registry, IAM, Secret Manager containers. No Cloud Run service
-exists yet — that's Phase 2 (`cloud_run.tf`, not yet written).
+This directory covers Phase 1 (state backend, APIs, Artifact Registry,
+IAM, Secret Manager containers) and Phase 2 (`cloud_run.tf` — the live
+Cloud Run service, pinned to a specific image digest via
+`var.cloud_run_image_digest`). CI/CD around `terraform plan`/`apply`
+(Phase 3) and everything past it are documented in
+`../CLOUD_MIGRATION_MASTER.md`, not here.

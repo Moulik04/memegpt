@@ -61,3 +61,8 @@ variable "cloud_run_max_instances" {
   type        = number
   default     = 2
 }
+
+variable "cloud_run_image_digest" {
+  description = "SHA256 digest (without the algorithm prefix, e.g. \"abc123...\") of the backend image in Artifact Registry to deploy. Build and push the image first (see terraform/README.md), then set this from the push output or `gcloud artifacts docker images list`."
+  type        = string
+}
