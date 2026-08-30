@@ -3,9 +3,12 @@ name: CI (deploy)
 # On every push to main: build, push to Artifact Registry, deploy a
 # candidate revision with ZERO live traffic, smoke-test that candidate's
 # own dedicated URL, and only promote it to 100% traffic (via `terraform
-# apply`) if the smoke test passes. A failed smoke test deletes the
-# candidate and stops — the live service was never touched, so there is
-# nothing to "roll back."
+# apply`) if the smoke test passes. A failed smoke test reports the
+# failure and stops — the live service was never touched, so there is
+# nothing to "roll back." The untrafficked candidate revision is left in
+# place (Cloud Run refuses to delete a service's most-recently-created
+# revision regardless of traffic share, and idle revisions cost nothing) —
+# clean it up manually if desired.
 
 on:
   push:
@@ -53,7 +56,7 @@ jobs:
             --no-traffic \
             --tag="${TAG}" \
             --quiet
-          URL=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(status.traffic[?tag=='${TAG}'].url)" | tr -d "[]'")
+          URL=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json | jq -r --arg TAG "${TAG}" '.status.traffic[] | select(.tag == $TAG) | .url')
           echo "url=${URL}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
@@ -77,10 +80,8 @@ jobs:
           terraform init -backend-config="bucket=${{ vars.GCP_PROJECT_ID }}-tfstate" -backend-config="prefix=memegpt-backend"
           terraform apply -auto-approve
 
-      - name: Smoke test failed — delete the untrafficked candidate
+      - name: Smoke test failed — report and stop (candidate never promoted)
         if: failure() && steps.candidate.outcome == 'success'
         run: |
-          gcloud run revisions delete "$(gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --filter="metadata.labels.'run.googleapis.com/tag'=${{ steps.candidate.outputs.tag }}" --format="value(name)")" \
-            --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet
-          echo "::error::Smoke test failed against the candidate revision — it was never promoted, live traffic is unaffected. Candidate revision deleted."
+          echo "::error::Smoke test failed against candidate revision (tag: ${{ steps.candidate.outputs.tag }}, url: ${{ steps.candidate.outputs.url }}). It was never promoted — live traffic is unaffected (still served by the previous revision). The untrafficked candidate revision was left in place (Cloud Run refuses to delete the most-recently-created revision of a service regardless of traffic share, and it costs nothing to leave idle) — inspect or manually clean it up if desired: gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }}"
           exit 1
