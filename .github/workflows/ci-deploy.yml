@@ -32,6 +32,15 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      - name: Delete any stale untrafficked candidate revisions from prior runs
+        run: |
+          gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json \
+            | jq -r '.status.traffic[] | select((.percent // 0) == 0) | .revisionName' \
+            | while read -r rev; do
+                echo "Deleting stale untrafficked revision: ${rev}"
+                gcloud run revisions delete "${rev}" --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet || echo "::warning::Could not delete ${rev} (may still be the latest-created revision — will retry next run)"
+              done
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev
 
