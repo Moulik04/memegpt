@@ -106,21 +106,27 @@ jobs:
           # `terraform apply` that touches this service strips that data on
           # every apply. `revisionName`/`percent` inside the same traffic
           # list are NOT affected by that bug, so this is safe to read.
-          # KEEP is every revision that must never be deleted: anything
-          # currently receiving traffic, whatever's most-recently-created
-          # (Cloud Run refuses to delete that one anyway, but this also
-          # spares it a doomed delete attempt), and whatever's most-recently
-          # -ready (covers a just-created --no-traffic candidate that
-          # hasn't been promoted, e.g. this run's own candidate on a
-          # smoke-test failure, or a prior run's still-latest-created
-          # orphan). If this comes back empty — describe/jq failed, or the
-          # service has no revisions at all — abort rather than treat an
-          # empty KEEP set as "nothing to protect": that emptiness is
-          # exactly the failure mode that would otherwise point
-          # `gcloud run revisions delete` at every revision, including the
-          # one serving live traffic.
-          DESC=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json)
-          KEEP=$(echo "${DESC}" | jq -r '[.status.traffic[].revisionName, .status.latestCreatedRevisionName, .status.latestReadyRevisionName] | .[] | select(. != null)' | sort -u)
+          # KEEP is every revision that must never be deleted: whatever is
+          # ACTUALLY carrying nonzero traffic right now (not just tagged —
+          # `gcloud run deploy --tag` is purely additive, so a smoke-test
+          # failure's untrafficked, 0%-traffic tag entry stays in
+          # .status.traffic[] indefinitely across consecutive failed runs;
+          # counting it here would mean a stale orphan never becomes
+          # deletable at all once a second failure lands), whatever's
+          # most-recently-created (Cloud Run refuses to delete that one
+          # anyway, but this also spares it a doomed delete attempt), and
+          # whatever's most-recently-ready (covers a just-created
+          # --no-traffic candidate that hasn't been promoted, e.g. THIS
+          # run's own candidate on a smoke-test failure). If this comes
+          # back empty — describe/jq failed, or the service has no
+          # revisions at all — abort rather than treat an empty KEEP set
+          # as "nothing to protect": that emptiness is exactly the failure
+          # mode that would otherwise point `gcloud run revisions delete`
+          # at every revision, including the one serving live traffic.
+          DESC=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json) \
+            || { echo "::error::Could not fetch service state — aborting the sweep without deleting anything."; exit 1; }
+          KEEP=$(echo "${DESC}" | jq -r '[(.status.traffic[] | select((.percent // 0) > 0) | .revisionName), .status.latestCreatedRevisionName, .status.latestReadyRevisionName] | .[] | select(. != null)' | sort -u) \
+            || { echo "::error::Could not parse service state — aborting the sweep without deleting anything."; exit 1; }
           if [ -z "${KEEP}" ]; then
             echo "::error::Could not determine which revisions to keep — aborting the sweep without deleting anything."
             exit 1
