@@ -8,16 +8,18 @@ name: CI (deploy)
 # nothing to "roll back." Cloud Run refuses to delete a service's
 # most-recently-created revision regardless of traffic share, so a failed
 # candidate can't be cleaned up in the same run — but it's a live,
-# secret-bearing, publicly-invokable endpoint (this repo is public, and its
-# tag is derived from the commit SHA), so leaving it up isn't just harmless
-# clutter. The job's LAST step (which always runs, success or failure)
-# sweeps and deletes any untrafficked revision that isn't THIS run's own
-# candidate — by the time it runs, this run has already created its own
-# newer revision, so any leftover from a PRIOR run is no longer the
-# most-recently-created one and can finally be deleted. (The sweep must
-# run after this run's own deploy step, and must exclude this run's own
-# tag, or it would try — and fail — to delete its own just-created
-# candidate on every single run.)
+# secret-bearing, publicly-invokable endpoint (this repo is public, so its
+# tag, derived from the commit SHA, is trivially guessable), so leaving it
+# up isn't just harmless clutter. The job's LAST step (which always runs,
+# success or failure) deletes every revision for this service except
+# whichever one `status.latestReadyRevision` names — by the time it runs,
+# this run has already created and (if the smoke test passed) promoted its
+# own newer revision, so any leftover from a PRIOR run is no longer
+# latest-created and can finally be deleted. It intentionally does NOT use
+# the traffic list's tag/url data to identify candidates — `terraform
+# apply` strips that data on every apply (a known terraform-provider-google
+# issue), which silently blinded an earlier version of this sweep on every
+# successful run.
 
 on:
   push:
@@ -99,9 +101,21 @@ jobs:
         if: always()
         continue-on-error: true # best-effort cleanup — must never flip an otherwise-successful deploy to failed
         run: |
-          gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json \
-            | jq -r --arg CURRENT "${{ steps.candidate.outputs.tag }}" '.status.traffic[] | select((.percent // 0) == 0 and .tag != $CURRENT) | .revisionName' \
+          # Deliberately NOT based on `.status.traffic[]`'s tag data — a real,
+          # documented terraform-provider-google issue (#8654) means a
+          # `terraform apply` that touches this service strips tag/url info
+          # from the traffic list on every apply, which silently made an
+          # earlier version of this step blind to real orphans on every
+          # successful run. `status.latestReadyRevision` doesn't have that
+          # problem (a plain top-level field, not part of the traffic list),
+          # so it's the only thing this step trusts to identify what must
+          # survive; every other revision that exists for this service is a
+          # deletion candidate.
+          SERVING=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(status.latestReadyRevision)")
+          gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(name)" \
             | while read -r rev; do
-                echo "Deleting stale untrafficked revision: ${rev}"
-                gcloud run revisions delete "${rev}" --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet || echo "::warning::Could not delete ${rev} (may still be the latest-created revision — will retry next run)"
+                if [ "${rev}" != "${SERVING}" ]; then
+                  echo "Deleting non-serving revision: ${rev}"
+                  gcloud run revisions delete "${rev}" --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet || echo "::warning::Could not delete ${rev} (may still be the latest-created revision — will retry next run)"
+                fi
               done
