@@ -10,7 +10,6 @@ silent pass-through.
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from config import Settings
 from nlp.text_moderation import ModerationResult, moderate_text

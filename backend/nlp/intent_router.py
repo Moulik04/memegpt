@@ -414,7 +414,7 @@ async def parse_intent(
             ),
             timeout=_OVERALL_TIMEOUT_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         return IntentResponse(
             template_id="hide_the_pain_harold",
             texts={

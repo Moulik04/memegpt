@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import json
 
-import db
 from httpx import ASGITransport, AsyncClient
+
+import db
 from main import app
 from nlp.text_moderation import ModerationResult
 from schemas import IntentResponse

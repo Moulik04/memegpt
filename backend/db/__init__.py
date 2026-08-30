@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from db.pool import get_pool
@@ -39,7 +39,7 @@ async def insert_meme(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (id) DO NOTHING
         """,
-        meme_id, url, template_id, mode, anon_user_id, surface, user_id, datetime.now(timezone.utc),
+        meme_id, url, template_id, mode, anon_user_id, surface, user_id, datetime.now(UTC),
     )
 
 
@@ -59,7 +59,7 @@ async def insert_feedback(
         INSERT INTO feedback (meme_id, rating, conversation_id, anon_user_id, template_id, user_id, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         """,
-        meme_id, rating, conversation_id, anon_user_id, template_id, user_id, datetime.now(timezone.utc),
+        meme_id, rating, conversation_id, anon_user_id, template_id, user_id, datetime.now(UTC),
     )
 
 
@@ -84,7 +84,7 @@ async def insert_few_shot_example(
             template_id = EXCLUDED.template_id,
             texts = EXCLUDED.texts
         """,
-        example_id, user_message, template_id, json.dumps(texts), datetime.now(timezone.utc),
+        example_id, user_message, template_id, json.dumps(texts), datetime.now(UTC),
     )
 
 
@@ -312,7 +312,7 @@ async def upsert_lexicon(
             user_id = COALESCE(EXCLUDED.user_id, lore_lexicon.user_id),
             updated_at = EXCLUDED.updated_at
         """,
-        anon_user_id, json.dumps(merged), user_id, datetime.now(timezone.utc),
+        anon_user_id, json.dumps(merged), user_id, datetime.now(UTC),
     )
 
 
@@ -330,7 +330,7 @@ async def insert_lexicon_terms(user_id: str, conversation_id: str | None, terms:
     pool = await get_pool()
     if pool is None or not terms:
         return
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     await pool.executemany(
         "INSERT INTO lore_lexicon_terms (user_id, conversation_id, term, created_at) VALUES ($1, $2, $3, $4)",
         [(user_id, conversation_id, term, now) for term in terms],
@@ -777,7 +777,7 @@ async def insert_message(
     pool = await get_pool()
     if pool is None:
         return
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with pool.acquire() as conn:
         async with conn.transaction():
             await conn.execute(
@@ -815,7 +815,7 @@ async def rename_conversation(conversation_id: str, user_id: str, title: str) ->
         return False
     status = await pool.execute(
         "UPDATE conversations SET title = $3, updated_at = $4 WHERE id = $1 AND user_id = $2",
-        conversation_id, user_id, title, datetime.now(timezone.utc),
+        conversation_id, user_id, title, datetime.now(UTC),
     )
     return _affected_row_count(status) > 0
 
@@ -891,7 +891,7 @@ async def unwind_conversation_contribution(conversation_id: str, user_id: str) -
             terms = _dedupe_case_insensitive([r["term"] for r in remaining], _LEXICON_MAX_TERMS)
             await conn.execute(
                 "UPDATE lore_lexicon SET terms = $2::jsonb, updated_at = $3 WHERE user_id = $1",
-                user_id, json.dumps(terms), datetime.now(timezone.utc),
+                user_id, json.dumps(terms), datetime.now(UTC),
             )
 
             status = await conn.execute(

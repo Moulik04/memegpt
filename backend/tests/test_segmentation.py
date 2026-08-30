@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 import nlp.segmentation as segmentation
 from nlp.segmentation import resolve_contexts, segment_contexts
 from schemas import SegmentedContext

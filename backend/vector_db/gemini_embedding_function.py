@@ -212,7 +212,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
         return {"model_name": self.model_name, "api_key_env_var": self.api_key_env_var}
 
     @staticmethod
-    def build_from_config(config: dict[str, Any]) -> "GeminiEmbeddingFunction":
+    def build_from_config(config: dict[str, Any]) -> GeminiEmbeddingFunction:
         model_name = config.get("model_name", "gemini-embedding-2")
         api_key_env_var = config.get("api_key_env_var", "GEMINI_API_KEY")
         api_key = os.getenv(api_key_env_var)

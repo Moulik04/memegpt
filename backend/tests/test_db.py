@@ -9,7 +9,7 @@ issued with the right arguments when a pool is available.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import db
 
@@ -49,10 +49,10 @@ class _AcquireCM:
     identically whether a test goes through pool.execute() directly or the
     conn.transaction() path (delete_anon_user_data, migrate_anon_data_to_user)."""
 
-    def __init__(self, pool: "FakePool"):
+    def __init__(self, pool: FakePool):
         self.pool = pool
 
-    async def __aenter__(self) -> "FakeConn":
+    async def __aenter__(self) -> FakeConn:
         return FakeConn(self.pool)
 
     async def __aexit__(self, *exc_info):
@@ -60,7 +60,7 @@ class _AcquireCM:
 
 
 class FakeConn:
-    def __init__(self, pool: "FakePool"):
+    def __init__(self, pool: FakePool):
         self.pool = pool
 
     async def execute(self, query, *args):
@@ -409,7 +409,7 @@ async def test_fetch_conversations_filters_by_surface(monkeypatch):
 
 async def test_fetch_conversations_returns_rows(monkeypatch):
     fake_pool = FakePool()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fake_pool.fetch_return = [
         {
             "id": "conv-1", "title": "hello", "surface": "chat", "created_at": now, "updated_at": now,
@@ -457,7 +457,7 @@ async def test_fetch_messages_none_when_not_owned(monkeypatch):
 async def test_fetch_messages_returns_rows_when_owned(monkeypatch):
     fake_pool = FakePool()
     fake_pool.fetchrow_return = {"user_id": "user-1"}
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fake_pool.fetch_return = [
         {"id": "msg-1", "role": "user", "content": "hi", "meme_url": None, "meme_id": None, "created_at": now},
     ]
@@ -547,7 +547,7 @@ async def test_delete_conversation_true_when_owned(monkeypatch):
 
 async def test_fetch_conversation_returns_owned_row(monkeypatch):
     fake_pool = FakePool()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fake_pool.fetchrow_return = {
         "id": "conv-1", "title": "hi", "surface": "chat", "created_at": now, "updated_at": now,
         "thumbnail_url": None,

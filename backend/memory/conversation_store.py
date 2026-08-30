@@ -11,7 +11,7 @@ on the event loop). Capped at 20 turns per conversation to prevent unbounded gro
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 _store: dict[str, list[dict]] = defaultdict(list)
 _MAX_TURNS = 20
@@ -21,7 +21,7 @@ def add_turn(conversation_id: str, template_id: str) -> None:
     turns = _store[conversation_id]
     turns.append({
         "template_id": template_id,
-        "ts": datetime.now(tz=timezone.utc).isoformat(),
+        "ts": datetime.now(tz=UTC).isoformat(),
     })
     if len(turns) > _MAX_TURNS:
         _store[conversation_id] = turns[-_MAX_TURNS:]

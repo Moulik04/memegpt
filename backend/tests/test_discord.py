@@ -8,9 +8,10 @@ without a real LLM, renderer, Worker, or Discord API.
 
 from __future__ import annotations
 
+from httpx import ASGITransport, AsyncClient
+
 import db
 from config import Settings
-from httpx import ASGITransport, AsyncClient
 from main import app
 from schemas import IntentResponse
 from storage import SavedMeme

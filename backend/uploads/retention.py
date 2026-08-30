@@ -16,8 +16,8 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from config import get_settings
 

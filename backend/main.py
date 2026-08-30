@@ -1,4 +1,5 @@
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,8 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-
-import json
 
 from config import get_settings
 from nlp.intent_router import USE_WHEN
@@ -36,7 +35,8 @@ from vector_db.chroma_client import (
     upsert_templates_batch,
     upsert_templates_batch_with_embeddings,
 )
-from vector_db.examples_store import _get_collection as _init_examples, seed_examples
+from vector_db.examples_store import _get_collection as _init_examples
+from vector_db.examples_store import seed_examples
 
 settings = get_settings()
 

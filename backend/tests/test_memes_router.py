@@ -9,8 +9,9 @@ than erroring.
 
 from __future__ import annotations
 
-import db
 from httpx import ASGITransport, AsyncClient
+
+import db
 from main import app
 
 
