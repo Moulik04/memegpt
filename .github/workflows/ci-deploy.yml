@@ -10,9 +10,14 @@ name: CI (deploy)
 # candidate can't be cleaned up in the same run — but it's a live,
 # secret-bearing, publicly-invokable endpoint (this repo is public, and its
 # tag is derived from the commit SHA), so leaving it up isn't just harmless
-# clutter. Each run's first step sweeps and deletes any untrafficked
-# revision left over from a prior run, once it's no longer the
-# most-recently-created one.
+# clutter. The job's LAST step (which always runs, success or failure)
+# sweeps and deletes any untrafficked revision that isn't THIS run's own
+# candidate — by the time it runs, this run has already created its own
+# newer revision, so any leftover from a PRIOR run is no longer the
+# most-recently-created one and can finally be deleted. (The sweep must
+# run after this run's own deploy step, and must exclude this run's own
+# tag, or it would try — and fail — to delete its own just-created
+# candidate on every single run.)
 
 on:
   push:
@@ -35,15 +40,6 @@ jobs:
           service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
 
       - uses: google-github-actions/setup-gcloud@v2
-
-      - name: Delete any stale untrafficked candidate revisions from prior runs
-        run: |
-          gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json \
-            | jq -r '.status.traffic[] | select((.percent // 0) == 0) | .revisionName' \
-            | while read -r rev; do
-                echo "Deleting stale untrafficked revision: ${rev}"
-                gcloud run revisions delete "${rev}" --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet || echo "::warning::Could not delete ${rev} (may still be the latest-created revision — will retry next run)"
-              done
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev
@@ -96,5 +92,16 @@ jobs:
       - name: Smoke test failed — report and stop (candidate never promoted)
         if: failure() && steps.candidate.outcome == 'success'
         run: |
-          echo "::error::Smoke test failed against candidate revision (tag: ${{ steps.candidate.outputs.tag }}, url: ${{ steps.candidate.outputs.url }}). It was never promoted — live traffic is unaffected (still served by the previous revision). The untrafficked candidate revision can't be deleted this run (Cloud Run refuses to delete a service's most-recently-created revision), but it's still a live, publicly-invokable endpoint — it will be automatically deleted by this same step on the next push to main; to remove it sooner, inspect and delete manually: gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }}"
+          echo "::error::Smoke test failed against candidate revision (tag: ${{ steps.candidate.outputs.tag }}, url: ${{ steps.candidate.outputs.url }}). It was never promoted — live traffic is unaffected (still served by the previous revision). The untrafficked candidate revision can't be deleted this run (Cloud Run refuses to delete a service's most-recently-created revision), but it's still a live, publicly-invokable endpoint — it will be automatically deleted by the next push's cleanup sweep; to remove it sooner, inspect and delete manually: gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }}"
           exit 1
+
+      - name: Delete stale untrafficked candidate revisions from prior runs
+        if: always()
+        continue-on-error: true # best-effort cleanup — must never flip an otherwise-successful deploy to failed
+        run: |
+          gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json \
+            | jq -r --arg CURRENT "${{ steps.candidate.outputs.tag }}" '.status.traffic[] | select((.percent // 0) == 0 and .tag != $CURRENT) | .revisionName' \
+            | while read -r rev; do
+                echo "Deleting stale untrafficked revision: ${rev}"
+                gcloud run revisions delete "${rev}" --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet || echo "::warning::Could not delete ${rev} (may still be the latest-created revision — will retry next run)"
+              done
