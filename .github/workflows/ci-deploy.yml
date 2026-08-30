@@ -12,14 +12,13 @@ name: CI (deploy)
 # tag, derived from the commit SHA, is trivially guessable), so leaving it
 # up isn't just harmless clutter. The job's LAST step (which always runs,
 # success or failure) deletes every revision for this service except
-# whichever one `status.latestReadyRevision` names — by the time it runs,
-# this run has already created and (if the smoke test passed) promoted its
-# own newer revision, so any leftover from a PRIOR run is no longer
-# latest-created and can finally be deleted. It intentionally does NOT use
-# the traffic list's tag/url data to identify candidates — `terraform
-# apply` strips that data on every apply (a known terraform-provider-google
-# issue), which silently blinded an earlier version of this sweep on every
-# successful run.
+# whichever ones are currently serving traffic, most-recently-created, or
+# most-recently-ready — by the time it runs, this run has already created
+# (and, if the smoke test passed, promoted) its own revision, so any
+# leftover from a PRIOR run no longer qualifies for any of those three and
+# can finally be deleted. It aborts rather than deletes anything if it
+# can't positively determine what to keep — see the step's own comment for
+# why an empty result must never be treated as "nothing to protect."
 
 on:
   push:
@@ -101,21 +100,35 @@ jobs:
         if: always()
         continue-on-error: true # best-effort cleanup — must never flip an otherwise-successful deploy to failed
         run: |
-          # Deliberately NOT based on `.status.traffic[]`'s tag data — a real,
-          # documented terraform-provider-google issue (#8654) means a
-          # `terraform apply` that touches this service strips tag/url info
-          # from the traffic list on every apply, which silently made an
-          # earlier version of this step blind to real orphans on every
-          # successful run. `status.latestReadyRevision` doesn't have that
-          # problem (a plain top-level field, not part of the traffic list),
-          # so it's the only thing this step trusts to identify what must
-          # survive; every other revision that exists for this service is a
-          # deletion candidate.
-          SERVING=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(status.latestReadyRevision)")
+          set -euo pipefail
+          # Deliberately NOT based on `.status.traffic[]`'s tag/url data — a
+          # real, documented terraform-provider-google issue (#8654) means a
+          # `terraform apply` that touches this service strips that data on
+          # every apply. `revisionName`/`percent` inside the same traffic
+          # list are NOT affected by that bug, so this is safe to read.
+          # KEEP is every revision that must never be deleted: anything
+          # currently receiving traffic, whatever's most-recently-created
+          # (Cloud Run refuses to delete that one anyway, but this also
+          # spares it a doomed delete attempt), and whatever's most-recently
+          # -ready (covers a just-created --no-traffic candidate that
+          # hasn't been promoted, e.g. this run's own candidate on a
+          # smoke-test failure, or a prior run's still-latest-created
+          # orphan). If this comes back empty — describe/jq failed, or the
+          # service has no revisions at all — abort rather than treat an
+          # empty KEEP set as "nothing to protect": that emptiness is
+          # exactly the failure mode that would otherwise point
+          # `gcloud run revisions delete` at every revision, including the
+          # one serving live traffic.
+          DESC=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format=json)
+          KEEP=$(echo "${DESC}" | jq -r '[.status.traffic[].revisionName, .status.latestCreatedRevisionName, .status.latestReadyRevisionName] | .[] | select(. != null)' | sort -u)
+          if [ -z "${KEEP}" ]; then
+            echo "::error::Could not determine which revisions to keep — aborting the sweep without deleting anything."
+            exit 1
+          fi
           gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(name)" \
             | while read -r rev; do
-                if [ "${rev}" != "${SERVING}" ]; then
-                  echo "Deleting non-serving revision: ${rev}"
+                if ! grep -qxF "${rev}" <<< "${KEEP}"; then
+                  echo "Deleting stale revision: ${rev}"
                   gcloud run revisions delete "${rev}" --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet || echo "::warning::Could not delete ${rev} (may still be the latest-created revision — will retry next run)"
                 fi
               done
