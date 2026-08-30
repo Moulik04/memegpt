@@ -7,6 +7,8 @@ locals {
     "logging.googleapis.com",
     "iam.googleapis.com",
     "cloudresourcemanager.googleapis.com",
+    "iamcredentials.googleapis.com", # NEW — needed for WIF's short-lived credential exchange
+    "sts.googleapis.com",            # NEW — Security Token Service, WIF's OIDC token exchange
   ]
 }
 
