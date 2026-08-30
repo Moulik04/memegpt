@@ -17,3 +17,13 @@ output "cloud_run_url" {
   description = "Live URL of the Cloud Run backend service."
   value       = google_cloud_run_v2_service.backend.uri
 }
+
+output "wif_provider_name" {
+  description = "Full WIF provider resource name — used as GitHub Actions' workload_identity_provider input."
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
+
+output "ci_service_account_email" {
+  description = "CI deploy service account email — used as GitHub Actions' service_account input."
+  value       = google_service_account.ci_deploy.email
+}
