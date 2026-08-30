@@ -1,0 +1,86 @@
+name: CI (deploy)
+
+# On every push to main: build, push to Artifact Registry, deploy a
+# candidate revision with ZERO live traffic, smoke-test that candidate's
+# own dedicated URL, and only promote it to 100% traffic (via `terraform
+# apply`) if the smoke test passes. A failed smoke test deletes the
+# candidate and stops — the live service was never touched, so there is
+# nothing to "roll back."
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev
+
+      - name: Build and push
+        id: push
+        run: |
+          IMAGE="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_SERVICE_NAME }}/${{ vars.GCP_SERVICE_NAME }}"
+          TAG="sha-${GITHUB_SHA::7}"
+          docker build -t "${IMAGE}:${TAG}" -f backend/Dockerfile .
+          docker push "${IMAGE}:${TAG}"
+          DIGEST=$(gcloud artifacts docker images describe "${IMAGE}:${TAG}" --format="value(image_summary.digest)" | sed 's/^sha256://')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy candidate revision (no traffic)
+        id: candidate
+        run: |
+          TAG="ci-${GITHUB_SHA::7}"
+          gcloud run deploy ${{ vars.GCP_SERVICE_NAME }} \
+            --project=${{ vars.GCP_PROJECT_ID }} \
+            --region=${{ vars.GCP_REGION }} \
+            --image="${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GCP_SERVICE_NAME }}/${{ vars.GCP_SERVICE_NAME }}@sha256:${{ steps.push.outputs.digest }}" \
+            --no-traffic \
+            --tag="${TAG}" \
+            --quiet
+          URL=$(gcloud run services describe ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(status.traffic[?tag=='${TAG}'].url)" | tr -d "[]'")
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test the candidate (NOT the live URL)
+        id: smoke
+        run: |
+          set -e
+          curl -sf "${{ steps.candidate.outputs.url }}/health"
+          curl -sf "${{ steps.candidate.outputs.url }}/docs" -o /dev/null
+
+      - uses: hashicorp/setup-terraform@v3
+        if: success()
+
+      - name: Promote via terraform apply
+        if: success()
+        working-directory: terraform
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_cloud_run_image_digest: ${{ steps.push.outputs.digest }}
+        run: |
+          terraform init -backend-config="bucket=${{ vars.GCP_PROJECT_ID }}-tfstate" -backend-config="prefix=memegpt-backend"
+          terraform apply -auto-approve
+
+      - name: Smoke test failed — delete the untrafficked candidate
+        if: failure() && steps.candidate.outcome == 'success'
+        run: |
+          gcloud run revisions delete "$(gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --filter="metadata.labels.'run.googleapis.com/tag'=${{ steps.candidate.outputs.tag }}" --format="value(name)")" \
+            --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --quiet
+          echo "::error::Smoke test failed against the candidate revision — it was never promoted, live traffic is unaffected. Candidate revision deleted."
+          exit 1
