@@ -5,10 +5,14 @@ name: CI (deploy)
 # own dedicated URL, and only promote it to 100% traffic (via `terraform
 # apply`) if the smoke test passes. A failed smoke test reports the
 # failure and stops — the live service was never touched, so there is
-# nothing to "roll back." The untrafficked candidate revision is left in
-# place (Cloud Run refuses to delete a service's most-recently-created
-# revision regardless of traffic share, and idle revisions cost nothing) —
-# clean it up manually if desired.
+# nothing to "roll back." Cloud Run refuses to delete a service's
+# most-recently-created revision regardless of traffic share, so a failed
+# candidate can't be cleaned up in the same run — but it's a live,
+# secret-bearing, publicly-invokable endpoint (this repo is public, and its
+# tag is derived from the commit SHA), so leaving it up isn't just harmless
+# clutter. Each run's first step sweeps and deletes any untrafficked
+# revision left over from a prior run, once it's no longer the
+# most-recently-created one.
 
 on:
   push:
@@ -92,5 +96,5 @@ jobs:
       - name: Smoke test failed — report and stop (candidate never promoted)
         if: failure() && steps.candidate.outcome == 'success'
         run: |
-          echo "::error::Smoke test failed against candidate revision (tag: ${{ steps.candidate.outputs.tag }}, url: ${{ steps.candidate.outputs.url }}). It was never promoted — live traffic is unaffected (still served by the previous revision). The untrafficked candidate revision was left in place (Cloud Run refuses to delete the most-recently-created revision of a service regardless of traffic share, and it costs nothing to leave idle) — inspect or manually clean it up if desired: gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }}"
+          echo "::error::Smoke test failed against candidate revision (tag: ${{ steps.candidate.outputs.tag }}, url: ${{ steps.candidate.outputs.url }}). It was never promoted — live traffic is unaffected (still served by the previous revision). The untrafficked candidate revision can't be deleted this run (Cloud Run refuses to delete a service's most-recently-created revision), but it's still a live, publicly-invokable endpoint — it will be automatically deleted by this same step on the next push to main; to remove it sooner, inspect and delete manually: gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }}"
           exit 1
