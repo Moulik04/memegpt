@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Literal, Optional
 import uuid
+from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # Core meme-template primitives
@@ -41,7 +40,7 @@ class MemeTemplate(BaseModel):
     image_path: str  # relative to backend/templates/
     text_boxes: list[TextBox]
     tags: list[str] = []
-    description: Optional[str] = None
+    description: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     # Lightweight usage history — each entry is {ts, top_text, bottom_text, conversation_id}
@@ -55,8 +54,8 @@ class MemeTemplate(BaseModel):
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
-    meme_url: Optional[str] = None  # populated on assistant turns
-    meme_id: Optional[str] = None  # Growth Phase B — links feedback to a durable memes row
+    meme_url: str | None = None  # populated on assistant turns
+    meme_id: str | None = None  # Growth Phase B — links feedback to a durable memes row
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -65,7 +64,7 @@ class ChatRequest(BaseModel):
     surface. No meme-count override, no Lore lexicon: Chat always auto-detects.
     Lore's extra controls live on LoreRequest, not here."""
     message: str
-    conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+    conversation_id: str | None = Field(default_factory=lambda: str(uuid.uuid4()))
     # A server-generated conversations.id (from POST /conversations),
     # deliberately separate from conversation_id above: that field has no
     # server-side ownership registry (any client can send any string), so
@@ -73,7 +72,7 @@ class ChatRequest(BaseModel):
     # None for anonymous use or a signed-in turn with no active persisted
     # chat — routers/chat.py only ever writes messages when this AND a
     # verified user_id are both present and ownership-checked.
-    conversation_row_id: Optional[str] = None
+    conversation_row_id: str | None = None
 
 
 class LoreRequest(BaseModel):
@@ -82,17 +81,17 @@ class LoreRequest(BaseModel):
     segmentation/batch/SSE core as Chat; the difference is these two fields
     plus the surface stamp ("lore") the endpoint applies."""
     message: str
-    conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
-    meme_count: Optional[int] = None  # explicit override — forces exactly N memes, clamped to
+    conversation_id: str | None = Field(default_factory=lambda: str(uuid.uuid4()))
+    meme_count: int | None = None  # explicit override — forces exactly N memes, clamped to
                                        # settings.max_memes_per_request; None = auto-detect
     remember_lore: bool = False  # Growth Phase C — strictly opt-in Lore lexicon; see nlp/lexicon.py
-    conversation_row_id: Optional[str] = None  # Growth Phase H, Stage 3 — see ChatRequest's field
+    conversation_row_id: str | None = None  # Growth Phase H, Stage 3 — see ChatRequest's field
 
 
 class ChatResponse(BaseModel):
     conversation_id: str
     message: ChatMessage
-    template_used: Optional[str] = None  # template_id for attribution
+    template_used: str | None = None  # template_id for attribution
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +103,7 @@ class IntentResponse(BaseModel):
 
     template_id: str
     texts: dict[str, str]   # text_box_label → caption, e.g. {"rejected_option": "..."}
-    reasoning: Optional[str] = None
+    reasoning: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -117,8 +116,8 @@ class VisionDescription(BaseModel):
     fed straight into the existing parse_intent() as the user_message."""
 
     situation: str
-    tone: Optional[str] = None           # reserved for future structured use
-    visible_text: Optional[str] = None   # reserved for future structured use
+    tone: str | None = None           # reserved for future structured use
+    visible_text: str | None = None   # reserved for future structured use
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +162,8 @@ class WhoAmIResponse(BaseModel):
     unconfigured, no bearer token was sent, or the token didn't verify.
     Never distinguishes those cases from each other in the response."""
 
-    user_id: Optional[str] = None
-    email: Optional[str] = None
+    user_id: str | None = None
+    email: str | None = None
 
 
 class LinkAnonResponse(BaseModel):
@@ -187,11 +186,11 @@ class ConversationSummary(BaseModel):
     with no memes yet, not an error."""
 
     id: str
-    title: Optional[str] = None
+    title: str | None = None
     surface: str
     created_at: datetime
     updated_at: datetime
-    thumbnail_url: Optional[str] = None
+    thumbnail_url: str | None = None
 
 
 class MessageOut(BaseModel):
@@ -205,8 +204,8 @@ class MessageOut(BaseModel):
     id: str
     role: Literal["user", "assistant"]
     content: str
-    meme_url: Optional[str] = None
-    meme_id: Optional[str] = None
+    meme_url: str | None = None
+    meme_id: str | None = None
     created_at: datetime
 
 
@@ -244,7 +243,7 @@ class MemeGenerationResponse(BaseModel):
 
 class ExplainRequest(BaseModel):
     template_id: str
-    conversation_id: Optional[str] = None
+    conversation_id: str | None = None
 
 
 class TextBoxInfo(BaseModel):
@@ -269,7 +268,7 @@ class ExplainResponse(BaseModel):
     # catalog, a filesystem existence check for the extension), cheap
     # enough that a template picked from the grid never needs a second
     # round-trip to learn its caption fields.
-    image_url: Optional[str] = None
+    image_url: str | None = None
     text_boxes: list[TextBoxInfo] = []
 
 
@@ -281,9 +280,9 @@ class FeedbackRequest(BaseModel):
     template_id: str
     rating: Literal["up", "down"]
     texts: dict[str, str] = {}
-    conversation_id: Optional[str] = None
-    user_message: Optional[str] = None  # used to create positive few-shot example on 👍
-    meme_id: Optional[str] = None  # Growth Phase B — links this rating to a durable memes row
+    conversation_id: str | None = None
+    user_message: str | None = None  # used to create positive few-shot example on 👍
+    meme_id: str | None = None  # Growth Phase B — links this rating to a durable memes row
 
 
 class FeedbackResponse(BaseModel):
@@ -302,7 +301,7 @@ class SharedMemeResponse(BaseModel):
     this is reachable only via a specific, unguessable id."""
 
     url: str
-    template_name: Optional[str] = None
+    template_name: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -322,7 +321,7 @@ class ArcTemplate(BaseModel):
     display_name: str
     count: int
     roast: str
-    image_url: Optional[str] = None
+    image_url: str | None = None
 
 
 class ArcStats(BaseModel):
@@ -333,21 +332,21 @@ class ArcStats(BaseModel):
 
     has_enough: bool = False
     total_memes: int = 0
-    date_span_start: Optional[str] = None  # ISO date, e.g. "2026-06-04"
-    date_span_end: Optional[str] = None
-    period_label: Optional[str] = None  # e.g. "Summer Arc" or "Your Arc"
+    date_span_start: str | None = None  # ISO date, e.g. "2026-06-04"
+    date_span_end: str | None = None
+    period_label: str | None = None  # e.g. "Summer Arc" or "Your Arc"
     aura: int = 0
-    tier: Optional[str] = None  # e.g. "main character (unwell)"
+    tier: str | None = None  # e.g. "main character (unwell)"
     top_templates: list[ArcTemplate] = []
-    busiest_date: Optional[str] = None  # ISO date
-    busiest_time_label: Optional[str] = None  # e.g. "2:14 AM", in the caller's tz
-    hour_roast: Optional[str] = None
+    busiest_date: str | None = None  # ISO date
+    busiest_time_label: str | None = None  # e.g. "2:14 AM", in the caller's tz
+    hour_roast: str | None = None
     chat_count: int = 0
     lore_count: int = 0
     make_count: int = 0
-    split_roast: Optional[str] = None
+    split_roast: str | None = None
     longest_streak_days: int = 0
-    verdict: Optional[str] = None  # the closing line, e.g. "Character development: none detected. Arc continues."
+    verdict: str | None = None  # the closing line, e.g. "Character development: none detected. Arc continues."
 
 
 class ArcCardResponse(BaseModel):
@@ -374,4 +373,4 @@ class DiscordGenerateRequest(BaseModel):
 
 class DiscordGenerateResponse(BaseModel):
     meme_url: str
-    template_id: Optional[str] = None
+    template_id: str | None = None

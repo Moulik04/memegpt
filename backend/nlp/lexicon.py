@@ -90,7 +90,7 @@ async def extract_lexicon(text: str) -> list[str]:
         data = json.loads(raw)
         parsed = LexiconExtractionResponse(**data)
         return _clean_terms(parsed.terms)
-    except (json.JSONDecodeError, ValidationError, ValueError, KeyError, httpx.HTTPError, asyncio.TimeoutError):
+    except (TimeoutError, json.JSONDecodeError, ValidationError, ValueError, KeyError, httpx.HTTPError):
         return []
     except Exception:
         # Broad on purpose, matching segment_contexts()'s precedent — this

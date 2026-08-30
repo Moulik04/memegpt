@@ -8,7 +8,7 @@ dependency without a real Supabase call.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from httpx import ASGITransport, AsyncClient
 
@@ -64,7 +64,7 @@ async def test_list_conversations_empty_when_unauthenticated(monkeypatch):
 
 async def test_list_conversations_returns_rows(monkeypatch):
     _mock_verified_user(monkeypatch, "user-1")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async def fake_fetch_conversations(user_id, surface=None, limit=50):
         assert user_id == "user-1"
@@ -146,7 +146,7 @@ async def test_get_messages_404_when_not_found_or_not_owned(monkeypatch):
 
 async def test_get_messages_returns_list(monkeypatch):
     _mock_verified_user(monkeypatch, "user-1")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async def fake_fetch_messages(conversation_id, user_id):
         assert conversation_id == "conv-1"
@@ -189,7 +189,7 @@ async def test_rename_conversation_404_when_not_found(monkeypatch):
 
 async def test_rename_conversation_success(monkeypatch):
     _mock_verified_user(monkeypatch, "user-1")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async def fake_rename(conversation_id, user_id, title):
         assert title == "New title"

@@ -6,11 +6,12 @@ behavior with no DATABASE_URL configured (the default test environment).
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
+
+from httpx import ASGITransport, AsyncClient
 
 from arc.copy import _compute_aura, _split_roast, _tier_for_aura, build_arc_stats
 from db import RawArcStats, _longest_streak
-from httpx import ASGITransport, AsyncClient
 from main import app
 
 
@@ -100,7 +101,7 @@ def test_build_arc_stats_enough_data_populates_everything():
         first_date=date(2026, 6, 1),
         last_date=date(2026, 8, 20),
         busiest_date=date(2026, 7, 12),
-        busiest_sample_ts=datetime(2026, 7, 12, 2, 14, tzinfo=timezone.utc),
+        busiest_sample_ts=datetime(2026, 7, 12, 2, 14, tzinfo=UTC),
         longest_streak_days=9,
     )
     stats = build_arc_stats(raw, tz="UTC")

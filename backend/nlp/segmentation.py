@@ -22,7 +22,6 @@ import asyncio
 import json
 
 import httpx
-from pydantic import ValidationError
 
 from config import get_settings
 from nlp.llm_client import call_llm, strip_markdown

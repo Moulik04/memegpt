@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import string
 
-from config import Settings
 import storage
+from config import Settings
 
 
 def _fake_settings(monkeypatch, **overrides):

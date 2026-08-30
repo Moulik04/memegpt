@@ -17,7 +17,7 @@ zero-cost local dev path.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -200,7 +200,7 @@ def log_usage(
     meta = result["metadatas"][0]
     recent: list[dict[str, Any]] = json.loads(meta.get("recent_uses", "[]"))
     recent.insert(0, {
-        "ts": datetime.now(tz=timezone.utc).isoformat(),
+        "ts": datetime.now(tz=UTC).isoformat(),
         "top_text": top_text,
         "bottom_text": bottom_text,
         "conversation_id": conversation_id,

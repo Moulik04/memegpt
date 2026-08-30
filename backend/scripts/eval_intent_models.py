@@ -23,7 +23,7 @@ import httpx
 from pydantic import ValidationError
 
 from config import Settings, get_settings
-from nlp.intent_router import _build_template_catalog, _normalize_llm_response, _CORE_TEMPLATE_IDS
+from nlp.intent_router import _CORE_TEMPLATE_IDS, _build_template_catalog, _normalize_llm_response
 from nlp.llm_client import call_groq, strip_markdown
 from schemas import IntentResponse
 from vector_db.chroma_client import list_template_ids, query_similar_memes
@@ -153,7 +153,7 @@ async def main() -> None:
         print(f"  Template diversity (unique/total): {diversity:.2f}")
         failures = [r for r in rows if not r["ok"]]
         if failures:
-            print(f"  Failures:")
+            print("  Failures:")
             for f in failures:
                 print(f"    - {f['error']}")
 

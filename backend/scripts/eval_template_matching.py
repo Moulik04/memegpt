@@ -186,18 +186,18 @@ async def main() -> None:
 
     rag_misses = [r for r in rows if not r["rag_hit"]]
     if rag_misses:
-        print(f"\nRAG misses (retrieval problem, not fixable by wording alone):")
+        print("\nRAG misses (retrieval problem, not fixable by wording alone):")
         for r in rag_misses:
             print(f"  - {r['message'][:60]} (expected: {'/'.join(r['acceptable_ids'])})")
 
     final_misses = [r for r in scored_rows if r["rag_hit"] and not r["final_hit"]]
     if final_misses:
-        print(f"\nFinal-pick misses despite correct candidate set (wording/LLM-judgment problem):")
+        print("\nFinal-pick misses despite correct candidate set (wording/LLM-judgment problem):")
         for r in final_misses:
             print(f"  - {r['message'][:60]} (expected: {'/'.join(r['acceptable_ids'])}, got: {r['picked']})")
 
     if fallback_rows:
-        print(f"\nHard-fallback hits (rerun these individually if you need a clean read on them):")
+        print("\nHard-fallback hits (rerun these individually if you need a clean read on them):")
         for r in fallback_rows:
             print(f"  - {r['message'][:60]} (expected: {'/'.join(r['acceptable_ids'])})")
 

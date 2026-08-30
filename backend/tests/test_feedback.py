@@ -7,8 +7,9 @@ entirely. Drives the real FastAPI app via httpx's ASGI transport.
 
 from __future__ import annotations
 
-import db
 from httpx import ASGITransport, AsyncClient
+
+import db
 from main import app
 
 

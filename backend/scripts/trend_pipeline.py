@@ -33,7 +33,7 @@ import httpx
 from PIL import Image
 
 from config import get_settings
-from nlp.intent_router import USE_WHEN, _CORE_TEMPLATE_IDS
+from nlp.intent_router import _CORE_TEMPLATE_IDS, USE_WHEN
 from nlp.llm_client import strip_markdown
 from nlp.vision import call_groq_vision
 from scripts.find_duplicate_templates import dhash, hamming
