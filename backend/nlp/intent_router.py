@@ -189,6 +189,9 @@ USE_WHEN: dict[str, str] = {
     "grim_reaper_knocking_door": "DRAFT FAILED — write this entry by hand before merging.",
     "look_at_me": "DRAFT FAILED — write this entry by hand before merging.",
 
+    # --- Trend pipeline additions (review before merging) ---
+    "c_mon_do_something": "SILENT WITNESS: A crude, masked figure stands off to the side, pointing an accusatory finger at a specific action or event while maintaining total anonymity and deadpan silence. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
+
 }
 
 

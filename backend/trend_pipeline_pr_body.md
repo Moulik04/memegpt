@@ -19,55 +19,16 @@ Automated by `backend/scripts/trend_pipeline.py`. **Nothing here is merged autom
 
 ---
 
-### `bernie_i_am_once_again_asking_for_your_support` — Bernie I Am Once Again Asking For Your Support
+### `c_mon_do_something` — c'mon do something
 
-Source: [Bernie I Am Once Again Asking For Your Support on Imgflip](https://imgflip.com/meme/222403160)
+Source: [c'mon do something on Imgflip](https://imgflip.com/meme/20007896)
 
-Closest existing match: `bernie_sanders_once_again_asking` (similarity 0.672, below the 0.95 duplicate threshold)
-
-**Drafted `USE_WHEN`:**
-```python
-"bernie_i_am_once_again_asking_for_your_support": "RELUCTANT RE-ENGAGEMENT: A weary, resigned admission that you are forced to repeat a request, question, or task that has already been ignored or failed previously; conveys a sense of 'here we go again' exhaustion. NOT for a sudden realization of a mistake (surprised_pikachu), a plan backfiring (grus_plan), or a simple preference (drake).",
-```
-
-**Box layout note:** Standard top/bottom layout, but the image is a vertical video crop (9:16) rather than a square.
-### `yo_dawg_heard_you` — Yo Dawg Heard You
-
-Source: [Yo Dawg Heard You on Imgflip](https://imgflip.com/meme/101716)
-
-Closest existing match: `soldier_protecting_sleeping_child` (similarity 0.621, below the 0.95 duplicate threshold)
+Closest existing match: `marked_safe_from` (similarity 0.789, below the 0.95 duplicate threshold)
 
 **Drafted `USE_WHEN`:**
 ```python
-"yo_dawg_heard_you": "DRAFT FAILED \u2014 write this entry by hand before merging.",
+"c_mon_do_something": "SILENT WITNESS: A crude, masked figure stands off to the side, pointing an accusatory finger at a specific action or event while maintaining total anonymity and deadpan silence. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
 ```
 
-**Box layout note:** (drafting failed: Client error '429 Too Many Requests' for url 'https://api.groq.com/openai/v1/chat/completions'
-For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429)
-### `grim_reaper_knocking_door` — Grim Reaper Knocking Door
-
-Source: [Grim Reaper Knocking Door on Imgflip](https://imgflip.com/meme/104893621)
-
-Closest existing match: `drake` (similarity 0.609, below the 0.95 duplicate threshold)
-
-**Drafted `USE_WHEN`:**
-```python
-"grim_reaper_knocking_door": "DRAFT FAILED \u2014 write this entry by hand before merging.",
-```
-
-**Box layout note:** (drafting failed: Client error '429 Too Many Requests' for url 'https://api.groq.com/openai/v1/chat/completions'
-For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429)
-### `look_at_me` — Look At Me
-
-Source: [Look At Me on Imgflip](https://imgflip.com/meme/29617627)
-
-Closest existing match: `i_m_the_captain_now` (similarity 0.605, below the 0.95 duplicate threshold)
-
-**Drafted `USE_WHEN`:**
-```python
-"look_at_me": "DRAFT FAILED \u2014 write this entry by hand before merging.",
-```
-
-**Box layout note:** (drafting failed: Client error '429 Too Many Requests' for url 'https://api.groq.com/openai/v1/chat/completions'
-For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429)
+**Box layout note:** Requires a single caption box placed in the empty space where the figure is pointing.
 
