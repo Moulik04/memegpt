@@ -24,14 +24,17 @@ name: CI (deploy)
 # stops resolving right away rather than waiting for the next run's sweep.
 #
 # Deliberately does NOT retain extra revisions as a "rollback target"
-# beyond what the KEEP-set logic already protects — an earlier attempt at
-# that kept revisions by raw creation order, which after a failure-then-
-# success sequence could resurrect a revision that had FAILED its own
-# smoke test as the presented "rollback" candidate. Getting that right
-# needs distinguishing "previously served real traffic" from "was once a
-# candidate," which this mechanism doesn't currently track; recovery via
-# rebuild-and-reapply (Artifact Registry retains recent images) remains
-# the correct path until that's designed properly, not bolted on.
+# beyond the currently-live revision itself (which KEEP already
+# protects — after a successful promotion it collapses to that one
+# revision, and the previous good one IS deleted by the sweep). An
+# earlier attempt at extra retention kept revisions by raw creation
+# order, which after a failure-then-success sequence could resurrect a
+# revision that had FAILED its own smoke test as the presented
+# "rollback" candidate. Getting that right needs distinguishing
+# "previously served real traffic" from "was once a candidate," which
+# this mechanism doesn't currently track; recovery via rebuild-and-
+# reapply (Artifact Registry retains recent images) remains the correct
+# path until that's designed properly, not bolted on.
 
 on:
   push:
