@@ -18,12 +18,20 @@ name: CI (deploy)
 # leftover from a PRIOR run no longer qualifies for any of those three and
 # can finally be deleted. It aborts rather than deletes anything if it
 # can't positively determine what to keep — see the step's own comment for
-# why an empty result must never be treated as "nothing to protect." It also
-# keeps the 2 most-recently-created revisions regardless (a real rollback
-# target — `gcloud run services update-traffic --to-revisions=PREV=100` is
-# far faster than a rebuild-and-reapply), and immediately removes a failed
-# candidate's public tag (not just its traffic share) so its guessable URL
-# stops resolving right away, rather than waiting for the next run's sweep.
+# why an empty result must never be treated as "nothing to protect." A
+# separate step immediately removes a failed candidate's public tag (not
+# just its traffic share) on smoke-test failure, so its guessable URL
+# stops resolving right away rather than waiting for the next run's sweep.
+#
+# Deliberately does NOT retain extra revisions as a "rollback target"
+# beyond what the KEEP-set logic already protects — an earlier attempt at
+# that kept revisions by raw creation order, which after a failure-then-
+# success sequence could resurrect a revision that had FAILED its own
+# smoke test as the presented "rollback" candidate. Getting that right
+# needs distinguishing "previously served real traffic" from "was once a
+# candidate," which this mechanism doesn't currently track; recovery via
+# rebuild-and-reapply (Artifact Registry retains recent images) remains
+# the correct path until that's designed properly, not bolted on.
 
 on:
   push:
@@ -100,7 +108,15 @@ jobs:
           terraform apply -auto-approve
 
       - name: Smoke test failed — remove its public tag and stop (candidate never promoted)
-        if: steps.smoke.outcome == 'failure'
+        # A bare `steps.smoke.outcome == 'failure'` gets an implicit
+        # `success()` ANDed in by GitHub Actions whenever a step's `if:`
+        # contains no explicit status-check function — which makes THIS
+        # step unsatisfiable, since success() is already false the moment
+        # smoke fails. `failure()` supplies that explicit function (and
+        # correctly reflects "something upstream failed"); the
+        # `steps.smoke.outcome` clause narrows that down to specifically
+        # the smoke test, not e.g. a later terraform apply failure.
+        if: failure() && steps.smoke.outcome == 'failure'
         run: |
           gcloud run services update-traffic ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --remove-tags="${{ steps.candidate.outputs.tag }}" --quiet \
             || echo "::warning::Could not remove tag ${{ steps.candidate.outputs.tag }} — the URL may stay reachable until the cleanup sweep below, or a future run, removes it"
@@ -142,16 +158,6 @@ jobs:
             echo "::error::Could not determine which revisions to keep — aborting the sweep without deleting anything."
             exit 1
           fi
-          # Also keep the 2 most-recently-created revisions regardless of
-          # the above — in the steady state (a successful promotion) that's
-          # this run's own revision plus the one it just superseded, giving
-          # a real, fast rollback target instead of only a rebuild-and-
-          # reapply. Best-effort: if this listing itself fails, fall back to
-          # KEEP alone rather than aborting the whole sweep over a
-          # nice-to-have.
-          KEEP_RECENT=$(gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(name)" --sort-by="~metadata.creationTimestamp" --limit=2) \
-            || KEEP_RECENT=""
-          KEEP=$(printf '%s\n%s\n' "${KEEP}" "${KEEP_RECENT}" | sort -u)
           gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(name)" \
             | while read -r rev; do
                 if ! grep -qxF "${rev}" <<< "${KEEP}"; then
