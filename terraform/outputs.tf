@@ -27,3 +27,8 @@ output "ci_service_account_email" {
   description = "CI deploy service account email — used as GitHub Actions' service_account input."
   value       = google_service_account.ci_deploy.email
 }
+
+output "cloud_run_image_digest" {
+  description = "The image digest currently applied to the Cloud Run service (without the sha256: prefix) — lets a PR's terraform plan reuse the live value via `terraform output -raw cloud_run_image_digest` instead of a placeholder."
+  value       = var.cloud_run_image_digest
+}

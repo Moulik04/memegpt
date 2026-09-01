@@ -18,11 +18,20 @@ name: CI (deploy)
 # leftover from a PRIOR run no longer qualifies for any of those three and
 # can finally be deleted. It aborts rather than deletes anything if it
 # can't positively determine what to keep — see the step's own comment for
-# why an empty result must never be treated as "nothing to protect."
+# why an empty result must never be treated as "nothing to protect." It also
+# keeps the 2 most-recently-created revisions regardless (a real rollback
+# target — `gcloud run services update-traffic --to-revisions=PREV=100` is
+# far faster than a rebuild-and-reapply), and immediately removes a failed
+# candidate's public tag (not just its traffic share) so its guessable URL
+# stops resolving right away, rather than waiting for the next run's sweep.
 
 on:
   push:
     branches: [main]
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false # let an in-flight deploy finish; never cancel mid-promotion
 
 permissions:
   contents: read
@@ -90,10 +99,12 @@ jobs:
           terraform init -backend-config="bucket=${{ vars.GCP_PROJECT_ID }}-tfstate" -backend-config="prefix=memegpt-backend"
           terraform apply -auto-approve
 
-      - name: Smoke test failed — report and stop (candidate never promoted)
-        if: failure() && steps.candidate.outcome == 'success'
+      - name: Smoke test failed — remove its public tag and stop (candidate never promoted)
+        if: steps.smoke.outcome == 'failure'
         run: |
-          echo "::error::Smoke test failed against candidate revision (tag: ${{ steps.candidate.outputs.tag }}, url: ${{ steps.candidate.outputs.url }}). It was never promoted — live traffic is unaffected (still served by the previous revision). The untrafficked candidate revision can't be deleted this run (Cloud Run refuses to delete a service's most-recently-created revision), but it's still a live, publicly-invokable endpoint — it will be automatically deleted by the next push's cleanup sweep; to remove it sooner, inspect and delete manually: gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }}"
+          gcloud run services update-traffic ${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --remove-tags="${{ steps.candidate.outputs.tag }}" --quiet \
+            || echo "::warning::Could not remove tag ${{ steps.candidate.outputs.tag }} — the URL may stay reachable until the cleanup sweep below, or a future run, removes it"
+          echo "::error::Smoke test failed against candidate revision (tag: ${{ steps.candidate.outputs.tag }}, url: ${{ steps.candidate.outputs.url }}). It was never promoted — live traffic is unaffected (still served by the previous revision). Its public tag has been removed so that URL stops resolving now, rather than waiting for the next cleanup sweep; the revision itself can't be deleted this run (Cloud Run refuses to delete a service's most-recently-created revision) but is no longer directly reachable."
           exit 1
 
       - name: Delete stale untrafficked candidate revisions from prior runs
@@ -131,6 +142,16 @@ jobs:
             echo "::error::Could not determine which revisions to keep — aborting the sweep without deleting anything."
             exit 1
           fi
+          # Also keep the 2 most-recently-created revisions regardless of
+          # the above — in the steady state (a successful promotion) that's
+          # this run's own revision plus the one it just superseded, giving
+          # a real, fast rollback target instead of only a rebuild-and-
+          # reapply. Best-effort: if this listing itself fails, fall back to
+          # KEEP alone rather than aborting the whole sweep over a
+          # nice-to-have.
+          KEEP_RECENT=$(gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(name)" --sort-by="~metadata.creationTimestamp" --limit=2) \
+            || KEEP_RECENT=""
+          KEEP=$(printf '%s\n%s\n' "${KEEP}" "${KEEP_RECENT}" | sort -u)
           gcloud run revisions list --service=${{ vars.GCP_SERVICE_NAME }} --project=${{ vars.GCP_PROJECT_ID }} --region=${{ vars.GCP_REGION }} --format="value(name)" \
             | while read -r rev; do
                 if ! grep -qxF "${rev}" <<< "${KEEP}"; then

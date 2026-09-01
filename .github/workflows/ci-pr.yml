@@ -58,8 +58,18 @@ jobs:
         env:
           TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
         run: |
+          # `terraform output -raw` with no output name always errors — the
+          # original version of this line swallowed that error and fell
+          # back to a placeholder digest on every single PR, which showed
+          # up as a permanent, spurious "image changed" line in every
+          # plan. Read the real live digest by its actual output name
+          # instead — the PR hasn't built anything of its own yet, so
+          # reusing the currently-deployed digest is correct: a plan is
+          # about catching *other* config drift, not proposing a new image.
+          DIGEST=$(terraform output -raw cloud_run_image_digest 2>/dev/null) \
+            || { echo "::error::Could not read cloud_run_image_digest from state — aborting the plan rather than showing a spurious diff."; exit 1; }
           terraform plan \
-            -var="cloud_run_image_digest=$(terraform output -raw 2>/dev/null || echo 0000000000000000000000000000000000000000000000000000000000000000)" \
+            -var="cloud_run_image_digest=${DIGEST}" \
             -lock=false
 
   container-build:
