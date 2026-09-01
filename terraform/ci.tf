@@ -41,6 +41,25 @@ resource "google_service_account_iam_member" "ci_deploy_wif_binding" {
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/Moulik04/memegpt"
 }
 
+# Terraform refreshes EVERY resource in state before computing any plan,
+# not just what a given apply changes — so the CI SA needs read access to
+# every resource type this state manages (WIF pool/provider, secrets,
+# service accounts, IAM bindings, project API enablement, ...), not just
+# the ones it's meant to modify. Discovered the hard way: a real deploy
+# failed on `google_project_service.apis[...]` refresh with a bare
+# `serviceusage.services.list` 403 — none of the narrower roles below
+# cover that, or the several other read-only resource types in this same
+# state file. Rather than add a project-level viewer-equivalent role per
+# resource type one real-failure at a time, granting the one standard
+# read-only role built for exactly this ("see everything, change
+# nothing") — paired with the specific, narrow WRITE grants below, which
+# are what actually bound what this identity can change.
+resource "google_project_iam_member" "ci_deploy_viewer" {
+  project = var.project_id
+  role    = "roles/viewer"
+  member  = "serviceAccount:${google_service_account.ci_deploy.email}"
+}
+
 # Push/pull images.
 resource "google_project_iam_member" "ci_deploy_artifact_writer" {
   project = var.project_id
