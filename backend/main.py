@@ -230,7 +230,11 @@ app.include_router(conversations.router, prefix="/conversations", tags=["convers
 
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "memegpt-backend"}
+    # Deliberately broken — Phase 3 CI/CD negative-path verification (see
+    # docs/superpowers/plans/2026-08-29-cloud-migration-phase3-cicd.md,
+    # Task 5 Step 3): confirms a failing smoke test never promotes a
+    # candidate to live traffic. Reverted in the very next commit.
+    raise RuntimeError("deliberate CI verification failure")
 
 
 if __name__ == "__main__":
