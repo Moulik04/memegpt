@@ -60,6 +60,25 @@ resource "google_project_iam_member" "ci_deploy_viewer" {
   member  = "serviceAccount:${google_service_account.ci_deploy.email}"
 }
 
+# roles/viewer covers resource metadata but NOT IAM-policy reads for most
+# resource types (`*.getIamPolicy`) — discovered the hard way, again: the
+# very next real deploy after adding roles/viewer above failed refreshing
+# `google_storage_bucket_iam_member.ci_deploy_state_access` with
+# `storage.buckets.getIamPolicy` denied, since `roles/storage.objectAdmin`
+# (below) covers object read/write on the state bucket, not the bucket's
+# own IAM policy. This state also manages several other *_iam_member
+# resources (on service accounts, secrets, the project itself, the Cloud
+# Run service) that read their target's IAM policy the same way on every
+# refresh — rather than wait for each to fail its own real deploy in
+# turn, granting the one role built specifically for exactly this class
+# of need: read-only visibility into IAM policies across resource types,
+# not the resources' data or metadata (roles/viewer already covers that).
+resource "google_project_iam_member" "ci_deploy_security_reviewer" {
+  project = var.project_id
+  role    = "roles/iam.securityReviewer"
+  member  = "serviceAccount:${google_service_account.ci_deploy.email}"
+}
+
 # Push/pull images.
 resource "google_project_iam_member" "ci_deploy_artifact_writer" {
   project = var.project_id
