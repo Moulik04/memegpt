@@ -7,15 +7,19 @@ resource "google_artifact_registry_repository" "backend" {
   # Phase 3's ci-deploy.yml pushes one new, uniquely-tagged image
   # ("sha-<7-char-sha>") on every merge to main — unbounded, monotonic
   # growth without this. Artifact Registry evaluates KEEP policies before
-  # DELETE ones, so the most-recent 15 sha-tagged images are always
-  # protected regardless of age; anything older AND beyond that window
-  # gets deleted. A first version of this scoped the only DELETE policy to
+  # DELETE ones, so the most-recent 15 versions (of ANY tag state — this
+  # KEEP rule isn't itself sha--scoped) are always protected regardless of
+  # age; anything older AND beyond that window gets deleted. A first
+  # version of this scoped the only DELETE policy to
   # `tag_state = "UNTAGGED"` — verified against live state that this
   # never matches anything CI pushes (every CI image is tagged, uniquely,
   # forever), so growth stayed unbounded despite the policy existing.
   # Kept the untagged-cleanup rule too, for genuinely orphaned layers from
-  # this repo's earlier manual-push history ("phase2-manual"/"latest"),
-  # with a short grace period so an in-flight pull can't race a deletion.
+  # this repo's earlier manual-push history ("phase2-manual"/"latest") —
+  # it won't actually delete anything until total version count exceeds
+  # the KEEP-15 window, since KEEP wins ties, but it's the correct rule
+  # for when that happens. Short grace period so an in-flight pull can't
+  # race a deletion.
   cleanup_policy_dry_run = false
 
   cleanup_policies {
