@@ -32,8 +32,21 @@ jobs:
 
       - name: pytest (full suite)
         working-directory: backend
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        # Deliberately does NOT set GROQ_API_KEY. This copied trend-
+        # pipeline.yml's pattern without checking it against this test
+        # suite's actual design — caught for real on the first PR that
+        # ever ran this job: the whole suite assumes no real key in the
+        # ambient environment (several tests document this explicitly,
+        # e.g. test_multi_image_chat.py, test_regression_text_chat.py,
+        # test_safe_ingest.py); tests that need a key construct their own
+        # fake Settings object directly instead. Setting a real key here
+        # broke test_generate_moderation.py::test_no_groq_key_fails_
+        # closed_by_default, which calls the real moderate_text() and
+        # asserts it fails closed specifically BECAUSE no key is
+        # configured — with a real key present, moderation legitimately
+        # passed and the test's own assertion (compose_meme must not run)
+        # correctly caught that its precondition no longer held. Confirmed
+        # locally: all 256 tests pass with no real GROQ_API_KEY set.
         run: pytest
 
   terraform-plan:

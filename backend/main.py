@@ -230,6 +230,10 @@ app.include_router(conversations.router, prefix="/conversations", tags=["convers
 
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, str]:
+    # Cloud Run's Configure Docker healthcheck (backend/Dockerfile) and
+    # the CI/CD deploy pipeline's smoke test (.github/workflows/
+    # ci-deploy.yml) both hit this endpoint before a candidate revision
+    # is ever trusted with real traffic.
     return {"status": "ok", "service": "memegpt-backend"}
 
 
