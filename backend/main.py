@@ -230,7 +230,11 @@ app.include_router(conversations.router, prefix="/conversations", tags=["convers
 
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "memegpt-backend"}
+    # Deliberately broken again — verifying the fixed smoke-test-failure
+    # condition (was unsatisfiable, now failure() && steps.smoke.outcome
+    # == 'failure') and the tag-removal step actually fire for real.
+    # Reverted in the very next commit.
+    raise RuntimeError("deliberate CI verification failure, round 2")
 
 
 if __name__ == "__main__":
