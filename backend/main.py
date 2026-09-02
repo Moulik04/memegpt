@@ -1,15 +1,20 @@
 import asyncio
 import json
+import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import structlog
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+import telemetry  # noqa: F401 — side-effecting import: configures OTel + structlog
 from config import get_settings
 from nlp.intent_router import USE_WHEN
 from rate_limit import limiter
@@ -201,6 +206,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+FastAPIInstrumentor.instrument_app(app)
+
+
+@app.middleware("http")
+async def _observability_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    telemetry.record_cold_start_if_first_request()
+    try:
+        response = await call_next(request)
+    finally:
+        structlog.contextvars.clear_contextvars()
+    response.headers["x-request-id"] = request_id
+    return response
+
 
 # Growth Phase D — Arc's "signature template" stat shows the actual template
 # thumbnail, which requires the raw catalog images (backend/templates/) to be
