@@ -34,6 +34,7 @@ SSE event stream:
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -41,6 +42,7 @@ from fastapi.responses import StreamingResponse
 from PIL import Image
 
 import db
+import telemetry
 from auth import get_verified_user
 from config import get_settings
 from identity import get_anon_user_id
@@ -225,13 +227,16 @@ async def _render_and_record_turn(
     FileNotFoundError on a missing template (the realistic failure mode);
     _stream_chat_turn catches it into an SSE error event, generate_single_meme
     lets it propagate to its own caller."""
+    start = time.monotonic()
     saved = await compose_meme(
         template_id=intent.template_id,
         texts=intent.texts,
     )
+    telemetry.record_meme_generation(surface, time.monotonic() - start)
 
     add_turn(conversation_id, intent.template_id)
 
+    telemetry.record_template_selection(intent.template_id)
     log_usage(
         template_id=intent.template_id,
         top_text=next(iter(intent.texts.values()), ""),

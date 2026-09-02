@@ -1,7 +1,10 @@
+import time
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
 import db
+import telemetry
 from auth import get_verified_user
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme
@@ -41,13 +44,16 @@ async def generate(request: Request, body: MemeGenerationRequest) -> MemeGenerat
         raise HTTPException(status_code=400, detail=_GENERIC_CAPTION_REFUSAL)
 
     try:
+        start = time.monotonic()
         saved = await compose_meme(
             template_id=body.template_id,
             texts=body.texts,
         )
+        telemetry.record_meme_generation("make", time.monotonic() - start)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    telemetry.record_template_selection(body.template_id)
     anon_user_id = get_anon_user_id(request)
     verified = await get_verified_user(request)
     await db.insert_meme(
