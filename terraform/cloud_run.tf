@@ -95,6 +95,24 @@ resource "google_cloud_run_v2_service" "backend" {
           }
         }
       }
+      env {
+        name = "GRAFANA_OTLP_ENDPOINT"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.backend["GRAFANA_OTLP_ENDPOINT"].secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
+        name = "GRAFANA_OTLP_TOKEN"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.backend["GRAFANA_OTLP_TOKEN"].secret_id
+            version = "latest"
+          }
+        }
+      }
 
       volume_mounts {
         name       = "chroma-data"

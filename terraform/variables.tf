@@ -31,6 +31,8 @@ variable "secret_names" {
     "SUPABASE_URL",
     "SUPABASE_ANON_KEY",
     "DISCORD_WORKER_SHARED_SECRET",
+    "GRAFANA_OTLP_ENDPOINT",
+    "GRAFANA_OTLP_TOKEN",
   ]
 }
 
