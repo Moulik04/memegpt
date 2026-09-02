@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from PIL import Image
 
+import telemetry
 from config import get_settings
 from nlp.vision import call_groq_vision
 
@@ -56,12 +57,16 @@ async def moderate_image(image: Image.Image) -> ModerationResult:
     settings = get_settings()
     if not settings.groq_api_key:
         logger.warning("moderation_not_configured")
-        return ModerationResult(passed=False, category="moderation_unavailable")
-    try:
-        return await _moderate_groq(image, settings)
-    except Exception:
-        logger.warning("moderation_provider_error")
-        return ModerationResult(passed=False, category="moderation_unavailable")
+        result = ModerationResult(passed=False, category="moderation_unavailable")
+    else:
+        try:
+            result = await _moderate_groq(image, settings)
+        except Exception:
+            logger.warning("moderation_provider_error")
+            result = ModerationResult(passed=False, category="moderation_unavailable")
+    if not result.passed:
+        telemetry.record_moderation_rejection(result.category or "unspecified")
+    return result
 
 
 async def _moderate_groq(image: Image.Image, settings) -> ModerationResult:

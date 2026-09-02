@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 import httpx
 
+import telemetry
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -55,12 +56,16 @@ async def moderate_text(text: str) -> ModerationResult:
     settings = get_settings()
     if not settings.groq_api_key:
         logger.warning("text_moderation_not_configured")
-        return ModerationResult(passed=False, category="moderation_unavailable")
-    try:
-        return await _moderate_groq_text(text, settings)
-    except Exception:
-        logger.warning("text_moderation_provider_error")
-        return ModerationResult(passed=False, category="moderation_unavailable")
+        result = ModerationResult(passed=False, category="moderation_unavailable")
+    else:
+        try:
+            result = await _moderate_groq_text(text, settings)
+        except Exception:
+            logger.warning("text_moderation_provider_error")
+            result = ModerationResult(passed=False, category="moderation_unavailable")
+    if not result.passed:
+        telemetry.record_moderation_rejection(result.category or "unspecified")
+    return result
 
 
 async def _moderate_groq_text(text: str, settings) -> ModerationResult:

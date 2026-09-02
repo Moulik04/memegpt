@@ -18,6 +18,7 @@ import httpx
 from pydantic import ValidationError
 
 import circuit_breaker
+import telemetry
 from config import get_settings
 from image_processing.template_configs import DEFAULT_BOX_DESCRIPTIONS, get_config
 from nlp.llm_client import call_llm, strip_markdown
@@ -415,6 +416,7 @@ async def parse_intent(
             timeout=_OVERALL_TIMEOUT_SECONDS,
         )
     except TimeoutError:
+        telemetry.record_hard_fallback_hit()
         return IntentResponse(
             template_id="hide_the_pain_harold",
             texts={
@@ -541,6 +543,7 @@ async def _parse_intent_inner(
                 data = _normalize_llm_response(data, known_id_set)
                 return _finalize_result(data, known_id_set)
             except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
+                telemetry.record_intent_parse_failure("primary")
                 pass
 
             # Attempt 2 — minimal strict prompt at low temperature, same model
@@ -553,6 +556,7 @@ async def _parse_intent_inner(
                 data = _normalize_llm_response(data, known_id_set)
                 return _finalize_result(data, known_id_set)
             except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
+                telemetry.record_intent_parse_failure("retry")
                 pass
 
         # Attempt 3 — same strict prompt, a genuinely different Groq model.
@@ -570,9 +574,11 @@ async def _parse_intent_inner(
                 data = _normalize_llm_response(data, known_id_set)
                 return _finalize_result(data, known_id_set)
             except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
+                telemetry.record_intent_parse_failure("fallback_model")
                 pass
 
     # Hard fallback — always returns something rather than 500-ing
+    telemetry.record_hard_fallback_hit()
     return IntentResponse(
         template_id="hide_the_pain_harold",
         texts={
