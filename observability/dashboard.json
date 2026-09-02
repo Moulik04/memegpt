@@ -1,0 +1,129 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "memegpt-backend-observability",
+    "title": "MemeGPT Backend",
+    "tags": ["memegpt", "phase4", "observability"],
+    "timezone": "browser",
+    "schemaVersion": 39,
+    "version": 0,
+    "refresh": "30s",
+    "time": { "from": "now-6h", "to": "now" },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Meme generation latency (p50/p95/p99) by surface",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+        "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "histogram_quantile(0.50, sum(rate(meme_generation_duration_seconds_bucket[5m])) by (le, surface))",
+            "legendFormat": "p50 {{surface}}",
+            "refId": "A"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "histogram_quantile(0.95, sum(rate(meme_generation_duration_seconds_bucket[5m])) by (le, surface))",
+            "legendFormat": "p95 {{surface}}",
+            "refId": "B"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "histogram_quantile(0.99, sum(rate(meme_generation_duration_seconds_bucket[5m])) by (le, surface))",
+            "legendFormat": "p99 {{surface}}",
+            "refId": "C"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Error rate (5xx / total requests)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+        "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[5m])) / sum(rate(http_server_duration_milliseconds_count[5m]))",
+            "legendFormat": "5xx error rate",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Cold-start frequency (per hour)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+        "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "increase(cold_start_seconds_count[1h])",
+            "legendFormat": "cold starts / hour",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Cold-start average duration",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+        "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "rate(cold_start_seconds_sum[5m]) / rate(cold_start_seconds_count[5m])",
+            "legendFormat": "avg cold-start duration",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "LLM provider health (circuit breakers + intent-parse failures)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+        "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "circuit_breaker_state",
+            "legendFormat": "circuit_breaker {{breaker}}",
+            "refId": "A"
+          },
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "sum(rate(intent_parse_failures_total[5m])) by (stage)",
+            "legendFormat": "parse failures ({{stage}})",
+            "refId": "B"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Template distribution (top 10, 24h)",
+        "type": "bargauge",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+        "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+        "targets": [
+          {
+            "datasource": { "type": "prometheus", "uid": "grafanacloud-prom" },
+            "expr": "topk(10, sum(increase(template_selection_total[24h])) by (template_id))",
+            "legendFormat": "{{template_id}}",
+            "refId": "A"
+          }
+        ]
+      }
+    ]
+  },
+  "folderUid": "",
+  "overwrite": false
+}

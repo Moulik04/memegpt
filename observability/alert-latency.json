@@ -1,0 +1,43 @@
+{
+  "orgID": 1,
+  "folderUID": "efx2ohiscb9c0c",
+  "ruleGroup": "memegpt-slos",
+  "title": "SLO: p95 meme generation latency > 20s",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": { "from": 300, "to": 0 },
+      "datasourceUid": "grafanacloud-prom",
+      "model": {
+        "expr": "histogram_quantile(0.95, sum(rate(meme_generation_duration_seconds_bucket[5m])) by (le))",
+        "instant": true,
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": { "from": 0, "to": 0 },
+      "datasourceUid": "__expr__",
+      "model": {
+        "type": "threshold",
+        "expression": "A",
+        "conditions": [
+          { "evaluator": { "type": "gt", "params": [20] } }
+        ],
+        "refId": "C"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Error",
+  "for": "5m",
+  "annotations": {
+    "summary": "p95 meme generation latency has been above 20s for 5 minutes — users are staring at a spinner too long."
+  },
+  "labels": { "slo": "latency" },
+  "isPaused": false,
+  "notification_settings": { "receiver": "memegpt-email" }
+}

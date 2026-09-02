@@ -1,0 +1,43 @@
+{
+  "orgID": 1,
+  "folderUID": "efx2ohiscb9c0c",
+  "ruleGroup": "memegpt-slos",
+  "title": "SLO: 5xx error rate > 2%",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": { "from": 300, "to": 0 },
+      "datasourceUid": "grafanacloud-prom",
+      "model": {
+        "expr": "sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[5m])) / sum(rate(http_server_duration_milliseconds_count[5m]))",
+        "instant": true,
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": { "from": 0, "to": 0 },
+      "datasourceUid": "__expr__",
+      "model": {
+        "type": "threshold",
+        "expression": "A",
+        "conditions": [
+          { "evaluator": { "type": "gt", "params": [0.02] } }
+        ],
+        "refId": "C"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Error",
+  "for": "5m",
+  "annotations": {
+    "summary": "5xx error rate has been above 2% for 5 minutes — baseline reliability floor breached."
+  },
+  "labels": { "slo": "error-rate" },
+  "isPaused": false,
+  "notification_settings": { "receiver": "memegpt-email" }
+}

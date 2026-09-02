@@ -1,0 +1,43 @@
+{
+  "orgID": 1,
+  "folderUID": "efx2ohiscb9c0c",
+  "ruleGroup": "memegpt-slos",
+  "title": "SLO: hard-fallback rate > 5%",
+  "condition": "C",
+  "data": [
+    {
+      "refId": "A",
+      "queryType": "",
+      "relativeTimeRange": { "from": 900, "to": 0 },
+      "datasourceUid": "grafanacloud-prom",
+      "model": {
+        "expr": "sum(rate(hard_fallback_hits_total[15m])) / sum(rate(meme_generation_duration_seconds_count[15m]))",
+        "instant": true,
+        "refId": "A"
+      }
+    },
+    {
+      "refId": "C",
+      "queryType": "",
+      "relativeTimeRange": { "from": 0, "to": 0 },
+      "datasourceUid": "__expr__",
+      "model": {
+        "type": "threshold",
+        "expression": "A",
+        "conditions": [
+          { "evaluator": { "type": "gt", "params": [0.05] } }
+        ],
+        "refId": "C"
+      }
+    }
+  ],
+  "noDataState": "NoData",
+  "execErrState": "Error",
+  "for": "15m",
+  "annotations": {
+    "summary": "Hard-fallback rate above 5% for 15 minutes — both primary and secondary LLM attempts are failing, silently, on a meaningful share of generations."
+  },
+  "labels": { "slo": "hard-fallback" },
+  "isPaused": false,
+  "notification_settings": { "receiver": "memegpt-email" }
+}
