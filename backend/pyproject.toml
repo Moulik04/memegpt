@@ -38,6 +38,18 @@ dependencies = [
     # Postgres layer (Growth Phase B) — raw asyncpg, no ORM (matches this
     # repo's existing minimalism: raw httpx for Groq/vision, no SDKs)
     "asyncpg>=0.29.0",
+
+    # Observability (cloud-migration Phase 4) — OpenTelemetry push-based
+    # metrics/logs to Grafana Cloud. Push, not the more common pull-based
+    # prometheus-fastapi-instrumentator, because Cloud Run scales to zero
+    # and there's nothing reliably scraping a pull endpoint on an instance
+    # that isn't running right now — see docs/superpowers/specs/2026-09-01-
+    # cloud-migration-phase4-observability-design.md.
+    "opentelemetry-api>=1.42.0",
+    "opentelemetry-sdk>=1.42.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.42.0",
+    "opentelemetry-instrumentation-fastapi>=0.63b0",
+    "structlog>=26.1.0",
 ]
 
 [project.optional-dependencies]

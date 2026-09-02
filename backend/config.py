@@ -99,6 +99,16 @@ class Settings(BaseSettings):
     discord_worker_shared_secret: str = ""
     discord_rate_limit: str = "20/minute"
 
+    # Grafana Cloud (cloud-migration Phase 4). Empty = telemetry setup is
+    # skipped entirely, matching every other optional integration's
+    # convention (Supabase, R2, Discord, Anthropic) — local dev and every
+    # test environment run with both unset. grafana_otlp_token is the full
+    # ready-to-use header value Grafana Cloud's own OTLP setup wizard
+    # generates (e.g. "Basic <base64>"), copied verbatim — not a raw API
+    # key requiring its own encoding logic here.
+    grafana_otlp_endpoint: str = ""
+    grafana_otlp_token: str = ""
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
