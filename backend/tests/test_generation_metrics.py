@@ -21,9 +21,13 @@ from storage import SavedMeme
 async def test_render_and_record_turn_records_duration_and_template(monkeypatch):
     import routers.chat as chat_router
 
+    async def fake_resolve_intent_for_turn(user_message, conversation_id, ctx=None):
+        return IntentResponse(template_id="drake", texts={"top_text": "a", "bottom_text": "b"}, reasoning="test")
+
     async def fake_compose_meme(template_id, texts):
         return SavedMeme(meme_id="m1", url="http://example.com/m1.png", path=None)
 
+    monkeypatch.setattr(chat_router, "_resolve_intent_for_turn", fake_resolve_intent_for_turn)
     monkeypatch.setattr(chat_router, "compose_meme", fake_compose_meme)
     monkeypatch.setattr(chat_router, "add_turn", lambda *a, **k: None)
     monkeypatch.setattr(chat_router, "log_usage", lambda *a, **k: None)
@@ -33,9 +37,9 @@ async def test_render_and_record_turn_records_duration_and_template(monkeypatch)
     monkeypatch.setattr(telemetry, "record_meme_generation", lambda surface, duration: duration_calls.append((surface, duration)))
     monkeypatch.setattr(telemetry, "record_template_selection", lambda template_id: template_calls.append(template_id))
 
-    intent = IntentResponse(template_id="drake", texts={"top_text": "a", "bottom_text": "b"}, reasoning="test")
-    await chat_router._render_and_record_turn(intent, "hello", "conv-1", surface="lore")
+    events = [event async for event in chat_router._stream_chat_turn("hello", "conv-1", surface="lore")]
 
+    assert any(event.get("type") == "done" for event in events)
     assert len(duration_calls) == 1
     surface, duration = duration_calls[0]
     assert surface == "lore"
@@ -73,5 +77,6 @@ async def test_generate_endpoint_records_duration_and_template_for_make(monkeypa
         )
 
     assert resp.status_code == 200
-    assert duration_calls == [("make", duration_calls[0][1])]
+    assert len(duration_calls) == 1
+    assert duration_calls[0][0] == "make"
     assert template_calls == ["drake"]

@@ -161,6 +161,7 @@ async def _stream_chat_turn(
     if conversation_row_id and ctx and ctx.user_id:
         await db.insert_message(conversation_row_id, "user", user_message)
 
+    start = time.monotonic()
     try:
         intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx)
     except Exception as exc:
@@ -184,6 +185,7 @@ async def _stream_chat_turn(
     except FileNotFoundError as exc:
         yield {"type": "error", "index": index, "total": total, "message": f"Template not found: {exc}"}
         return
+    telemetry.record_meme_generation(surface, time.monotonic() - start)
 
     yield {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
 
@@ -227,12 +229,10 @@ async def _render_and_record_turn(
     FileNotFoundError on a missing template (the realistic failure mode);
     _stream_chat_turn catches it into an SSE error event, generate_single_meme
     lets it propagate to its own caller."""
-    start = time.monotonic()
     saved = await compose_meme(
         template_id=intent.template_id,
         texts=intent.texts,
     )
-    telemetry.record_meme_generation(surface, time.monotonic() - start)
 
     add_turn(conversation_id, intent.template_id)
 
@@ -278,8 +278,11 @@ async def generate_single_meme(
     instead, so it can yield a 'rendering' progress event between them; this
     is just both halves back to back with nothing in between. Never passes a
     conversation_row_id — Discord has no persisted-conversation concept."""
+    start = time.monotonic()
     intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx)
-    return await _render_and_record_turn(intent, user_message, conversation_id, ctx, surface)
+    response = await _render_and_record_turn(intent, user_message, conversation_id, ctx, surface)
+    telemetry.record_meme_generation(surface, time.monotonic() - start)
+    return response
 
 
 async def _stream_batch(

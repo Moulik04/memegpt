@@ -11,7 +11,7 @@
       "relativeTimeRange": { "from": 900, "to": 0 },
       "datasourceUid": "grafanacloud-prom",
       "model": {
-        "expr": "sum(rate(hard_fallback_hits_total[15m])) / sum(rate(meme_generation_duration_seconds_count[15m]))",
+        "expr": "sum(rate(hard_fallback_hits_total[15m])) / sum(rate(meme_generation_duration_seconds_count{surface!=\"make\"}[15m]))",
         "instant": true,
         "refId": "A"
       }
@@ -31,7 +31,7 @@
       }
     }
   ],
-  "noDataState": "NoData",
+  "noDataState": "OK",
   "execErrState": "Error",
   "for": "15m",
   "annotations": {

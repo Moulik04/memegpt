@@ -59,6 +59,7 @@ if _settings.grafana_otlp_endpoint and _settings.grafana_otlp_token:
         )
     )
     logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=_logger_provider))
+    logging.getLogger("opentelemetry").propagate = False
 
 structlog.configure(
     processors=[
@@ -78,6 +79,7 @@ meme_generation_duration_seconds = _meter.create_histogram(
     "meme_generation_duration_seconds",
     unit="s",
     description="Time to compose one meme image, by surface.",
+    explicit_bucket_boundaries_advisory=[0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60],
 )
 template_selection_total = _meter.create_counter(
     "template_selection_total",
@@ -99,6 +101,7 @@ cold_start_seconds = _meter.create_histogram(
     "cold_start_seconds",
     unit="s",
     description="Time from process import to the first request an instance serves.",
+    explicit_bucket_boundaries_advisory=[0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60],
 )
 
 

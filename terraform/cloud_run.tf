@@ -78,6 +78,27 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "true"
       }
       env {
+        # Pins the HTTP semantic-convention mode opentelemetry-instrumentation-
+        # asgi/-fastapi use, rather than inheriting whatever the installed
+        # library's unset-env-var default resolves to. observability/dashboard.json
+        # and alert-error-rate.json hardcode the OLD (pre-stable) convention's
+        # metric name and label (http_server_duration_milliseconds_count,
+        # http_status_code) — "http/dup" guarantees those keep being emitted
+        # (confirmed by reading the installed opentelemetry-instrumentation
+        # 0.65b0 source: it separately emits an old-convention histogram
+        # whenever the resolved mode isn't exactly "http", and "http/dup" also
+        # emits the new-convention series alongside, at negligible extra cost)
+        # even if a future dependency upgrade changes what leaving this unset
+        # means. There is no documented value that means "old-only, pinned" —
+        # the two documented tokens are "http" (switches fully to the new
+        # convention, which would silently break the dashboard/alert) and
+        # "http/dup" (both conventions emitted) — so "http/dup" is the
+        # explicit, source-confirmed choice that can't regress the existing
+        # dashboard/alert.
+        name  = "OTEL_SEMCONV_STABILITY_OPT_IN"
+        value = "http/dup"
+      }
+      env {
         name = "GROQ_API_KEY"
         value_source {
           secret_key_ref {
