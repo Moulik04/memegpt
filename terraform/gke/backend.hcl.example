@@ -1,0 +1,2 @@
+bucket = "your-gcp-project-id-tfstate"
+prefix = "memegpt-gke"
