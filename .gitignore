@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
@@ -13,71 +14,72 @@ env/
 .env.local
 .env.*.local
 
+# ChromaDB persistent store (runtime, not committed). backend/data/* (not
+# backend/data/, no trailing wildcard) is deliberate — a negation pattern
+# below can't re-include a file if the parent directory itself is excluded.
 backend/data/*
 !backend/data/curated_examples.jsonl
 !backend/data/template_embeddings.json
 
+# Generated meme output (runtime artifacts)
 backend/static/generated/*.png
 backend/static/generated/*.jpg
 
+# Fonts (add your own — not committed)
 backend/fonts/*.ttf
 backend/fonts/*.otf
 
+# Next.js
 frontend/.next/
 frontend/out/
 frontend/node_modules/
 frontend/.env*.local
 frontend/tsconfig.tsbuildinfo
 
+# pytest
 .pytest_cache/
 
+# macOS
 .DS_Store
 
+# IDE
 .vscode/
 .idea/
 *.swp
 
+# Docker volumes (runtime — model weights, ChromaDB, generated PNGs)
 volumes/
 
+# Claude Code — skills/hooks/settings.json are shared harness config and
+# travel with the repo; settings.local.json (personal permission
+# allowlist) and other local-only state stay ignored. `.claude/*` (not
+# `.claude/`) is deliberate, same reasoning as backend/data/* above.
 .claude/*
 !.claude/skills/
 !.claude/hooks/
 !.claude/settings.json
 
+# A skill's own driver dependencies (e.g. run-memegpt's Playwright
+# install) aren't part of the skill's tracked content.
 .claude/skills/*/node_modules/
 
+# Large Kaggle dataset files (download separately, not committed).
+# Anchored to the repo root (/data/, not data/) so it doesn't also match
+# backend/data/ above.
 /data/
 memes.json
 memes_data.tsv
 memes_reference_data.tsv
 
+# sed backup files
 *.bak
 
-memegpt-growth-master-prompt.md
-memegpt-lore-mode-spec.md
-memegpt-multimodal-master-prompt.md
-CLAUDE_CODE_SETUP.md
-FRONTEND_MASTER_PROMPT.md
-MEMEGPT_MASTER.md
-
-MASTER.md
-
-FEASIBILITY.md
-
-CLAUDE.md
-
-docs/DECISIONS.md
-
-CLOUD_MIGRATION_MASTER.md
-
-docs/superpowers/
-
-docs/DISCORD_SETUP.md
-docs/FINETUNE_RUNBOOK.md
-
+# Vercel CLI's local project link metadata
 .vercel/
 .env*
 
+# Terraform (terraform/ has its own .gitignore too, belt and suspenders
+# in case a *.tfvars-style file ever gets created outside that directory)
 **/.terraform/
 *.tfstate
 *.tfstate.*
