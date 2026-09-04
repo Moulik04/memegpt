@@ -1,14 +1,17 @@
 name: Trend pipeline
 
-# Growth master prompt Phase E — weekly, human-in-the-loop template
-# discovery. Scans Imgflip's free public template list for anything
-# genuinely new (not just renamed — see backend/scripts/trend_pipeline.py's
-# perceptual-hash dedup), drafts a catalog entry for it, and opens a PR.
-# NEVER auto-merges — the repo is the database, a human is the reviewer.
+# Weekly, fully automated template discovery. Scans Imgflip's free public
+# template list for anything genuinely new (not just renamed — see
+# backend/scripts/trend_pipeline.py's perceptual-hash dedup), runs each
+# candidate through the same content-moderation gate every user-uploaded
+# image goes through, drafts a catalog entry and precomputes its
+# embedding, then commits directly to main. No PR, no manual merge — the
+# automated gates (dedup, moderation, and this workflow's own pytest run)
+# stand in for one. A push to main triggers ci-deploy.yml on its own,
+# which is what actually makes a new template live.
 #
 # workflow_dispatch lets you trigger a real run manually (Actions tab ->
-# Trend pipeline -> Run workflow) instead of waiting for Monday, e.g. right
-# after adding the GROQ_API_KEY secret the first time.
+# Trend pipeline -> Run workflow) instead of waiting for Monday.
 
 on:
   schedule:
@@ -17,7 +20,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   scan:
@@ -37,19 +39,28 @@ jobs:
         working-directory: backend
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python -m scripts.trend_pipeline
 
       - name: Check for changes
         id: changes
         run: echo "dirty=$(if [ -n "$(git status --porcelain)" ]; then echo true; else echo false; fi)" >> "$GITHUB_OUTPUT"
 
-      - name: Open PR with new template candidate(s)
+      # This is the one gate ci-pr.yml would normally provide for a change
+      # landing on main — a direct push here skips that workflow entirely,
+      # so this step is what stands in for it. A syntax error or a broken
+      # import in the edited intent_router.py fails the run right here,
+      # before anything gets committed.
+      - name: Run backend test suite
         if: steps.changes.outputs.dirty == 'true'
-        uses: peter-evans/create-pull-request@v6
-        with:
-          commit-message: "New meme template candidate(s) from this week's Imgflip scan"
-          branch: trend-pipeline/auto-update
-          title: "New meme template candidate(s) found"
-          body-path: backend/trend_pipeline_pr_body.md
-          labels: trend-pipeline
-          delete-branch: true
+        working-directory: backend
+        run: python -m pytest -q
+
+      - name: Commit and push directly to main
+        if: steps.changes.outputs.dirty == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/templates backend/nlp/intent_router.py backend/data/template_embeddings.json backend/trend_pipeline_commit_body.md
+          git commit -F backend/trend_pipeline_commit_body.md
+          git push origin HEAD:main

@@ -144,7 +144,7 @@ A one-click "Forget me" erases everything tied to that identity. Signed-in users
 
 Every LLM call site is bounded, retried, and has a safe hard fallback: `parse_intent()` never raises to the caller.
 
-A weekly trend-discovery pipeline scans Imgflip for new templates, dedupes them with perceptual hashing, drafts catalog entries with a vision model, and opens a human-reviewed pull request. It never auto-merges.
+A weekly trend-discovery pipeline scans Imgflip for new templates, dedupes them with perceptual hashing, runs each one through the same content-moderation gate every user upload goes through, drafts a catalog entry with a vision model, precomputes its embedding, and commits it straight to main. No PR, no manual merge. A new template clears the pipeline's own automated gates or it doesn't get added, and either way it's available to Chat, Lore, and Make on the next deploy.
 
 A `MAINTENANCE_MODE` flag swaps the entire site to a self-contained coming-soon page through middleware, with no redeploy of app code required.
 

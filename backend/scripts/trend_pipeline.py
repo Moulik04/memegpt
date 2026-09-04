@@ -1,24 +1,35 @@
 """
-Weekly, human-in-the-loop template discovery.
+Weekly, fully automated template discovery.
 
 Fetches Imgflip's free public template list, diffs it against the ~118
 templates already in backend/templates/, and for genuinely new candidates
 (name doesn't match an existing file AND the image isn't a perceptual-hash
 near-duplicate of one we already have under a different name): downloads
-the image, asks a vision LLM to draft a USE_WHEN-style catalog entry plus a
-note on whether the generic DEFAULT_BOXES caption layout looks sufficient,
-and writes everything needed for a PR — never auto-merges. The repo is the
-database; a human is the reviewer.
+the image, runs it through the same content-moderation gate every
+user-uploaded image goes through, asks a vision LLM to draft a
+USE_WHEN-style catalog entry, precomputes its Gemini embedding, and
+commits the new template file plus its USE_WHEN entry plus its embedding
+directly to main. No PR, no human review step — the automated gates
+(perceptual-hash dedup, content moderation, and the workflow's own
+pytest run before it ever commits) are what stand in for one. A template
+that clears every gate is live on the next deploy, available to Chat,
+Lore, and Make alike, the same as a hand-curated one.
 
 Run:
-    cd backend && python -m scripts.trend_pipeline --dry-run   # no Groq call, no writes
-    cd backend && python -m scripts.trend_pipeline              # real run, needs GROQ_API_KEY
+    cd backend && python -m scripts.trend_pipeline --dry-run   # no Groq/Gemini calls, no writes
+    cd backend && python -m scripts.trend_pipeline              # real run, needs GROQ_API_KEY + GEMINI_API_KEY
 
-Reuses (not reimplements) two existing precedents:
+Reuses (not reimplements) four existing precedents:
 - scripts/seed_templates.py's Imgflip fetch shape (public API, no auth).
 - scripts/find_duplicate_templates.py's dhash()/hamming() perceptual-hash
   primitives, already validated on this exact catalog (see that file's
   docstring).
+- uploads/moderation.py's moderate_image() — the exact same fail-closed
+  content-safety gate every user-uploaded photo already goes through.
+- scripts/precompute_template_embeddings.py's embedding shape
+  (GeminiEmbeddingFunction + template_document_text()), so a
+  trend-pipeline-added template's embedding is indistinguishable from one
+  added by that script by hand.
 """
 
 from __future__ import annotations
@@ -37,10 +48,14 @@ from nlp.intent_router import _CORE_TEMPLATE_IDS, USE_WHEN
 from nlp.llm_client import strip_markdown
 from nlp.vision import call_groq_vision
 from scripts.find_duplicate_templates import dhash, hamming
+from uploads.moderation import moderate_image
+from vector_db.chroma_client import template_document_text
+from vector_db.gemini_embedding_function import GeminiEmbeddingFunction
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 INTENT_ROUTER_PATH = Path(__file__).resolve().parent.parent / "nlp" / "intent_router.py"
-PR_BODY_PATH = Path(__file__).resolve().parent.parent / "trend_pipeline_pr_body.md"
+EMBEDDINGS_PATH = Path(__file__).resolve().parent.parent / "data" / "template_embeddings.json"
+COMMIT_BODY_PATH = Path(__file__).resolve().parent.parent / "trend_pipeline_commit_body.md"
 
 IMGFLIP_API = "https://api.imgflip.com/get_memes"
 _HASH_SIZE = 16  # must match find_duplicate_templates.py's default
@@ -70,6 +85,12 @@ Style to match — CAPS label, colon, one dense sentence, then explicit \
 could be confused with, if any of these examples below look related:
 
 {examples}
+
+This catalog already has these known confusion clusters — if the image in \
+front of you belongs to one of them, its NOT-for cross-reference MUST name \
+the specific other template(s) in its cluster, not just any vaguely \
+similar one:
+{clusters}
 
 Also note whether this image is a simple single top/bottom caption format, \
 or has multiple panels / a non-obvious caption layout that would need a \
@@ -144,19 +165,25 @@ def _closest_existing_match(
 
 def _use_when_examples_block() -> str:
     """A bounded sample (the always-in-prompt core templates), not the full
-    118-entry catalog — keeps the drafting prompt small; the human reviewer
-    is explicitly responsible for the final confusion-cluster check against
-    the rest of the catalog (see the PR body's review checklist)."""
+    118-entry catalog — keeps the drafting prompt small. The known
+    confusion clusters (folded into _DRAFT_SYSTEM_PROMPT directly) cover
+    the specific cross-catalog mixups a human reviewer used to be the
+    backstop for."""
     lines = [f'- "{tid}": {USE_WHEN[tid]}' for tid in _CORE_TEMPLATE_IDS if tid in USE_WHEN]
     return "\n".join(lines)
 
 
-async def _draft_use_when(image: Image.Image) -> dict:
-    """Never raises to the caller — returns a placeholder draft on any
-    failure so one bad LLM call doesn't abort the whole run; the PR body
-    makes a fallback draft obvious so the human knows to write it by hand."""
+async def _draft_use_when(image: Image.Image) -> dict | None:
+    """Returns None on any failure rather than a placeholder — there's no
+    human downstream to notice and fix a "DRAFT FAILED" stub before it
+    reaches production, so the caller drops this candidate entirely
+    instead of committing a broken catalog entry. One bad LLM call still
+    can't abort the whole run; it just costs that one candidate."""
     settings = get_settings()
-    system_prompt = _DRAFT_SYSTEM_PROMPT.format(examples=_use_when_examples_block())
+    system_prompt = _DRAFT_SYSTEM_PROMPT.format(
+        examples=_use_when_examples_block(),
+        clusters="\n".join(f"- {c}" for c in _KNOWN_CONFUSION_CLUSTERS),
+    )
     try:
         raw = await call_groq_vision(
             image,
@@ -173,10 +200,8 @@ async def _draft_use_when(image: Image.Image) -> dict:
             "box_layout_note": str(data["box_layout_note"]),
         }
     except Exception as exc:
-        return {
-            "use_when": "DRAFT FAILED — write this entry by hand before merging.",
-            "box_layout_note": f"(drafting failed: {exc})",
-        }
+        print(f"  [error] catalog-entry drafting failed, dropping this candidate: {exc}")
+        return None
 
 
 def insert_use_when_entries(source: str, new_entries: dict[str, str]) -> str:
@@ -204,49 +229,58 @@ def insert_use_when_entries(source: str, new_entries: dict[str, str]) -> str:
     )
     # Section header makes it obvious in the diff which entries came from
     # this automated pass, distinct from hand-curated ones above it.
-    header = "    # --- Trend pipeline additions (review before merging) ---\n"
-    return source[:close_idx] + "\n" + header + new_lines + source[close_idx:]
+    header = "    # --- Trend pipeline additions (auto-merged) ---\n"
+    new_source = source[:close_idx] + "\n" + header + new_lines + source[close_idx:]
+
+    # Refuse to write a source file that doesn't even parse — the string
+    # surgery above is anchor-based, not AST-based, so this is the one
+    # cheap check standing between a quoting edge case and a broken
+    # intent_router.py landing on main with nothing else to catch it
+    # before the workflow's own pytest step (which imports this module).
+    try:
+        compile(new_source, str(INTENT_ROUTER_PATH), "exec")
+    except SyntaxError as exc:
+        raise ValueError(f"Edited intent_router.py source no longer compiles — refusing to write: {exc}") from exc
+
+    return new_source
 
 
-def _write_pr_body(candidates: list[dict]) -> None:
+def _merge_embeddings(existing: dict[str, dict], new_entries: dict[str, dict]) -> dict[str, dict]:
+    """Pure — same incremental-merge contract as
+    scripts/precompute_template_embeddings.py: new entries are added,
+    every existing entry (hand-curated or from a prior trend-pipeline run)
+    is kept untouched."""
+    merged = dict(existing)
+    merged.update(new_entries)
+    return merged
+
+
+def _write_commit_body(candidates: list[dict]) -> None:
     sections = []
     for c in candidates:
         sections.append(
             f"### `{c['template_id']}` — {c['display_name']}\n\n"
             f"Source: [{c['display_name']} on Imgflip]({c['imgflip_url']})\n\n"
             f"Closest existing match: `{c['closest_match_id']}` "
-            f"(similarity {c['closest_match_sim']:.3f}, "
-            f"{'ABOVE' if c['closest_match_sim'] >= _DUPLICATE_THRESHOLD else 'below'} "
-            f"the {_DUPLICATE_THRESHOLD} duplicate threshold)\n\n"
-            f"**Drafted `USE_WHEN`:**\n```python\n\"{c['template_id']}\": {json.dumps(c['use_when'])},\n```\n\n"
-            f"**Box layout note:** {c['box_layout_note']}\n"
+            f"(similarity {c['closest_match_sim']:.3f}, below the "
+            f"{_DUPLICATE_THRESHOLD} duplicate threshold)\n\n"
+            f"**`USE_WHEN`:**\n```python\n\"{c['template_id']}\": {json.dumps(c['use_when'])},\n```\n\n"
+            f"**Box layout note:** {c['box_layout_note']} (falls back to the generic "
+            f"top/bottom `DEFAULT_BOXES` layout unless someone later adds a custom "
+            f"`TextBoxConfig` for it in `image_processing/template_configs.py`)\n"
         )
 
-    clusters = "\n".join(f"- {c}" for c in _KNOWN_CONFUSION_CLUSTERS)
     body = f"""\
-## New template candidate(s) from this week's Imgflip scan
+## New template(s) added by this week's Imgflip scan
 
-Automated by `backend/scripts/trend_pipeline.py`. **Nothing here is merged \
-automatically** — review every candidate below before approving.
-
-### Review checklist
-
-- [ ] For each candidate: confirm it's not a duplicate of an existing \
-template under a different name (see "closest existing match" per candidate)
-- [ ] Read the drafted `USE_WHEN` — does the wording actually match the \
-image, and are the "NOT for X" cross-references correct?
-- [ ] Check against this catalog's known confusion clusters:
-{clusters}
-- [ ] Check the box layout note — if it suggests a multi-panel or non-default \
-layout, add a custom `TextBoxConfig` in `image_processing/template_configs.py` \
-before merging (not done automatically)
-- [ ] Generate a real test meme locally to confirm captions render legibly
-
----
+Automated by `backend/scripts/trend_pipeline.py`. Each one cleared the \
+perceptual-hash duplicate filter, the same content-moderation gate every \
+user-uploaded image goes through, and the workflow's own pytest run \
+before landing here — no PR, no manual merge.
 
 {"".join(sections)}
 """
-    PR_BODY_PATH.write_text(body)
+    COMMIT_BODY_PATH.write_text(body)
 
 
 async def _run(dry_run: bool) -> None:
@@ -287,8 +321,21 @@ async def _run(dry_run: bool) -> None:
                       f"(similarity {closest_sim:.3f}), Imgflip just calls it something else.")
                 tmp_path.unlink(missing_ok=True)
                 continue
+
+            # Same fail-closed content-safety gate every user-uploaded image
+            # already goes through (uploads/moderation.py) — this candidate
+            # is about to become part of the public template catalog with
+            # no human ever looking at it, so it gets no less scrutiny than
+            # a user's own photo upload does.
+            moderation = await moderate_image(Image.open(tmp_path).convert("RGB"))
+            if not moderation.passed:
+                print(f"[skip] {template_id} — failed content moderation "
+                      f"(category: {moderation.category}).")
+                tmp_path.unlink(missing_ok=True)
+                continue
+
             print(f"[candidate] {template_id} — closest existing match `{closest_id}` "
-                  f"at {closest_sim:.3f}, below the duplicate threshold.")
+                  f"at {closest_sim:.3f}, below the duplicate threshold, passed moderation.")
             surviving.append({
                 "template_id": template_id,
                 "display_name": meme["name"],
@@ -312,27 +359,72 @@ async def _run(dry_run: bool) -> None:
         return
 
     if not surviving:
-        print("No candidates survived the visual-duplicate filter.")
+        print("No candidates survived the visual-duplicate and moderation filters.")
         return
 
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        # Fail loudly rather than commit templates with no embedding — an
+        # un-embedded template is invisible to Chat/Lore's RAG lookup and
+        # to Make's picker (both read through ChromaDB, seeded from this
+        # same embeddings file), so a partial add is worse than no add.
+        for c in surviving:
+            c["tmp_path"].unlink(missing_ok=True)
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set — cannot embed new templates, refusing to add "
+            f"{len(surviving)} candidate(s) without one. Add it as a repo secret."
+        )
+
+    embedder = GeminiEmbeddingFunction(
+        model_name=settings.gemini_embedding_model,
+        api_key=settings.gemini_api_key,
+    )
+
+    added: list[dict] = []
     new_use_when: dict[str, str] = {}
+    new_embeddings: dict[str, dict] = {}
     for c in surviving:
         print(f"Drafting catalog entry for {c['template_id']} (vision call)...")
         image = Image.open(c["tmp_path"]).convert("RGB")
         draft = await _draft_use_when(image)
+        if draft is None:
+            c["tmp_path"].unlink(missing_ok=True)
+            continue
         c["use_when"] = draft["use_when"]
         c["box_layout_note"] = draft["box_layout_note"]
+
+        name = c["template_id"].replace("_", " ").title()
+        tags = [c["template_id"]]
+        document = template_document_text(name, draft["use_when"], tags)
+        print(f"Embedding {c['template_id']} (Gemini call)...")
+        raw_vector = embedder([document])[0]
+        new_embeddings[c["template_id"]] = {
+            "embedding": [float(x) for x in raw_vector],
+            "document": document,
+            "name": name,
+            "tags": tags,
+            "description": draft["use_when"],
+        }
         new_use_when[c["template_id"]] = draft["use_when"]
 
         final_path = TEMPLATES_DIR / f"{c['template_id']}{c['ext']}"
         c["tmp_path"].rename(final_path)
+        added.append(c)
+
+    if not added:
+        print("No candidates survived catalog-entry drafting.")
+        return
 
     source = INTENT_ROUTER_PATH.read_text()
     INTENT_ROUTER_PATH.write_text(insert_use_when_entries(source, new_use_when))
 
-    _write_pr_body(surviving)
-    print(f"\nWrote {len(surviving)} new template image(s), updated USE_WHEN, "
-          f"and {PR_BODY_PATH} for the PR step.")
+    existing_embeddings = json.loads(EMBEDDINGS_PATH.read_text()) if EMBEDDINGS_PATH.exists() else {}
+    merged = _merge_embeddings(existing_embeddings, new_embeddings)
+    EMBEDDINGS_PATH.write_text(json.dumps(merged, separators=(",", ":")))
+
+    _write_commit_body(added)
+    print(f"\nAdded {len(added)} new template(s): updated USE_WHEN, precomputed embeddings, "
+          f"and wrote {COMMIT_BODY_PATH} for the commit message.")
 
 
 def _template_path(template_id: str) -> Path:
