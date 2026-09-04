@@ -20,7 +20,7 @@ const DESCRIPTION = "A chatbot that speaks exclusively in memes.";
 const DEFAULT_SHARE_IMAGE = "/landing/drake_example.png";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://memegpt-six.vercel.app"),
+  metadataBase: new URL("https://memegpt.app"),
   title: {
     default: "MemeGPT — A chatbot that only speaks meme.",
     template: "%s — MemeGPT",
