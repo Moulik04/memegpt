@@ -23,7 +23,7 @@ interface Props {
  * own dark tokens (the source uses white cells; ours uses --ink-1) per
  * the project's sourcing rule. Validated against two alternatives (a
  * WebGL halftone reveal) in a live side-by-side before this one was
- * picked — see MASTER.md.
+ * picked.
  *
  * `object-contain`, not `object-cover`: memes have wildly variable aspect
  * ratios (wide comics, portrait panels) and cropping one can cut off the

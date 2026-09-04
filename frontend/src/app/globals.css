@@ -52,10 +52,10 @@
   --sidebar-border: var(--line);
   --sidebar-ring: var(--accent-color);
 
-  /* ---- Redesign motion/type tokens (see MASTER.md at repo root) ----
+  /* ---- Redesign motion/type tokens ----
      The cream/paper color system that originally lived here was reverted
-     after real-browser review — see MASTER.md §0. These survived the
-     reversal since the dark system uses them too. */
+     after real-browser review. These survived the reversal since the
+     dark system uses them too. */
   --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
   --duration-fast: 150ms;
   --duration-settle: 280ms;
@@ -159,16 +159,16 @@
 .meme-reveal { animation: fadeUp 0.3s ease-out forwards; }
 
 /* ---- Chat empty state, v2 ----
-   The cream/paper/poster direction above (MASTER.md's original Phase 4
-   spec) tested badly in the real app — validated fine in isolated
-   Artifact mockups, but read as an amateur "craft project" swap of one
-   genre for another rather than an improvement, per real-browser review.
-   Pivoted back to dark, grounded in real reference research (21st.dev's
-   AI Chat component category, Aceternity UI): well-regarded chat UIs
-   differentiate through motion/depth polish on a clean dark surface, not
-   decorative texture. See MASTER.md's "Pivot" section. Still zero
-   gradients/glow/neon per frontend-tokens' non-negotiables — depth here
-   is neutral box-shadow, motion is scale/opacity, nothing colored blurs. */
+   An earlier cream/paper/poster direction tested badly in the real app.
+   It validated fine in isolated Artifact mockups, but read as an amateur
+   "craft project" swap of one genre for another rather than an
+   improvement, per real-browser review. Pivoted back to dark, grounded
+   in real reference research (21st.dev's AI Chat component category,
+   Aceternity UI): well-regarded chat UIs differentiate through
+   motion/depth polish on a clean dark surface, not decorative texture.
+   Still zero gradients/glow/neon per frontend-tokens' non-negotiables.
+   Depth here is neutral box-shadow, motion is scale/opacity, nothing
+   colored blurs. */
 .headline-poster {
   font-family: var(--font-display);
   text-transform: uppercase;
