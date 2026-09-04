@@ -17,7 +17,17 @@
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-GKE-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://cloud.google.com/kubernetes-engine)
 [![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
 
+**[Demo](#demo) · [Architecture](#architecture) · [Features](#features) · [Tech stack](#tech-stack) · [Quick start](#quick-start) · [API reference](#api-reference) · [Infrastructure](#infrastructure)**
+
 </div>
+
+---
+
+<p align="center">
+  <img src="docs/images/chat-demo.png" alt="MemeGPT chat interface showing a real generated meme in response to a message" width="700">
+  <br>
+  <sub>A real exchange on <code>/chat</code>. Nothing staged, this is the actual UI and the actual output.</sub>
+</p>
 
 ---
 
