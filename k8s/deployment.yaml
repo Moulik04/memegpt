@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memegpt-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memegpt-backend
+  template:
+    metadata:
+      labels:
+        app: memegpt-backend
+    spec:
+      containers:
+        - name: memegpt-backend
+          image: us-central1-docker.pkg.dev/memegpt-infra-68502/memegpt-backend/memegpt-backend@sha256:b3b9b1804be41045acd2ff83bf51f0e48a4f27aba381c4aff9f72b8620a6b236
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: memegpt-backend-config
+            - secretRef:
+                name: backend-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10

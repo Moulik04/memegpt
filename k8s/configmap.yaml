@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: memegpt-backend-config
+data:
+  LLM_PROVIDER: "groq"
+  GROQ_MODEL: "qwen/qwen3.6-27b"
+  GEMINI_EMBEDDING_MODEL: "gemini-embedding-2"
+  CORS_ALLOW_ALL_ORIGINS: "true"
+  OTEL_SEMCONV_STABILITY_OPT_IN: "http/dup"
