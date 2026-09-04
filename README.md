@@ -282,6 +282,27 @@ All seven phases of the original growth plan (A–G) are shipped, plus an append
 
 ---
 
+## Infrastructure
+
+The backend runs on GCP — Cloud Run, provisioned entirely with Terraform,
+with real CI/CD (GitHub Actions, Workload Identity Federation, an
+untrafficked candidate revision promoted only after a real smoke test)
+and real observability (OpenTelemetry → Grafana Cloud: 1 dashboard, 3 SLO
+alerts). A separate, isolated Terraform module also stood up a real GKE
+Autopilot cluster once, verified it against a real public LoadBalancer
+IP, and tore it down the same session — real, working k8s manifests
+(`k8s/`) and Terraform (`terraform/gke/`) stay in the repo, but Cloud Run
+is what's actually live day to day.
+
+Real, measured numbers — cold start (Render's ~30s vs Cloud Run's real
+~8.9s), CI deploy time (~3 minutes end to end), the Cloud Run vs. GKE
+cost decision (~$0.10/hour Autopilot management fee, ~$73/month if run
+continuously, vs. Cloud Run's ~$0 steady state), the SLO thresholds and
+why, and one real incident found and fixed along the way — are all in
+**[`docs/INFRASTRUCTURE.md`](docs/INFRASTRUCTURE.md)**.
+
+---
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
