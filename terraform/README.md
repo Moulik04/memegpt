@@ -4,8 +4,8 @@ Provisions MemeGPT backend's GCP foundation and the live Cloud Run
 service: enabled APIs, Artifact Registry, a least-privilege Cloud Run
 runtime service account, empty Secret Manager containers (Phase 1), and
 the `google_cloud_run_v2_service` itself, pinned to a specific image
-digest (Phase 2, `cloud_run.tf`). See `../CLOUD_MIGRATION_MASTER.md` for
-the full migration plan.
+digest (Phase 2, `cloud_run.tf`). See `../docs/INFRASTRUCTURE.md` for
+the full migration write-up.
 
 ## Bootstrap from zero
 
@@ -62,7 +62,7 @@ the full migration plan.
 ## Adding a real secret value
 
 Terraform only creates empty Secret Manager containers — it never sets
-values (see the repo's `CLAUDE.md` hard invariants). After `apply`:
+values. After `apply`:
 
 ```bash
 echo -n "actual-value" | gcloud secrets versions add GROQ_API_KEY \
@@ -85,4 +85,4 @@ IAM, Secret Manager containers) and Phase 2 (`cloud_run.tf` — the live
 Cloud Run service, pinned to a specific image digest via
 `var.cloud_run_image_digest`). CI/CD around `terraform plan`/`apply`
 (Phase 3) and everything past it are documented in
-`../CLOUD_MIGRATION_MASTER.md`, not here.
+`../docs/INFRASTRUCTURE.md`, not here.

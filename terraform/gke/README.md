@@ -1,8 +1,8 @@
 # terraform/gke/
 
-Provisions a single GKE Autopilot cluster used for Phase 5's one-shot
-Kubernetes verification (`CLOUD_MIGRATION_MASTER.md`, Phase 5). Fully
-separate Terraform state from the main `terraform/` stack — its
+Provisions a single GKE Autopilot cluster used for the cloud migration's
+one-shot Kubernetes verification (see `../../docs/INFRASTRUCTURE.md`).
+Fully separate Terraform state from the main `terraform/` stack — its
 `destroy` can never affect the live Cloud Run backend.
 
 ## Bootstrap
@@ -29,5 +29,5 @@ Cloud Run service.
 Just the cluster (`main.tf`) and the two APIs/outputs it needs. The k8s
 manifests deployed onto it live in `../../k8s/` at the repo root, applied
 directly via `kubectl`, not through this Terraform module — see
-`docs/superpowers/plans/2026-09-04-cloud-migration-phase5-kubernetes.md`
-Task 3 for the full spin-up/verify/teardown sequence.
+`../../docs/INFRASTRUCTURE.md` for the full spin-up/verify/teardown
+sequence and real results.

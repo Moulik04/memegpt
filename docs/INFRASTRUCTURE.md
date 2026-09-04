@@ -2,8 +2,10 @@
 
 MemeGPT's backend has been fully migrated to GCP — provisioned entirely
 with Terraform, with real CI/CD and real observability — and verified
-live under real traffic (`CLOUD_MIGRATION_MASTER.md`, Phases 1-5). The
-live public app currently still serves from Render; cutover (pointing
+live under real traffic across five migration phases (Terraform
+foundation, containerize + deploy, CI/CD, observability, and a
+Kubernetes tier). The live public app currently still serves from
+Render; cutover (pointing
 the frontend's `BACKEND_URL` at Cloud Run) is a deliberate, reversible
 DNS/env change intentionally held until public launch, not something
 left undone by accident — the working agreement that drove this
@@ -101,12 +103,12 @@ drifted 4 templates behind the live catalog by the time this was
 verified — 121 of 125 templates seeded from the file, the remaining 4 via
 a live Gemini embedding call, which makes cold-start seeding depend on
 Gemini quota in exactly the scenario this design was meant to avoid. This
-is a standing hard invariant now (`CLAUDE.md`): re-run
+is a standing project invariant now: re-run
 `precompute_template_embeddings.py` whenever the template set changes.
 
 ## Cloud Run vs. GKE — the real cost decision
 
-`CLOUD_MIGRATION_MASTER.md` ruled out an always-on Kubernetes tier up
+The original migration plan ruled out an always-on Kubernetes tier up
 front: a managed control plane (EKS-style) runs ~$73/month before a
 single node, which isn't sustainable on this project's $10/month ceiling
 and proves nothing extra to anyone reading the code. Cloud Run was
