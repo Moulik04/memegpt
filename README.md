@@ -4,7 +4,7 @@
 
 ### An AI chatbot that only talks in memes — LLM intent routing, RAG template retrieval, multimodal vision, and real-time image composition.
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-memegpt--six.vercel.app-7C3AED?style=flat-square)](https://memegpt-six.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-memegpt.app-7C3AED?style=flat-square)](https://memegpt.app)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat-square&logo=next.js&logoColor=white)](https://nextjs.org/)
@@ -22,7 +22,7 @@
 
 MemeGPT is a chatbot that communicates exclusively through memes. Type a message (or paste a whole group-chat dump, or upload a photo), and it routes through an LLM intent-parsing layer, does a RAG pre-filter over 120+ meme templates, picks the best match (or, for a photo, captions it directly), renders text onto the image with a pixel-accurate Pillow compositor, and streams the result back in real time.
 
-**[Try it live →](https://memegpt-six.vercel.app)**
+**[Try it live →](https://memegpt.app)**
 
 The product has four real surfaces, plus a marketing front door:
 
@@ -284,15 +284,18 @@ All seven phases of the original growth plan (A–G) are shipped, plus an append
 
 ## Infrastructure
 
-The backend runs on GCP — Cloud Run, provisioned entirely with Terraform,
-with real CI/CD (GitHub Actions, Workload Identity Federation, an
-untrafficked candidate revision promoted only after a real smoke test)
-and real observability (OpenTelemetry → Grafana Cloud: 1 dashboard, 3 SLO
-alerts). A separate, isolated Terraform module also stood up a real GKE
-Autopilot cluster once, verified it against a real public LoadBalancer
-IP, and tore it down the same session — real, working k8s manifests
-(`k8s/`) and Terraform (`terraform/gke/`) stay in the repo, but Cloud Run
-is what's actually live day to day.
+The backend has been fully migrated to GCP — Cloud Run, provisioned
+entirely with Terraform, with real CI/CD (GitHub Actions, Workload
+Identity Federation, an untrafficked candidate revision promoted only
+after a real smoke test) and real observability (OpenTelemetry → Grafana
+Cloud: 1 dashboard, 3 SLO alerts) — and verified live under real traffic.
+The public app currently still serves from Render; cutover is a
+deliberate, reversible step intentionally held until launch. A separate,
+isolated Terraform module also stood up a real GKE Autopilot cluster
+once, verified it against a real public LoadBalancer IP, and tore it
+down the same session — real, working k8s manifests (`k8s/`) and
+Terraform (`terraform/gke/`) stay in the repo as evidence, not as a
+second live deployment target.
 
 Real, measured numbers — cold start (Render's ~30s vs Cloud Run's real
 ~8.9s), CI deploy time (~3 minutes end to end), the Cloud Run vs. GKE

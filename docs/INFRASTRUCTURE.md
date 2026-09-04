@@ -1,10 +1,16 @@
 # Infrastructure
 
-MemeGPT's backend runs on GCP, provisioned entirely with Terraform, with
-real CI/CD and real observability — this doc is the write-up for that
-migration (`CLOUD_MIGRATION_MASTER.md`, Phases 1-5). Full incident-level
-narrative lives in `docs/DECISIONS.md` (local-only); this is the
-public-facing summary with the real, measured numbers.
+MemeGPT's backend has been fully migrated to GCP — provisioned entirely
+with Terraform, with real CI/CD and real observability — and verified
+live under real traffic (`CLOUD_MIGRATION_MASTER.md`, Phases 1-5). The
+live public app currently still serves from Render; cutover (pointing
+the frontend's `BACKEND_URL` at Cloud Run) is a deliberate, reversible
+DNS/env change intentionally held until public launch, not something
+left undone by accident — the working agreement that drove this
+migration was explicit that Render keeps serving until Cloud Run is
+proven under real traffic, which every phase below did. Full
+incident-level narrative lives in `docs/DECISIONS.md` (local-only); this
+is the public-facing summary with the real, measured numbers.
 
 ## Architecture
 
