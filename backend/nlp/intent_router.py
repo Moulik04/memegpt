@@ -186,9 +186,9 @@ USE_WHEN: dict[str, str] = {
     "spinning_dancer":  "SAME THING, OPPOSITE PERCEPTIONS: A silhouette that famously appears to spin either direction depending on who's looking at it. Use when two people staring at the exact same situation walk away with completely different, equally confident readings of it — there's no objectively right side. NOT simple disagreement with a clear right/wrong (woman_yelling_at_cat) or two things that are secretly identical (theyre_the_same_picture).",
     # --- Trend pipeline additions (review before merging) ---
     "bernie_i_am_once_again_asking_for_your_support": "RELUCTANT RE-ENGAGEMENT: A weary, resigned admission that you are forced to repeat a request, question, or task that has already been ignored or failed previously; conveys a sense of 'here we go again' exhaustion. NOT for a sudden realization of a mistake (surprised_pikachu), a plan backfiring (grus_plan), or a simple preference (drake).",
-    "yo_dawg_heard_you": "DRAFT FAILED — write this entry by hand before merging.",
-    "grim_reaper_knocking_door": "DRAFT FAILED — write this entry by hand before merging.",
-    "look_at_me": "DRAFT FAILED — write this entry by hand before merging.",
+    "yo_dawg_heard_you": "RECURSIVE NESTING: 'Yo dawg, I heard you like X, so I put an X in your X' — the same kind of thing embedded inside itself, one layer deep. E.g. a test suite that needs its own test suite. NOT a repeated failed attempt (bernie_i_am_once_again_asking_for_your_support) or a multi-step plan (grus_plan).",
+    "grim_reaper_knocking_door": "CASUAL MENACE, NEXT VICTIM: A bloody trail out of the last door, then a calm, polite knock on the next one — moving on to repeat something bad with total composure, like nothing just happened. E.g. calmly opening a new incident channel right after the last outage's retro. NOT for sitting inside ongoing chaos and denying it (this_is_fine) or a plan backfiring on its own author (grus_plan).",
+    "look_at_me": "I'M IN CHARGE NOW: An unsettling, dead-calm declaration of a sudden change in who's in control — quiet intensity, not celebration. E.g. the intern calmly announcing they're the one who'll be reviewing everyone's PRs now. NOT a goofy self-congratulatory win (floss_dance) or pure unbridled hype (party_parrot).",
 
 }
 
