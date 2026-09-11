@@ -527,6 +527,20 @@ TEMPLATE_CATALOG: dict[str, TemplateConfig] = {
         box_descriptions=DEFAULT_BOX_DESCRIPTIONS,
         is_gif=True,
     ),
+
+    # ── C'mon Do Something ──────────────────────────────────────────────────
+    # Single caption box in the empty space the figure is pointing at — a
+    # top/bottom DEFAULT_BOXES layout would sit the text over the figure
+    # itself instead of the thing being called out.
+    "c_mon_do_something": TemplateConfig(
+        template_id="c_mon_do_something",
+        text_boxes=[
+            TextBoxConfig("callout", x_pct=42, y_pct=28, w_pct=54, h_pct=48, font_size_pct=7),
+        ],
+        box_descriptions={
+            "callout": "The specific action or event being silently pointed at and called out.",
+        },
+    ),
 }
 
 
