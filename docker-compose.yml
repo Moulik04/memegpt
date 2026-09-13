@@ -3,7 +3,7 @@
 # All services resolve each other by service name (e.g. http://vector-db:8000)
 #
 # First-run after `docker compose up -d`:
-#   docker exec memegpt-ollama ollama pull llama3.1:8b
+#   docker exec memegpt-ollama ollama pull qwen3:8b
 #
 # GPU (NVIDIA) — uncomment the `deploy` block under `ollama`.
 # Apple Metal — not accessible from Docker; Ollama runs in CPU mode on Mac.

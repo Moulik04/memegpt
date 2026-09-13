@@ -227,7 +227,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 # Local LLM, free and the default. Run in a separate terminal:
-ollama pull llama3.1:8b && ollama serve
+ollama pull qwen3:8b && ollama serve
 
 # OR cloud LLM, no GPU needed:
 export LLM_PROVIDER=groq
@@ -254,7 +254,7 @@ Postgres (`DATABASE_URL`), R2 (`R2_*`), and Supabase Auth (`SUPABASE_URL` and fr
 ```bash
 git clone https://github.com/Moulik04/memegpt.git && cd memegpt
 cp .env.example .env
-ollama pull llama3.1:8b && ollama serve   # native, for Metal/CUDA access
+ollama pull qwen3:8b && ollama serve   # native, for Metal/CUDA access
 docker compose up -d --build
 docker exec memegpt-backend python scripts/seed_templates.py   # first run only
 ```
