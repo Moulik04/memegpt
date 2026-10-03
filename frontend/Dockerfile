@@ -18,8 +18,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copy only what next start needs (no public/ dir in this project)
+# Copy only what next start needs. public/ holds the landing page's hero and
+# floating-meme images, the PWA icons and the manifest.
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.js ./next.config.js
