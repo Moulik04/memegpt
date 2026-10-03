@@ -77,6 +77,7 @@ memes_reference_data.tsv
 # Vercel CLI's local project link metadata
 .vercel/
 .env*
+!.env.secrets.example
 
 # Terraform (terraform/ has its own .gitignore too, belt and suspenders
 # in case a *.tfvars-style file ever gets created outside that directory)

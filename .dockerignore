@@ -9,6 +9,8 @@ backend/data/chroma
 backend/static/generated
 backend/.env
 .env
+.env.secrets
+backend/.env.secrets
 frontend/
 volumes/
 .git/

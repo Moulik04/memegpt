@@ -1,4 +1,27 @@
 {
+  "permissions": {
+    "deny": [
+      "Read(**/.env.secrets)",
+      "Read(**/backend/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.*.local)",
+      "Read(**/.env.production*)",
+      "Read(**/.dev.vars)",
+      "Read(**/*.tfvars)",
+      "Read(**/*.tfstate)",
+      "Read(**/*.tfstate.*)",
+      "Read(~/.zshenv)",
+      "Read(~/.zshrc)",
+      "Read(~/.zprofile)",
+      "Read(~/.netrc)",
+      "Read(~/.aws/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.config/gcloud/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.claude/projects/**/*.jsonl)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -7,6 +30,10 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard_credentials.sh"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard_secrets.py"
           }
         ]
       }
