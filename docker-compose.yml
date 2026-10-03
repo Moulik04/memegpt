@@ -74,6 +74,11 @@ services:
       OLLAMA_HOST: http://host.docker.internal:11434
       CHROMA_HOST: vector-db
       CHROMA_PORT: "8000"
+      # Passed by name only: values come from the (gitignored) root .env or
+      # the shell. Without a Groq key the stack stays on local Ollama, and
+      # Make captions and image uploads are refused (moderation fails closed).
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
     volumes:
       - ./volumes/backend_static:/app/static/generated  # persists generated meme PNGs
       - ./data/context:/app/data/context:ro             # Kaggle TSV + memes.json (read-only)

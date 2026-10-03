@@ -113,6 +113,45 @@ async def call_groq(
     return ""
 
 
+def describe_llm_provider(settings) -> tuple[str, str]:
+    """(level, message) for the startup log: which provider is really active.
+
+    call_llm() below quietly uses Ollama when LLM_PROVIDER=groq but the key is
+    empty, and moderation fails closed without the same key, so a missing key
+    would otherwise only surface later as a stock fallback meme.
+    """
+    has_key = bool(settings.groq_api_key)
+    if settings.llm_provider == "groq":
+        if has_key:
+            return "info", (
+                f"LLM provider: groq ({settings.groq_model}, "
+                f"fallback {settings.groq_fallback_model})"
+            )
+        return "warning", (
+            "LLM_PROVIDER=groq but GROQ_API_KEY is empty. Chat will silently use "
+            f"Ollama at {settings.ollama_host} instead (and fall back to the stock "
+            "hide_the_pain_harold meme if that is unreachable or slow). Make "
+            "captions and image uploads will be refused, because moderation fails "
+            "closed without the key."
+        )
+    ollama = f"LLM provider: ollama ({settings.ollama_model} at {settings.ollama_host})"
+    if has_key:
+        return "info", ollama
+    return "warning", (
+        f"{ollama}. GROQ_API_KEY is not set, so Make captions and image uploads "
+        "will be refused (moderation fails closed without it)."
+    )
+
+
+def log_llm_provider(settings) -> None:
+    level, message = describe_llm_provider(settings)
+    if level == "warning":
+        banner = "!" * 78
+        print(f"{banner}\nWARNING: {message}\n{banner}", flush=True)
+    else:
+        print(message, flush=True)
+
+
 async def call_llm(
     client: httpx.AsyncClient,
     settings,

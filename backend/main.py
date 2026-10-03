@@ -17,6 +17,7 @@ from slowapi.errors import RateLimitExceeded
 import telemetry  # noqa: F401 — side-effecting import: configures OTel + structlog
 from config import get_settings
 from nlp.intent_router import USE_WHEN
+from nlp.llm_client import log_llm_provider
 from rate_limit import limiter
 from routers import (
     arc,
@@ -167,6 +168,7 @@ def _auto_seed_if_empty() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log_llm_provider(settings)
     init_chroma()
     _init_examples()  # pre-warm examples store so first request isn't slow
 
