@@ -2,7 +2,7 @@
 Content moderation for uploaded images — Phase 0 safety gate, step 4.
 
 Uses the same already-verified vision-capable Groq model as nlp/vision.py
-(qwen/qwen3.6-27b) with a strict safety-classification rubric, rather than
+(settings.moderation_model) with a strict safety-classification rubric, rather than
 a dedicated Llama-Guard-style moderation model: Llama Guard's exact
 request/response contract on Groq hasn't been verified against a live
 call, and shipping code against an unverified API contract risks silently

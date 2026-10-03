@@ -15,8 +15,6 @@ services:
         value: groq
       - key: GROQ_API_KEY
         sync: false          # add this manually in Render dashboard → Environment
-      - key: GROQ_MODEL
-        value: qwen/qwen3.8-27b
       - key: GEMINI_API_KEY
         sync: false          # add this manually in Render dashboard → Environment
       - key: GEMINI_EMBEDDING_MODEL

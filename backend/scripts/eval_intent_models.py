@@ -1,9 +1,10 @@
 """
-Standalone comparison harness: qwen/qwen3.6-27b (current production default)
-vs openai/gpt-oss-120b, both on Groq, on the exact prompt-construction path
-parse_intent() uses (same catalog, same system template) — but instrumented
-to report attempt-1 success/failure directly instead of silently retrying
-into the hardcoded fallback the way parse_intent() does for callers.
+Standalone comparison harness: the configured primary Groq model (config.py's
+groq_model) vs the configured secondary (groq_fallback_model), on the exact
+prompt-construction path parse_intent() uses (same catalog, same system
+template), but instrumented to report attempt-1 success/failure directly
+instead of silently retrying into the hardcoded fallback the way
+parse_intent() does for callers.
 
 There's no labeled "correct template" ground truth for these prompts, so
 this measures what's actually measurable: JSON-parse success rate, valid-
@@ -28,7 +29,7 @@ from nlp.llm_client import call_groq, strip_markdown
 from schemas import IntentResponse
 from vector_db.chroma_client import list_template_ids, query_similar_memes
 
-MODELS = ["qwen/qwen3.6-27b", "openai/gpt-oss-120b"]
+MODELS = [get_settings().groq_model, get_settings().groq_fallback_model]
 
 TEST_SITUATIONS = [
     "waiting for my PR to get reviewed for 3 days",

@@ -13,6 +13,11 @@ class Settings(BaseSettings):
 
     # Groq — cloud inference, free tier (https://console.groq.com)
     groq_api_key: str = ""
+    # The only place the Groq model name is written down. render.yaml,
+    # terraform/cloud_run.tf and k8s/configmap.yaml deliberately leave
+    # GROQ_MODEL/MODERATION_MODEL/VISION_MODEL unset so a deploy always runs
+    # the model its own image was tested with; tests/test_model_single_source.py
+    # fails if any of them starts pinning a different one.
     groq_model: str = "qwen/qwen3.8-27b"
     # Resilience follow-up: Groq's rate limits are per-model (each model
     # gets its own separate RPM/RPD/TPM/TPD budget, not a shared

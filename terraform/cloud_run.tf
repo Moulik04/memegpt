@@ -66,10 +66,6 @@ resource "google_cloud_run_v2_service" "backend" {
         value = "groq"
       }
       env {
-        name  = "GROQ_MODEL"
-        value = "qwen/qwen3.8-27b"
-      }
-      env {
         name  = "GEMINI_EMBEDDING_MODEL"
         value = "gemini-embedding-2"
       }

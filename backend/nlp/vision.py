@@ -12,7 +12,7 @@ lossy paraphrase, and it's half the latency/cost.
 Mirrors nlp/llm_client.py's call_groq/call_ollama dispatch shape (this
 module has its own Groq/Anthropic vision-specific callers below, separate
 from llm_client.py, since llm_client.py's callers are text-only):
-Groq is primary — qwen/qwen3.6-27b, the SAME model intent_router.py already
+Groq is primary — settings.vision_model, the SAME model intent_router.py already
 uses for text routing, so this needs zero new provider account or API key.
 It's currently the ONLY vision-capable model on Groq's API (groq/compound,
 groq/compound-mini, and llama-3.3-70b-versatile are all text-only, and
