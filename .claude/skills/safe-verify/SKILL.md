@@ -13,8 +13,10 @@ Never run verification code with the ambient environment. Always:
 
     ./scripts/verify_safe.sh <command>
 
-The wrapper blanks `R2_*`, `DATABASE_URL`, `SUPABASE_*`, `GEMINI_API_KEY`,
-`GROQ_API_KEY`, and `DISCORD_*` before exec'ing the command. If a check
+The wrapper blanks `R2_*`, `DATABASE_URL`, `GEMINI_API_KEY`, and `DISCORD_*`
+before exec'ing the command. It leaves `SUPABASE_URL`/`SUPABASE_ANON_KEY`
+(public by design, and local sign-in needs them) and `GROQ_API_KEY` (the one
+external credential a local run is expected to use) alone. If a check
 genuinely requires a real credential (an end-to-end R2 verification, for
 example), say so explicitly, name which single credential is needed and
 why, and get a go-ahead before running it — don't just drop the wrapper.
