@@ -100,6 +100,13 @@ services:
       args:
         # Baked in at build time — browser fetches memes directly from published port
         NEXT_PUBLIC_API_BASE: http://localhost:8000
+        # next.config.js bakes its /api/* rewrite at build time, so the
+        # Docker-internal backend address has to be a build arg as well.
+        BACKEND_URL: http://backend:8000
+        # Public Supabase pair, read from the (gitignored) root .env.
+        # Unset means the sign-in button stays hidden.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
     container_name: memegpt-frontend
     ports:
       - "3000:3000"
