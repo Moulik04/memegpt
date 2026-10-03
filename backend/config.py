@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # Groq — cloud inference, free tier (https://console.groq.com)
     groq_api_key: str = ""
-    groq_model: str = "qwen/qwen3.6-27b"
+    groq_model: str = "qwen/qwen3.8-27b"
     # Resilience follow-up: Groq's rate limits are per-model (each model
     # gets its own separate RPM/RPD/TPM/TPD budget, not a shared
     # account-wide pool), so a second model
@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     # Multimodal — image uploads (Phase 0 safety gate + Phase 1 vision)
     max_image_bytes: int = 10 * 1024 * 1024   # 10MB
     max_image_dimension_px: int = 8000
-    moderation_model: str = "qwen/qwen3.6-27b"  # vision model + safety rubric — see uploads/moderation.py
+    moderation_model: str = "qwen/qwen3.8-27b"  # vision model + safety rubric — see uploads/moderation.py
     vision_provider: str = "groq"
-    vision_model: str = "qwen/qwen3.6-27b"       # same model already used for text routing
+    vision_model: str = "qwen/qwen3.8-27b"       # same model already used for text routing
     anthropic_api_key: str = ""                    # optional vision fallback — see nlp/vision.py
     anthropic_model: str = "claude-sonnet-5"
     upload_rate_limit: str = "5/minute"

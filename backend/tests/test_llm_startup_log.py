@@ -18,7 +18,7 @@ def test_groq_with_key_is_ok_and_names_the_model():
     level, message = describe_llm_provider(_settings(llm_provider="groq", groq_api_key="k"))
     assert level == "info"
     assert "groq" in message
-    assert "qwen/qwen3.6-27b" in message
+    assert "qwen/qwen3.8-27b" in message
 
 
 def test_groq_without_key_warns_about_silent_ollama_fallthrough():
