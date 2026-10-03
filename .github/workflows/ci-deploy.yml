@@ -96,6 +96,10 @@ jobs:
           set -e
           curl -sf "${{ steps.candidate.outputs.url }}/health"
           curl -sf "${{ steps.candidate.outputs.url }}/docs" -o /dev/null
+          # A canned fallback meme is a 200 too, so /health proves nothing
+          # about the router. This sends one real chat and fails unless the
+          # router actually routed (one retry after 30s for a rate-limit blip).
+          scripts/smoke_chat.sh "${{ steps.candidate.outputs.url }}"
 
       - uses: hashicorp/setup-terraform@v3
         if: success()

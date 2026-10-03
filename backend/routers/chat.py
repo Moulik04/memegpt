@@ -26,7 +26,7 @@ SSE event stream:
   {"type": "plan",     "situations": [...], "total": N}   — only when N > 1
   {"type": "thinking", "stage": "analyzing",  "index": 0, "total": 1, "message": "..."}
   {"type": "thinking", "stage": "rendering",  "index": 0, "total": 1, "template_id": "...", "message": "..."}
-  {"type": "done",     "index": 0, "total": 1, "conversation_id": "...", "message": {...}, "template_used": "..."}
+  {"type": "done",     "index": 0, "total": 1, "conversation_id": "...", "message": {...}, "template_used": "...", "fallback": false}
   {"type": "batch_done", "total": 1, "succeeded": 1}
   {"type": "error",    "index": 0, "total": 1, "message": "..."}
 """
@@ -48,7 +48,7 @@ from config import get_settings
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
-from nlp.intent_router import parse_intent
+from nlp.intent_router import is_fallback, parse_intent
 from nlp.lexicon import schedule_lexicon_extraction
 from nlp.segmentation import resolve_contexts
 from nlp.vision import describe_image, generate_canvas_captions, infer_mode
@@ -262,6 +262,7 @@ async def _render_and_record_turn(
         conversation_id=conversation_id,
         message=reply,
         template_used=intent.template_id,
+        fallback=is_fallback(intent),
     )
 
 

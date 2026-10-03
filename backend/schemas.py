@@ -92,6 +92,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     message: ChatMessage
     template_used: str | None = None  # template_id for attribution
+    fallback: bool = False  # True when the router returned its canned meme instead of a real pick
 
 
 # ---------------------------------------------------------------------------

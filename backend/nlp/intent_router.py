@@ -375,6 +375,15 @@ def _finalize_result(data: dict, known_id_set: set[str]) -> IntentResponse:
 
 _OVERALL_TIMEOUT_SECONDS = 45.0
 
+# Both hard fallbacks below tag their reasoning with this prefix, and
+# is_fallback() is how everything downstream (the SSE done event, the deploy
+# smoke test) tells a canned meme from a routed one.
+FALLBACK_REASONING_PREFIX = "Fallback:"
+
+
+def is_fallback(intent: IntentResponse) -> bool:
+    return (intent.reasoning or "").startswith(FALLBACK_REASONING_PREFIX)
+
 
 async def parse_intent(
     user_message: str,
@@ -422,7 +431,7 @@ async def parse_intent(
                 "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
                 "bottom_text": "This is fine.",
             },
-            reasoning="Fallback: timed out before producing a result",
+            reasoning=f"{FALLBACK_REASONING_PREFIX} timed out before producing a result",
         )
 
 
@@ -584,5 +593,5 @@ async def _parse_intent_inner(
             "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
             "bottom_text": "This is fine.",
         },
-        reasoning="Fallback: model failed to produce valid JSON on both attempts",
+        reasoning=f"{FALLBACK_REASONING_PREFIX} model failed to produce valid JSON on both attempts",
     )
