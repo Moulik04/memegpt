@@ -13,9 +13,11 @@ import { Button } from "@/components/ui/button";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { googleButtonEnabled } from "@/lib/googleIdentity";
 
-// The popover's inner width: w-56 (224px) minus PopoverContent's p-2.5 on
-// each side. Google's button needs its width in px up front.
-const GOOGLE_BUTTON_WIDTH = 204;
+// The popover's inner width: w-64 (256px) minus PopoverContent's p-2.5 on
+// each side. Google's button needs its width in px up front, and it won't
+// render narrower than its label needs (209px for "Continue with Google"
+// in English, more in some languages), so leave it room.
+const GOOGLE_BUTTON_WIDTH = 236;
 
 function truncateEmail(email: string): string {
   return email.length > 22 ? `${email.slice(0, 19)}…` : email;
@@ -61,7 +63,7 @@ export function AuthControl() {
           Sign in
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-56">
+      <PopoverContent align="end" collisionPadding={8} className="w-64">
         {googleButtonEnabled ? (
           <GoogleSignInButton width={GOOGLE_BUTTON_WIDTH} />
         ) : (
