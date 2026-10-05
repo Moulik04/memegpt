@@ -115,6 +115,8 @@ services:
         # Unset means the sign-in button stays hidden.
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        # Google's OAuth web client id (public), from the same root .env.
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     container_name: memegpt-frontend
     ports:
       - "3000:3000"

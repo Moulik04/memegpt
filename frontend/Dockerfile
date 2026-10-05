@@ -23,6 +23,11 @@ ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+# Google's OAuth web client id, also public. It turns on Google's own
+# sign-in button (lib/googleIdentity.ts).
+ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=
+ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=$NEXT_PUBLIC_GOOGLE_CLIENT_ID
+
 RUN npm run build
 
 # ── Runtime image ────────────────────────────────────────────────────────────
