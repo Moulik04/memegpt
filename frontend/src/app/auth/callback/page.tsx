@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 /**
- * Redirect target for both Google OAuth and email magic-link sign-in
- * (AuthProvider.tsx's signInWithGoogle/signInWithEmail both point here).
- * supabase-js's browser client defaults to the PKCE flow, which lands here
- * with a `?code=` query param that must be exchanged for a session before
- * any other page can see the user as signed in.
+ * Redirect target for the Google OAuth redirect flow (AuthProvider.tsx's
+ * signInWithGoogle). Google's own button (GoogleSignInButton.tsx) never
+ * comes through here. supabase-js's browser client defaults to the PKCE
+ * flow, which lands here with a `?code=` query param that must be
+ * exchanged for a session before any other page can see the user as
+ * signed in.
  */
 export default function AuthCallbackPage() {
   const router = useRouter();

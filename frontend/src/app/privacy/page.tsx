@@ -72,7 +72,7 @@ export default function PrivacyPage() {
 
         <Section title="If you sign in">
           <p>
-            Signing in (Google or email) is handled by Supabase — MemeGPT
+            Signing in (Google) is handled by Supabase — MemeGPT
             never sees or stores your password. Signing in adds one thing:
             your chat/lore history is saved and synced across devices,
             tied to your account instead of just a browser. Nothing about

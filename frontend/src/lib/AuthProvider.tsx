@@ -12,7 +12,6 @@ export interface AuthContextValue {
   signInWithGoogle: () => Promise<void>;
   /** Resolves true once Supabase has accepted Google's ID token. */
   signInWithGoogleIdToken: (token: string, nonce: string) => Promise<boolean>;
-  signInWithEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -24,7 +23,6 @@ export const AuthContext = createContext<AuthContextValue>({
   loading: false,
   signInWithGoogle: noop,
   signInWithGoogleIdToken: async () => false,
-  signInWithEmail: noop,
   signOut: noop,
 });
 
@@ -85,14 +83,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return !error;
   }
 
-  async function signInWithEmail(email: string) {
-    if (!supabase) return;
-    await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
-    });
-  }
-
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
@@ -106,7 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         signInWithGoogle,
         signInWithGoogleIdToken,
-        signInWithEmail,
         signOut,
       }}
     >

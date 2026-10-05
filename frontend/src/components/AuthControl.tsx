@@ -28,10 +28,8 @@ function truncateEmail(email: string): string {
  * alongside "Forget me", and into LandingPage.tsx.
  */
 export function AuthControl() {
-  const { user, loading, signInWithGoogle, signInWithEmail, signOut } = useAuth();
+  const { user, loading, signInWithGoogle, signOut } = useAuth();
   const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
 
   if (!authEnabled || loading) return null;
 
@@ -54,13 +52,7 @@ export function AuthControl() {
   }
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setSent(false);
-      }}
-    >
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -84,36 +76,6 @@ export function AuthControl() {
           >
             Continue with Google
           </Button>
-        )}
-        <div className="flex items-center gap-2 text-[10px] text-gray-600">
-          <div className="flex-1 h-px bg-border" />
-          or
-          <div className="flex-1 h-px bg-border" />
-        </div>
-        {sent ? (
-          <p className="text-[11px] text-gray-500">Check your email for a sign-in link.</p>
-        ) : (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!email.trim()) return;
-              await signInWithEmail(email.trim());
-              setSent(true);
-            }}
-            className="flex flex-col gap-2"
-          >
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="text-xs rounded-lg px-3 py-2 bg-card border border-border text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-accent"
-            />
-            <Button type="submit" className="w-full">
-              Send magic link
-            </Button>
-          </form>
         )}
       </PopoverContent>
     </Popover>
