@@ -10,6 +10,8 @@ export interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
+  /** Resolves true once Supabase has accepted Google's ID token. */
+  signInWithGoogleIdToken: (token: string, nonce: string) => Promise<boolean>;
   signInWithEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -21,6 +23,7 @@ export const AuthContext = createContext<AuthContextValue>({
   session: null,
   loading: false,
   signInWithGoogle: noop,
+  signInWithGoogleIdToken: async () => false,
   signInWithEmail: noop,
   signOut: noop,
 });
@@ -57,12 +60,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
+  // Redirect flow — only reached when NEXT_PUBLIC_GOOGLE_CLIENT_ID is unset
+  // (see AuthControl.tsx). GoogleSignInButton's ID-token flow below is the
+  // real path.
   async function signInWithGoogle() {
     if (!supabase) return;
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
+  }
+
+  // `token` is the ID token Google's button returned in the page, `nonce`
+  // the raw value whose hash went to Google (lib/googleIdentity.ts). No
+  // redirect, no /auth/callback — onAuthStateChange above fires SIGNED_IN
+  // exactly as it does for the redirect flow.
+  async function signInWithGoogleIdToken(token: string, nonce: string) {
+    if (!supabase) return false;
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: "google",
+      token,
+      nonce,
+    });
+    return !error;
   }
 
   async function signInWithEmail(email: string) {
@@ -85,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         loading,
         signInWithGoogle,
+        signInWithGoogleIdToken,
         signInWithEmail,
         signOut,
       }}
