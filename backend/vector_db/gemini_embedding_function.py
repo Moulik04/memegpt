@@ -140,8 +140,15 @@ class GeminiEmbeddingFunction(EmbeddingFunction[Documents]):
             }
             for text in texts
         ]
-        resp = self._post_with_429_retry(model_path, requests_body, max_retries)
-        resp.raise_for_status()
+        try:
+            resp = self._post_with_429_retry(model_path, requests_body, max_retries)
+        except httpx.HTTPError as exc:
+            raise RuntimeError(f"Gemini embedding request failed: {type(exc).__name__}") from None
+        if resp.status_code >= 400:
+            # Not resp.raise_for_status(): its message quotes the request
+            # URL, and the API key is a query parameter of that URL. Every
+            # caller prints the error it gets from here.
+            raise RuntimeError(f"Gemini embedding request failed: HTTP {resp.status_code}")
         circuit_breaker.reset(_CIRCUIT_NAME)  # a real success — un-gate any open circuit early
         data = resp.json()
         embeddings = data.get("embeddings")

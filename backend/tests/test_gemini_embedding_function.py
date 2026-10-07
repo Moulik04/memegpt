@@ -7,6 +7,7 @@ API or a real ChromaDB collection.
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 import circuit_breaker as cb
@@ -265,3 +266,48 @@ def test_embed_query_also_respects_the_shared_circuit(monkeypatch):
         ef.embed_query(["a query"])
 
     assert calls == []
+
+
+# --- errors must not carry the request URL ----------------------------------
+
+
+def _real_response(status_code: int) -> httpx.Response:
+    """A real httpx response to a real request shape: the key travels as a
+    query parameter, so it is part of the URL httpx quotes in its errors."""
+    request = httpx.Request(
+        "POST",
+        "https://generativelanguage.googleapis.com/v1beta/models/m:batchEmbedContents",
+        params={"key": "SECRET-KEY-VALUE"},
+    )
+    return httpx.Response(status_code, json={}, request=request)
+
+
+@pytest.mark.parametrize("status_code", [400, 403, 429, 500, 503])
+def test_a_failed_request_does_not_put_the_api_key_in_its_error(monkeypatch, status_code):
+    """Every caller prints the error it gets from an embedding call. httpx's
+    own status error quotes the full URL, key included."""
+    monkeypatch.setattr(gef.httpx, "post", lambda *args, **kwargs: _real_response(status_code))
+    monkeypatch.setattr(gef.time, "sleep", lambda seconds: None)
+
+    ef = gef.GeminiEmbeddingFunction(model_name="gemini-embedding-2", api_key="SECRET-KEY-VALUE")
+    with pytest.raises(RuntimeError) as excinfo:
+        ef(["one doc"])
+
+    assert "SECRET-KEY-VALUE" not in str(excinfo.value)
+    assert "key=" not in str(excinfo.value)
+    assert str(status_code) in str(excinfo.value)
+
+
+def test_a_network_failure_does_not_put_the_api_key_in_its_error(monkeypatch):
+    def _fake_post(url, params=None, json=None, timeout=None):
+        request = httpx.Request("POST", url, params=params)
+        raise httpx.ConnectError(f"could not reach {request.url}", request=request)
+
+    monkeypatch.setattr(gef.httpx, "post", _fake_post)
+
+    ef = gef.GeminiEmbeddingFunction(model_name="gemini-embedding-2", api_key="SECRET-KEY-VALUE")
+    with pytest.raises(RuntimeError) as excinfo:
+        ef(["one doc"])
+
+    assert "SECRET-KEY-VALUE" not in str(excinfo.value)
+    assert excinfo.value.__cause__ is None and excinfo.value.__suppress_context__
