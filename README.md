@@ -126,7 +126,7 @@ Make is the manual meme-maker: search the full 120+ template catalog and write y
 
 Arc is a roast-flavored personal recap (an aura score, tiers, template roasts) scored across usage from Chat, Lore, and Make, rendered as a shareable card and a Stories-style tap-through reveal.
 
-Optional accounts let email or Google sign-in (through Supabase Auth) link your anonymous history to a real account, unlocking a persisted chat-history sidebar with per-chat delete. Fully anonymous use, a localStorage UUID with no signup, still works identically for anyone who skips sign-in.
+Optional accounts let Google sign-in (through Supabase Auth) link your anonymous history to a real account, unlocking a persisted chat-history sidebar with per-chat delete. Fully anonymous use, a localStorage UUID with no signup, still works identically for anyone who skips sign-in.
 
 A Cloudflare Worker handles Discord's ed25519 handshake for the `/meme` slash command and forwards it to the same generation pipeline.
 
@@ -138,7 +138,7 @@ A real `/privacy` page, written in plain language rather than legal boilerplate,
 
 No-signup anonymous memory covers cross-session avoid-repeat template tracking, a feedback-derived humor profile, and an opt-in lexicon for callback humor, all keyed off a `localStorage` UUID with no account needed.
 
-A one-click "Forget me" erases everything tied to that identity. Signed-in users get the same guarantee per chat.
+A one-click "Forget me" erases what the app holds for that identity: its meme records, the stored meme images, its feedback, and any remembered lore. For a signed-in user it also covers saved chats, and each chat can be deleted on its own, which removes its messages, its memes and their images. Share links to deleted memes stop working. The sign-in account itself is removed on request by email, as the privacy page explains.
 
 ### Reliability and ops
 
@@ -278,9 +278,9 @@ python scripts/dummy_template_test.py
 | `GET` | `/arc` | Personal meme stats |
 | `POST` | `/arc/card` | Shareable recap card |
 | `GET` | `/explain/` | Every template's metadata, Make's picker |
-| `POST` | `/explain/` | One template's metadata and usage history |
+| `POST` | `/explain/` | One template's metadata and usage count |
 | `POST` | `/generate/` | Make: render `template_id` + `texts` directly, moderation-gated |
-| `GET` | `/generate/file/{template_id}` | Convenience render, returns the image (or redirects to R2) directly |
+| `GET` | `/generate/file/{template_id}` | Convenience render, moderation-gated, returns the image (or redirects to R2) directly |
 | `POST` | `/feedback/` | Thumbs up or down on a generated meme |
 | `GET` | `/memes/{id}` | Durable share-page lookup, `/m/{id}` on the frontend |
 | `GET` | `/auth/whoami` | Verified identity for the current bearer token |
@@ -289,8 +289,8 @@ python scripts/dummy_template_test.py
 | `POST` | `/conversations` | Start a new persisted conversation |
 | `GET` | `/conversations/{id}/messages` | A conversation's full message history |
 | `PATCH` | `/conversations/{id}` | Rename a conversation |
-| `DELETE` | `/conversations/{id}` | Delete a conversation and its messages |
-| `DELETE` | `/me` | Forget-me, erases all data tied to an identity |
+| `DELETE` | `/conversations/{id}` | Delete a conversation, its messages, its memes and their stored images |
+| `DELETE` | `/me` | Forget-me, erases the caller's data and stored meme images |
 | `POST` | `/discord/generate` | Discord `/meme` slash-command backend |
 | `POST` | `/share-intake/` | PWA share-target stash |
 | `GET` | `/share-intake/{token}/` | PWA share-target retrieve |
