@@ -4,13 +4,14 @@ description: Run the template-matching, caption-quality, or intent-model eval ha
 allowed-tools: Read Bash(python*)
 ---
 
-Three harnesses, three different questions:
+Four harnesses, four different questions:
 
 | Script | Answers |
 |---|---|
 | `eval_template_matching.py` | RAG recall (retrieval) vs final-pick accuracy (LLM judgment), against a labeled golden set |
 | `eval_caption_quality.py` | Position-swapped judge, baseline vs candidate captions |
 | `eval_intent_models.py` | JSON-parse reliability across Groq text models, no ground truth |
+| `eval_segmentation.py` | Lore's moment-splitting on pastes with a known number of moments: is an explicit count honoured, does anything repeat, and how many real moments were found |
 
 ## Non-negotiables
 
@@ -29,6 +30,13 @@ Three harnesses, three different questions:
 - **Report both metrics separately.** A miss with correct retrieval is a
   wording problem; a miss without it is a retrieval problem. They have
   different fixes.
+
+- **For `eval_segmentation.py`, read the printed moments, not just the
+  counts.** "Moments found" compares a number against a number. A run can
+  hit the expected count with the wrong split, and a repeat told in entirely
+  different words gets past the word-overlap check the harness shares with
+  production. Run it before and after any change to `nlp/segmentation.py`'s
+  prompts, temperatures, output budget, or near-duplicate thresholds.
 
 ## Baseline
 
