@@ -127,10 +127,24 @@ async def test_all_images_upload_rejected_no_text_specific_reason():
 
 
 async def test_explicit_meme_count_forces_n_memes(monkeypatch):
-    async def fake_call_llm(client, settings, messages, temperature=0.75):
+    """One moment and a count of 3 still yields 3 memes: the moment once,
+    then two further takes on it, each on a template it has not used."""
+    async def fake_call_llm(client, settings, messages, temperature=0.75, max_tokens=None):
         return '{"contexts": [{"situation": "only one moment found"}]}'
 
+    picks = iter([
+        ("hide_the_pain_harold", {"public_face": "a", "inner_reality": "b"}),
+        ("drake", {"rejected_option": "a", "preferred_option": "b"}),
+        ("this_is_fine", {"top_text": "a", "bottom_text": "b"}),
+    ])
+
+    async def fake_parse_intent(user_message, avoid_templates=None, loved_templates=None,
+                                hated_templates=None, lexicon=None, exclude_templates=None):
+        template_id, texts = next(picks)
+        return IntentResponse(template_id=template_id, texts=texts, reasoning="test stub")
+
     monkeypatch.setattr("nlp.segmentation.call_llm", fake_call_llm)
+    monkeypatch.setattr("routers.chat.parse_intent", fake_parse_intent)
 
     # meme_count is a Lore-only control after the Growth Phase D endpoint
     # split — /chat/image/ no longer accepts it, so this hits /lore/image/.
@@ -139,8 +153,12 @@ async def test_explicit_meme_count_forces_n_memes(monkeypatch):
         path="/lore/image/",
         meme_count=3,
     )
+    plan = [e for e in events if e.get("type") == "plan"][0]
     done_events = [e for e in events if e.get("type") == "done"]
     batch_done = [e for e in events if e.get("type") == "batch_done"]
+    assert plan["situations"].count("only one moment found") == 1
+    assert plan["take_of"] == [None, 0, 0]
     assert len(done_events) == 3
+    assert len({e["template_used"] for e in done_events}) == 3
     assert batch_done[0]["total"] == 3
     assert batch_done[0]["succeeded"] == 3

@@ -21,7 +21,7 @@ from storage import SavedMeme
 async def test_render_and_record_turn_records_duration_and_template(monkeypatch):
     import routers.chat as chat_router
 
-    async def fake_resolve_intent_for_turn(user_message, conversation_id, ctx=None):
+    async def fake_resolve_intent_for_turn(user_message, conversation_id, ctx=None, exclude_templates=None):
         return IntentResponse(template_id="drake", texts={"top_text": "a", "bottom_text": "b"}, reasoning="test")
 
     async def fake_compose_meme(template_id, texts):

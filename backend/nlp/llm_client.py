@@ -36,13 +36,14 @@ async def call_ollama(
     settings,
     messages: list[dict],
     temperature: float = 0.75,
+    max_tokens: int | None = None,
 ) -> str:
     payload = {
         "model": settings.ollama_model,
         "messages": messages,
         "stream": False,
         "format": "json",
-        "options": {"temperature": temperature, "num_predict": 150},
+        "options": {"temperature": temperature, "num_predict": max_tokens or 150},
     }
     try:
         base = settings.ollama_host.rstrip("/")
@@ -66,14 +67,19 @@ async def call_groq(
     settings,
     messages: list[dict],
     temperature: float = 0.75,
+    max_tokens: int | None = None,
 ) -> str:
-    """Groq cloud inference — free tier, ~400 t/s, no GPU required."""
+    """Groq cloud inference — free tier, ~400 t/s, no GPU required.
+
+    max_tokens defaults to 200, which fits one meme's captions. A caller
+    whose reply is longer than that has to ask for more: a reply cut off at
+    the cap still comes back as valid JSON, just with the end missing."""
     for attempt in range(2):
         payload: dict = {
             "model": settings.groq_model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 200,
+            "max_tokens": max_tokens or 200,
             "response_format": {"type": "json_object"},
         }
         # Qwen 3.x thinking mode emits reasoning tokens before JSON, breaking the parser.
@@ -157,11 +163,12 @@ async def call_llm(
     settings,
     messages: list[dict],
     temperature: float = 0.75,
+    max_tokens: int | None = None,
 ) -> str:
     """Route to Groq (cloud) or Ollama (local) based on LLM_PROVIDER config."""
     if settings.llm_provider == "groq" and settings.groq_api_key:
-        return await call_groq(client, settings, messages, temperature)
-    return await call_ollama(client, settings, messages, temperature)
+        return await call_groq(client, settings, messages, temperature, max_tokens)
+    return await call_ollama(client, settings, messages, temperature, max_tokens)
 
 
 def strip_markdown(raw: str) -> str:

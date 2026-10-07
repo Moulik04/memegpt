@@ -129,9 +129,15 @@ class SegmentedContext(BaseModel):
     """One distinct meme-worthy moment identified by nlp/segmentation.py's
     segment_contexts() out of a longer text dump and/or multiple photo
     descriptions. Each situation string is fed independently into the
-    EXISTING parse_intent(), exactly like a single Phase 1 image description."""
+    EXISTING parse_intent(), exactly like a single Phase 1 image description.
+
+    take_of is set only when an explicit meme count asked for more memes
+    than there were distinct moments: it is the index of the moment this
+    entry is another take on, so the batch can render it on a different
+    template and label it instead of presenting a repeat as a new moment."""
 
     situation: str
+    take_of: int | None = None
 
 
 # ---------------------------------------------------------------------------

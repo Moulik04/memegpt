@@ -23,10 +23,13 @@ catalog template) instead flows through _stream_canvas_batch, captioning each
 surviving photo directly.
 
 SSE event stream:
-  {"type": "plan",     "situations": [...], "total": N}   — only when N > 1
+  {"type": "plan",     "situations": [...], "total": N}   — only when N > 1; also carries
+                       "take_of": [null, ..., 0] when some entries are another take on an
+                       earlier moment rather than a moment of their own
   {"type": "thinking", "stage": "analyzing",  "index": 0, "total": 1, "message": "..."}
   {"type": "thinking", "stage": "rendering",  "index": 0, "total": 1, "template_id": "...", "message": "..."}
   {"type": "done",     "index": 0, "total": 1, "conversation_id": "...", "message": {...}, "template_used": "...", "fallback": false}
+                       — plus "take_of": <index> on a meme that is another take
   {"type": "batch_done", "total": 1, "succeeded": 1}
   {"type": "error",    "index": 0, "total": 1, "message": "..."}
 """
@@ -53,7 +56,7 @@ from nlp.lexicon import schedule_lexicon_extraction
 from nlp.segmentation import resolve_contexts
 from nlp.vision import describe_image, generate_canvas_captions, infer_mode
 from rate_limit import limiter
-from schemas import ChatMessage, ChatRequest, ChatResponse, VisionDescription
+from schemas import ChatMessage, ChatRequest, ChatResponse, SegmentedContext, VisionDescription
 from uploads.safe_ingest import CleanImage, ModerationRejected, UploadRejected, safe_ingest
 from vector_db.chroma_client import log_usage
 
@@ -109,6 +112,10 @@ def _sse(event: dict) -> str:
 
 _TITLE_MAX_CHARS = 48
 
+_NO_FRESH_TEMPLATE_FOR_TAKE = (
+    "MemeGPT couldn't find a different template for another take, so that one was skipped."
+)
+
 
 def _auto_title(text: str) -> str:
     """Growth Phase H, Stage 3 — plain truncation, not an LLM call: matches
@@ -129,6 +136,8 @@ async def _stream_chat_turn(
     index: int = 0,
     total: int = 1,
     conversation_row_id: str | None = None,
+    take_of: int | None = None,
+    exclude_templates: list[str] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """The shared analyzing -> parse_intent -> rendering -> compose_meme ->
     log_usage -> done sequence for ONE situation (Mode 1: context). Yields
@@ -149,7 +158,13 @@ async def _stream_chat_turn(
     ownership-checked persisted conversation (see handle_text_stream) — the
     user message is written HERE, before generation even starts, so a
     downstream failure (parse_intent/compose_meme raising) still leaves the
-    user's own message in their history rather than silently dropping it."""
+    user's own message in their history rather than silently dropping it.
+
+    take_of / exclude_templates: set together when this turn is another take
+    on a moment an earlier turn in the same batch already rendered (see
+    _stream_batch). exclude_templates are the templates that moment has
+    already used; the take is dropped rather than rendered if the pick is
+    one of them anyway, which only parse_intent's hard fallback can cause."""
     yield {
         "type": "thinking",
         "stage": "analyzing",
@@ -158,14 +173,19 @@ async def _stream_chat_turn(
         "message": "Reading your vibe...",
     }
 
-    if conversation_row_id and ctx and ctx.user_id:
+    # A take repeats a situation whose user row the first turn already wrote.
+    if conversation_row_id and ctx and ctx.user_id and take_of is None:
         await db.insert_message(conversation_row_id, "user", user_message)
 
     start = time.monotonic()
     try:
-        intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx)
+        intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx, exclude_templates)
     except Exception as exc:
         yield {"type": "error", "index": index, "total": total, "message": str(exc)}
+        return
+
+    if exclude_templates and intent.template_id in exclude_templates:
+        yield {"type": "error", "index": index, "total": total, "message": _NO_FRESH_TEMPLATE_FOR_TAKE}
         return
 
     friendly_name = intent.template_id.replace("_", " ")
@@ -187,13 +207,17 @@ async def _stream_chat_turn(
         return
     telemetry.record_meme_generation(surface, time.monotonic() - start)
 
-    yield {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
+    done = {"type": "done", "index": index, "total": total, **response.model_dump(mode="json")}
+    if take_of is not None:
+        done["take_of"] = take_of
+    yield done
 
 
 async def _resolve_intent_for_turn(
     user_message: str,
     conversation_id: str,
     ctx: db.PersonalizationContext | None = None,
+    exclude_templates: list[str] | None = None,
 ):
     """avoid_templates merge + parse_intent — the first half of a turn,
     extracted so both the SSE path (_stream_chat_turn) and the plain
@@ -207,12 +231,16 @@ async def _resolve_intent_for_turn(
     cross_session = ctx.avoid_templates if ctx else []
     avoid = list(dict.fromkeys(recent + cross_session))[:5]
 
+    # Passed only when there is something to exclude, so the common call
+    # keeps the exact shape it has always had.
+    hard_exclusion = {"exclude_templates": exclude_templates} if exclude_templates else {}
     return await parse_intent(
         user_message,
         avoid_templates=avoid,
         loved_templates=ctx.loved_templates if ctx else None,
         hated_templates=ctx.hated_templates if ctx else None,
         lexicon=ctx.lexicon if ctx else None,
+        **hard_exclusion,
     )
 
 
@@ -287,34 +315,56 @@ async def generate_single_meme(
 
 
 async def _stream_batch(
-    situations: list[str],
+    contexts: list[SegmentedContext],
     conversation_id: str,
     ctx: db.PersonalizationContext | None = None,
     surface: str | None = None,
     conversation_row_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Runs each situation through _stream_chat_turn IN SEQUENCE (not
+    """Runs each context through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
     context's just-picked template via conversation_store's recency
-    tracking, so repeated/padded situations naturally get diverse templates
-    for free), yielding every event as it happens so memes appear
-    progressively rather than all at once at the end."""
-    total = len(situations)
+    tracking, so a batch naturally gets diverse templates for free),
+    yielding every event as it happens so memes appear progressively rather
+    than all at once at the end.
+
+    A context with take_of set is another take on an earlier moment in the
+    same batch, not a moment of its own. The plan says so instead of
+    printing that moment's text a second time, and the take is rendered with
+    every template the moment has already used ruled out — the recency
+    nudge above is a request to the model, this is a guarantee."""
+    total = len(contexts)
     if total > 1:
         # "Plan theater" for a single meme is pointless — only worth
         # announcing when there's actually more than one situation to work
         # through, regardless of whether that came from the zero-LLM fast
         # path (which never returns more than one) or segmentation itself
         # concluding there's only one distinct moment.
-        yield _sse({"type": "plan", "situations": situations, "total": total})
+        plan: dict = {
+            "type": "plan",
+            "situations": [
+                c.situation if c.take_of is None else f"Another take on moment {c.take_of + 1}"
+                for c in contexts
+            ],
+            "total": total,
+        }
+        if any(c.take_of is not None for c in contexts):
+            plan["take_of"] = [c.take_of for c in contexts]
+        yield _sse(plan)
     succeeded = 0
-    for i, situation in enumerate(situations):
+    templates_by_moment: dict[int, list[str]] = {}
+    for i, context in enumerate(contexts):
+        moment = i if context.take_of is None else context.take_of
         async for event in _stream_chat_turn(
-            situation, conversation_id, ctx, surface, index=i, total=total,
+            context.situation, conversation_id, ctx, surface, index=i, total=total,
             conversation_row_id=conversation_row_id,
+            take_of=context.take_of,
+            exclude_templates=list(templates_by_moment.get(moment, [])) if context.take_of is not None else None,
         ):
             if event.get("type") == "done":
                 succeeded += 1
+                if event.get("template_used"):
+                    templates_by_moment.setdefault(moment, []).append(event["template_used"])
             yield _sse(event)
     yield _sse({"type": "batch_done", "total": total, "succeeded": succeeded})
 

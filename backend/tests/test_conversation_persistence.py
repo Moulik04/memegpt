@@ -112,5 +112,47 @@ async def test_insert_message_called_for_owned_conversation(monkeypatch):
     assert calls[1][3] == "stubmeme01"
 
 
+async def test_another_take_does_not_write_the_user_message_twice(monkeypatch):
+    """A count larger than the number of moments adds takes on a moment the
+    batch already rendered. Its user row was written by that first turn."""
+    calls = []
+    replies = ['{"contexts": [{"situation": "the one real moment"}]}', '{"contexts": []}']
+    picks = iter(["drake", "this_is_fine"])
+
+    async def fake_call_llm(client, settings, messages, temperature=0.75, max_tokens=None):
+        return replies.pop(0)
+
+    async def fake_parse_intent(user_message, avoid_templates=None, loved_templates=None,
+                                hated_templates=None, lexicon=None, exclude_templates=None):
+        return IntentResponse(template_id=next(picks), texts={"top_text": "a"}, reasoning="stub")
+
+    async def fake_insert_message(conversation_id, role, content, meme_id=None):
+        calls.append((role, content))
+
+    async def fake_set_title(conversation_id, title):
+        pass
+
+    monkeypatch.setattr("nlp.segmentation.call_llm", fake_call_llm)
+    monkeypatch.setattr("routers.chat.parse_intent", fake_parse_intent)
+    monkeypatch.setattr(db, "insert_message", fake_insert_message)
+    monkeypatch.setattr(db, "set_conversation_title_if_unset", fake_set_title)
+    monkeypatch.setattr(
+        "routers.chat.get_verified_user",
+        lambda request: _resolved(VerifiedUser(user_id="user-1", email=None)),
+    )
+    monkeypatch.setattr(db, "fetch_conversation_owner", lambda conversation_id: _resolved("user-1"))
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/lore/",
+            json={"message": "a long paste " * 30, "meme_count": 2, "conversation_row_id": "owned-id"},
+            headers={"Authorization": "Bearer whatever"},
+        )
+    _drain_sse(resp.text)
+
+    assert [role for role, _ in calls] == ["user", "assistant", "assistant"]
+
+
 async def _resolved(value):
     return value

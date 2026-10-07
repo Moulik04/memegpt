@@ -391,12 +391,20 @@ async def parse_intent(
     loved_templates: list[str] | None = None,
     hated_templates: list[str] | None = None,
     lexicon: list[str] | None = None,
+    exclude_templates: list[str] | None = None,
 ) -> IntentResponse:
     """
     Route a user message to the best meme template + captions.
 
     avoid_templates: list of recently used template IDs in this conversation —
     injected into the prompt to prevent repetition.
+
+    exclude_templates: template IDs that must not be picked. Unlike
+    avoid_templates, which only asks the model nicely, these are removed
+    from the catalog every attempt sees and from the set a pick is validated
+    against. The hard fallbacks at the bottom are the one path that can
+    still return an excluded template; a caller that cannot accept that has
+    to check the result (routers/chat.py does, for a second take on a moment).
 
     loved_templates / hated_templates: Growth Phase C humor profile — an
     anon user's aggregate feedback history (db.fetch_humor_profile), a light
@@ -419,7 +427,8 @@ async def parse_intent(
     try:
         return await asyncio.wait_for(
             _parse_intent_inner(
-                user_message, avoid_templates, loved_templates, hated_templates, lexicon
+                user_message, avoid_templates, loved_templates, hated_templates, lexicon,
+                exclude_templates,
             ),
             timeout=_OVERALL_TIMEOUT_SECONDS,
         )
@@ -473,14 +482,21 @@ async def _parse_intent_inner(
     loved_templates: list[str] | None = None,
     hated_templates: list[str] | None = None,
     lexicon: list[str] | None = None,
+    exclude_templates: list[str] | None = None,
 ) -> IntentResponse:
     settings = get_settings()
 
     # All known IDs (used for validation only — NOT sent wholesale to the LLM)
     all_ids = list_template_ids() or _FALLBACK_TEMPLATES
-    known_id_set = set(all_ids)
+    excluded = set(exclude_templates or [])
+    known_id_set = set(all_ids) - excluded
 
-    prompt_ids = await resolve_prompt_template_ids(user_message, known_id_set)
+    # Filtered again after resolution: the core templates are always added
+    # to the prompt regardless of known_id_set.
+    prompt_ids = [
+        tid for tid in await resolve_prompt_template_ids(user_message, known_id_set)
+        if tid not in excluded
+    ]
     template_ids = prompt_ids  # used in retry prompt below
     catalog = _build_template_catalog(prompt_ids)
 

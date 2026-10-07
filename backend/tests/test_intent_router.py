@@ -255,3 +255,25 @@ async def test_retry_prompt_includes_real_box_labels_for_available_templates():
     assert "button_2" in prompt
     assert "rejected_option" in prompt
     assert "approved_option" in prompt
+
+
+async def test_excluded_template_cannot_be_picked_or_even_offered(monkeypatch):
+    """exclude_templates is a hard rule, unlike avoid_templates: the template
+    is gone from the catalog the model sees, and a model that names it anyway
+    fails validation exactly like a hallucinated id would."""
+    prompts_seen = []
+
+    async def stubborn_call_llm(client, settings, messages, temperature=0.75):
+        prompts_seen.append(" ".join(m["content"] for m in messages))
+        return '{"template_id": "drake", "texts": {"rejected_option": "a", "preferred_option": "b"}}'
+
+    monkeypatch.setattr(intent_router, "call_llm", stubborn_call_llm)
+
+    allowed = await parse_intent("anything")
+    assert allowed.template_id == "drake"
+
+    prompts_seen.clear()
+    result = await parse_intent("anything", exclude_templates=["drake"])
+
+    assert result.template_id != "drake"
+    assert prompts_seen and all('"drake"' not in p and "  drake:" not in p for p in prompts_seen)
