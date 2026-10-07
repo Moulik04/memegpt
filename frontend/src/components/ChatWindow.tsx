@@ -118,17 +118,12 @@ export function ChatWindow() {
 
   const handleFeedback = useCallback(
     async (meme: MemeItem, rating: "up" | "down") => {
-      // meme.situationText is the specific segmented context that produced
-      // THIS meme — not the shared original submission — so feedback on
-      // different memes in the same multi-meme batch write distinct
-      // few-shot examples instead of colliding on the same ChromaDB doc id
-      // (examples_store.upsert_example keys purely on user_message text).
+      // A rating only: which meme, which template, up or down. The text
+      // behind the meme is not sent with it.
       await postFeedback({
         conversation_id: conversationId,
         template_id: meme.templateId || "",
-        texts: {},
         rating,
-        user_message: meme.situationText,
         meme_id: meme.memeId,
       }).catch(() => {});
     },

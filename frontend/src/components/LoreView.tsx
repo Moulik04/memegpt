@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { Paperclip } from "lucide-react";
@@ -174,9 +175,7 @@ export function LoreView() {
       await postFeedback({
         conversation_id: conversationId,
         template_id: meme.templateId || "",
-        texts: {},
         rating,
-        user_message: meme.situationText,
         meme_id: meme.memeId,
       }).catch(() => {});
     },
@@ -435,10 +434,15 @@ export function LoreView() {
           </div>
 
           <p className="text-[10px] text-gray-600">
-            Processed, never stored — images are deleted after your memes are generated.
+            {user
+              ? "You're signed in, so this is saved to your history, usually as a short summary of each moment. Original photos aren't kept."
+              : "Your text and original photos aren't saved. Only the memes MemeGPT makes are."}
             {rememberLore
-              ? " Remember lore is on: short recurring names/jokes get extracted for future callbacks, never the raw text — erase anytime with Forget me."
-              : " Remember lore is off by default — turn it on to let recurring names/jokes carry into future memes."}
+              ? " Remember lore is on. Short recurring names and jokes are kept for future memes until you use Forget me."
+              : " Remember lore is off. Turn it on to carry recurring names and jokes into future memes."}{" "}
+            <Link href="/privacy" className="underline hover:text-gray-400 transition-colors">
+              Privacy details
+            </Link>
           </p>
         </form>
 

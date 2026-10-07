@@ -176,7 +176,8 @@ export function ConversationSidebar() {
               This also un-teaches what MemeGPT learned from it: the memes
               it generated, any feedback on them, and any lore terms it
               picked up get removed too — not just hidden from this list.
-              This can&apos;t be undone.
+              Share links to those memes will stop working. This can&apos;t
+              be undone.
             </DialogDescription>
           </DialogHeader>
           {deleteError && (

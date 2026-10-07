@@ -12,14 +12,19 @@ interface Props {
 }
 
 async function handleForgetMe() {
-  if (!window.confirm("Forget your MemeGPT identity and history? This can't be undone.")) {
+  if (
+    !window.confirm(
+      "Forget your MemeGPT identity and history? Your memes are deleted too, so share links to them will stop working. This can't be undone.",
+    )
+  ) {
     return;
   }
   try {
     await forgetMe();
   } catch (err) {
-    // Nothing was erased. Keep this browser's identity exactly as it is, so
-    // the page doesn't reload looking fresh while the data is still there.
+    // The erase did not complete. Keep this browser's identity exactly as
+    // it is, so the page doesn't reload looking fresh while data is still
+    // there, and so a retry reaches the same rows.
     window.alert(err instanceof Error ? err.message : "MemeGPT couldn't erase your data. Please try again.");
     return;
   }

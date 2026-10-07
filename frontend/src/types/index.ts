@@ -58,9 +58,7 @@ export interface ExplainResponse {
 export interface FeedbackRequest {
   template_id: string;
   rating: "up" | "down";
-  texts?: Record<string, string>;
   conversation_id?: string;
-  user_message?: string;
   meme_id?: string;
 }
 

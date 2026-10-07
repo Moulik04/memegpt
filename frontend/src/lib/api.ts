@@ -209,7 +209,7 @@ export async function postFeedback(req: FeedbackRequest): Promise<void> {
 // backend/routers/me.py is registered at "" for the same reason — so
 // requesting it directly skips two avoidable redirect hops.
 export async function forgetMe(): Promise<void> {
-  await deleteOrThrow(`${BASE}/me`, "MemeGPT couldn't erase your data, so nothing has changed. Please try again.");
+  await deleteOrThrow(`${BASE}/me`, "MemeGPT couldn't finish erasing your data. Please try again.");
 }
 
 // For the two requests that erase a user's data. fetch() resolves normally
@@ -221,7 +221,7 @@ async function deleteOrThrow(url: string, fallbackMessage: string): Promise<void
   try {
     res = await fetch(url, { method: "DELETE", headers: await authHeaders() });
   } catch {
-    throw new Error("MemeGPT couldn't reach the server, so nothing was erased. Check your connection and try again.");
+    throw new Error("MemeGPT couldn't reach the server, so the erase may not have happened. Check your connection and try again.");
   }
   if (res.ok) return;
   let detail: unknown;
