@@ -120,3 +120,42 @@ async def test_get_pool_rebuilds_when_cached_pool_belongs_to_a_different_loop(mo
 
     assert real_pool is not None
     assert len(create_calls) == 2  # rebuilt for this loop, not reused
+
+
+async def test_concurrent_first_calls_create_one_pool_and_apply_the_schema_once(monkeypatch):
+    """One request reaches get_pool() several times at once. On an empty
+    database, two of them running the schema together collide on the same
+    CREATE TABLE and one request fails."""
+    monkeypatch.setattr(pool_module, "get_settings", _settings_with_db_url)
+    created = []
+    schema_runs = []
+
+    class SlowConn:
+        async def execute(self, query):
+            await asyncio.sleep(0.01)  # long enough for the other callers to arrive
+            schema_runs.append(1)
+
+    class SlowAcquire:
+        async def __aenter__(self):
+            return SlowConn()
+
+        async def __aexit__(self, *exc_info):
+            return False
+
+    class SlowPool(_FakePool):
+        def acquire(self):
+            return SlowAcquire()
+
+    async def slow_create_pool(*args, **kwargs):
+        await asyncio.sleep(0.01)
+        pool = SlowPool()
+        created.append(pool)
+        return pool
+
+    monkeypatch.setattr(pool_module.asyncpg, "create_pool", slow_create_pool)
+
+    pools = await asyncio.gather(*[pool_module.get_pool() for _ in range(5)])
+
+    assert len(created) == 1
+    assert len(schema_runs) == 1
+    assert all(p is created[0] for p in pools)

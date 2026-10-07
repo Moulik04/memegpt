@@ -39,6 +39,17 @@ _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 _pool: asyncpg.Pool | None = None
 _pool_loop: asyncio.AbstractEventLoop | None = None
 _schema_applied = False
+_setup_lock: asyncio.Lock | None = None
+_setup_lock_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _setup_lock_for(loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
+    """One lock per event loop, for the same reason the pool is per loop."""
+    global _setup_lock, _setup_lock_loop
+    if _setup_lock is None or _setup_lock_loop is not loop:
+        _setup_lock = asyncio.Lock()
+        _setup_lock_loop = loop
+    return _setup_lock
 
 
 async def get_pool() -> asyncpg.Pool | None:
@@ -48,24 +59,33 @@ async def get_pool() -> asyncpg.Pool | None:
         return None
 
     current_loop = asyncio.get_running_loop()
-    if _pool is not None and _pool_loop is not current_loop:
-        # The cached pool belongs to a different (likely already-closed)
-        # event loop — cannot be closed or reused from here, so just drop
-        # the reference and rebuild for this loop. See the module docstring
-        # for the exact startup-seeding race this guards against.
-        _pool = None
-        _schema_applied = False
+    if _pool is not None and _pool_loop is current_loop and _schema_applied:
+        return _pool
 
-    if _pool is None:
-        _pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=5)
-        _pool_loop = current_loop
+    # First use on this loop. Callers arrive here concurrently (one request
+    # fetches its personalization with several queries at once), and without
+    # the lock each of them would create a pool and run the schema: on an
+    # empty database two concurrent CREATE TABLE IF NOT EXISTS for the same
+    # table collide and one request fails.
+    async with _setup_lock_for(current_loop):
+        if _pool is not None and _pool_loop is not current_loop:
+            # The cached pool belongs to a different (likely already-closed)
+            # event loop — cannot be closed or reused from here, so just drop
+            # the reference and rebuild for this loop. See the module docstring
+            # for the exact startup-seeding race this guards against.
+            _pool = None
+            _schema_applied = False
 
-    if not _schema_applied:
-        async with _pool.acquire() as conn:
-            await conn.execute(_SCHEMA_PATH.read_text())
-        _schema_applied = True
+        if _pool is None:
+            _pool = await asyncpg.create_pool(settings.database_url, min_size=1, max_size=5)
+            _pool_loop = current_loop
 
-    return _pool
+        if not _schema_applied:
+            async with _pool.acquire() as conn:
+                await conn.execute(_SCHEMA_PATH.read_text())
+            _schema_applied = True
+
+        return _pool
 
 
 async def close_pool() -> None:
