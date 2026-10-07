@@ -209,10 +209,28 @@ export async function postFeedback(req: FeedbackRequest): Promise<void> {
 // backend/routers/me.py is registered at "" for the same reason — so
 // requesting it directly skips two avoidable redirect hops.
 export async function forgetMe(): Promise<void> {
-  await fetch(`${BASE}/me`, {
-    method: "DELETE",
-    headers: await authHeaders(),
-  });
+  await deleteOrThrow(`${BASE}/me`, "MemeGPT couldn't erase your data, so nothing has changed. Please try again.");
+}
+
+// For the two requests that erase a user's data. fetch() resolves normally
+// on a 4xx/5xx, so an erase the server refused or could not finish would
+// otherwise look exactly like one that worked. Throws with the server's own
+// explanation when it sent one.
+async function deleteOrThrow(url: string, fallbackMessage: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "DELETE", headers: await authHeaders() });
+  } catch {
+    throw new Error("MemeGPT couldn't reach the server, so nothing was erased. Check your connection and try again.");
+  }
+  if (res.ok) return;
+  let detail: unknown;
+  try {
+    detail = (await res.json())?.detail;
+  } catch {
+    // Not JSON (a proxy error page, say) — the fallback below covers it.
+  }
+  throw new Error(typeof detail === "string" && detail ? detail : fallbackMessage);
 }
 
 // Growth Phase H, Stage 2 — links this browser's anonymous history to the
@@ -319,8 +337,5 @@ export async function renameConversation(id: string, title: string): Promise<voi
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  await fetch(`${BASE}/conversations/${id}`, {
-    method: "DELETE",
-    headers: await authHeaders(),
-  });
+  await deleteOrThrow(`${BASE}/conversations/${id}`, "MemeGPT couldn't delete that chat. Please try again.");
 }

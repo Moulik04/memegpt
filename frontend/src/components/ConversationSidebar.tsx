@@ -44,6 +44,7 @@ export function ConversationSidebar() {
   const [loaded, setLoaded] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -75,13 +76,23 @@ export function ConversationSidebar() {
 
   function requestDelete(id: string, e: React.MouseEvent) {
     e.stopPropagation();
+    setDeleteError(null);
     setDeleteTarget(id);
   }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    await deleteConversation(deleteTarget).catch(() => {});
+    setDeleteError(null);
+    try {
+      await deleteConversation(deleteTarget);
+    } catch (err) {
+      // Still there. Keep the dialog open and say so, rather than closing
+      // as if it had worked.
+      setDeleteError(err instanceof Error ? err.message : "MemeGPT couldn't delete that chat. Please try again.");
+      setDeleting(false);
+      return;
+    }
     if (conversationRowId === deleteTarget) setConversationRowId(undefined);
     setDeleting(false);
     setDeleteTarget(null);
@@ -168,6 +179,11 @@ export function ConversationSidebar() {
               This can&apos;t be undone.
             </DialogDescription>
           </DialogHeader>
+          {deleteError && (
+            <p role="alert" className="text-xs text-destructive">
+              {deleteError}
+            </p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
               Cancel

@@ -15,7 +15,14 @@ async function handleForgetMe() {
   if (!window.confirm("Forget your MemeGPT identity and history? This can't be undone.")) {
     return;
   }
-  await forgetMe().catch(() => {});
+  try {
+    await forgetMe();
+  } catch (err) {
+    // Nothing was erased. Keep this browser's identity exactly as it is, so
+    // the page doesn't reload looking fresh while the data is still there.
+    window.alert(err instanceof Error ? err.message : "MemeGPT couldn't erase your data. Please try again.");
+    return;
+  }
   forgetAnonId();
   window.location.reload();
 }
