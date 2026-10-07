@@ -13,7 +13,7 @@ const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 export const dynamic = "force-dynamic";
 // Lore batches can be several memes long — same headroom as /api/chat/.
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();

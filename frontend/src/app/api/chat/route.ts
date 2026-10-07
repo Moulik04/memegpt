@@ -18,8 +18,10 @@ export const dynamic = "force-dynamic";
 // A multi-meme batch generates sequentially (see routers/chat.py's
 // _stream_batch) and can plausibly take 15-40s end-to-end for several
 // memes, worse right after Render's ~30s free-tier cold start — raise
-// above whatever the platform default is.
-export const maxDuration = 60;
+// above whatever the platform default is. A five-meme batch under provider
+// rate limiting has been measured past 60s, and a stream that hits this
+// limit is cut off mid-batch with no error event.
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
