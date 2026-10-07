@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { Paperclip } from "lucide-react";
 import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
@@ -363,7 +364,7 @@ export function ChatWindow() {
                        border border-gray-800 text-gray-400 hover:text-gray-200
                        hover:border-gray-600 disabled:opacity-40 transition-colors"
           >
-            📎
+            <Paperclip size={16} strokeWidth={2} aria-hidden="true" />
           </button>
           <input
             ref={inputRef}

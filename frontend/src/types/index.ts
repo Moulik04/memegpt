@@ -9,6 +9,9 @@ export interface MemeItem {
   templateId?: string;
   situationText: string;
   memeId?: string;
+  // Set when this meme is another take on an earlier moment of the same
+  // batch (index into that batch) rather than a moment of its own.
+  takeOf?: number;
 }
 
 // Client-side rendering type for the `messages` list. A user turn never
@@ -70,6 +73,10 @@ export interface PlanEvent {
   type: "plan";
   situations: string[];
   total: number;
+  // Present only when an explicit meme count was larger than the number of
+  // distinct moments: one entry per situation, the index of the moment it
+  // is another take on, or null for a moment of its own.
+  take_of?: (number | null)[];
 }
 
 export interface ThinkingEvent {
@@ -97,6 +104,7 @@ export interface DoneEvent {
     timestamp: string;
   };
   template_used?: string;
+  take_of?: number;
 }
 
 export interface BatchDoneEvent {

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
+import { Paperclip } from "lucide-react";
 import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
-import { useMemeStream } from "@/hooks/useMemeStream";
+import { useMemeStream, type PlanState } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
 import { useAuth } from "@/hooks/useAuth";
 import { MemeCard } from "./MemeCard";
@@ -46,6 +47,19 @@ function estimateMomentCount(text: string): number {
     .split(/\n\s*\n/)
     .filter((block) => block.trim().length > 0);
   return Math.max(1, Math.min(MAX_MEMES_PER_REQUEST, blocks.length));
+}
+
+// Counts moments and extra takes separately, so the heading never calls a
+// second take a moment, and reports the real total once the stream has
+// ended short (a meme that failed, or a connection that dropped).
+function planHeading(plan: PlanState): string {
+  const takes = plan.takeOf.filter((t) => t !== null).length;
+  const moments = plan.total - takes;
+  let heading = `Found ${moments} moment${moments === 1 ? "" : "s"} worth memeing`;
+  if (takes > 0) heading += `, plus ${takes} more take${takes === 1 ? "" : "s"}`;
+  const made = plan.doneIndices.size;
+  if (plan.finished && made < plan.total) heading += `. ${made} of ${plan.total} memes made`;
+  return heading;
 }
 
 interface PendingImage {
@@ -378,7 +392,7 @@ export function LoreView() {
                          border border-gray-800 text-gray-400 hover:text-gray-200
                          hover:border-gray-600 disabled:opacity-40 transition-colors"
             >
-              📎
+              <Paperclip size={16} strokeWidth={2} aria-hidden="true" />
             </button>
             <select
               value={memeCount ?? ""}
@@ -438,23 +452,26 @@ export function LoreView() {
         {plan && plan.total > 1 && (
           <div className="rounded-2xl bg-card border border-border px-4 py-3">
             <p className="text-[10px] text-gray-500 mb-2 uppercase tracking-wide">
-              Found {plan.total} moments worth memeing
+              {planHeading(plan)}
             </p>
             <ul className="flex flex-col gap-1.5">
-              {plan.situations.map((situation, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs">
-                  <span
-                    className={
-                      plan.doneIndices.has(i) ? "text-accent" : "text-gray-600"
-                    }
-                  >
-                    {plan.doneIndices.has(i) ? "✓" : "○"}
-                  </span>
-                  <span className={plan.doneIndices.has(i) ? "text-gray-400" : "text-gray-600"}>
-                    {situation}
-                  </span>
-                </li>
-              ))}
+              {plan.situations.map((situation, i) => {
+                const done = plan.doneIndices.has(i);
+                const missed = plan.finished && !done;
+                return (
+                  <li key={i} className="flex items-start gap-2 text-xs">
+                    <span
+                      className={done ? "text-accent" : missed ? "text-destructive" : "text-gray-600"}
+                    >
+                      {done ? "✓" : missed ? "✕" : "○"}
+                    </span>
+                    <span className={done ? "text-gray-400" : "text-gray-600"}>
+                      {situation}
+                      {missed && " (not made)"}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -492,6 +509,11 @@ export function LoreView() {
                 style={style}
                 {...hoverProps}
               >
+                {entry.meme.takeOf !== undefined && (
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5 px-1">
+                    Another take
+                  </p>
+                )}
                 <MemeCard
                   url={entry.meme.url}
                   alt={entry.meme.situationText}

@@ -12,6 +12,11 @@ export interface PlanState {
   situations: string[];
   total: number;
   doneIndices: Set<number>;
+  // Parallel to situations: the moment an entry is another take on, or null.
+  takeOf: (number | null)[];
+  // True once the stream has ended, however it ended. An entry that is
+  // still not done at that point is never going to be.
+  finished: boolean;
 }
 
 export interface MemeStreamResult {
@@ -39,7 +44,13 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
 
   function handleEvent(event: SSEEvent, collected: MemeItem[], onPlainReply: (s: string) => void) {
     if (event.type === "plan") {
-      setPlan({ situations: event.situations, total: event.total, doneIndices: new Set() });
+      setPlan({
+        situations: event.situations,
+        total: event.total,
+        doneIndices: new Set(),
+        takeOf: event.take_of ?? event.situations.map(() => null),
+        finished: false,
+      });
     } else if (event.type === "thinking") {
       const progress =
         event.total && event.total > 1 ? ` (${(event.index ?? 0) + 1}/${event.total})` : "";
@@ -57,6 +68,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
           templateId: event.template_used,
           situationText: event.message.content,
           memeId: event.message.meme_id,
+          takeOf: event.take_of,
         });
       } else {
         // A graceful text-only reply (e.g. vision unavailable) rather than
@@ -94,6 +106,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     } finally {
       setLoading(false);
       setThinking(null);
+      setPlan((prev) => (prev ? { ...prev, finished: true } : prev));
     }
 
     return { memes: collected, plainReply };
