@@ -20,6 +20,7 @@ is exactly why this stash lives here and not in the Next.js route handler.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import time
 import uuid
@@ -40,6 +41,17 @@ def _purge_expired() -> None:
     expired = [k for k, v in _store.items() if now - v["created_at"] > _INTAKE_TTL_SECONDS]
     for k in expired:
         _store.pop(k, None)
+
+
+async def periodic_purge_loop(interval_seconds: int = 60) -> None:
+    """Background sweep, started in main.py's lifespan. The purge above also
+    runs on every stash and retrieve, but those only happen when somebody
+    shares something: without this, a share that was never picked up stayed
+    in memory, photos included, until the next person used the share sheet
+    or the process restarted."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        _purge_expired()
 
 
 @router.post("/")

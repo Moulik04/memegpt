@@ -37,6 +37,7 @@ from uploads.retention import periodic_purge_loop
 from vector_db.chroma_client import (
     init_chroma,
     list_template_ids,
+    purge_logged_captions,
     template_document_text,
     upsert_templates_batch,
     upsert_templates_batch_with_embeddings,
@@ -170,6 +171,7 @@ def _auto_seed_if_empty() -> None:
 async def lifespan(app: FastAPI):
     log_llm_provider(settings)
     init_chroma()
+    purge_logged_captions()
     _init_examples()  # pre-warm examples store so first request isn't slow
 
     def _sequential_seed():
@@ -188,6 +190,9 @@ async def lifespan(app: FastAPI):
     # registry stays empty today, but the sweep runs regardless so it's
     # proven working before Phase 3 (video) actually needs it.
     asyncio.create_task(periodic_purge_loop())
+    # A shared photo nobody came back for is dropped on a timer, not only
+    # when the next share happens to arrive.
+    asyncio.create_task(share_intake.periodic_purge_loop())
     yield
 
 
