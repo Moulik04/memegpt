@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import string
 
+import pytest
+
 import storage
 from config import Settings
 
@@ -124,3 +126,118 @@ async def test_r2_public_base_url_trailing_slash_stripped(monkeypatch):
 
     saved = await storage.save_meme(b"x", meme_id="abc1234567")
     assert saved.url == "https://pub-xxx.r2.dev/abc1234567.png"
+
+
+# --- delete_memes: the only way a stored meme image is ever removed --------
+
+_R2 = dict(
+    r2_account_id="acct",
+    r2_access_key_id="key",
+    r2_secret_access_key="secret",
+    r2_bucket="my-bucket",
+    r2_public_base_url="https://pub-xxx.r2.dev",
+)
+
+
+async def test_delete_removes_a_locally_stored_meme(monkeypatch):
+    _fake_settings(monkeypatch)
+    saved = await storage.save_meme(b"fake png bytes")
+    assert saved.path.exists()
+
+    await storage.delete_memes([(saved.meme_id, saved.url)])
+
+    assert not saved.path.exists()
+
+
+async def test_delete_is_safe_to_repeat(monkeypatch):
+    """A retry after a half-finished erase must not fail on what is already gone."""
+    _fake_settings(monkeypatch)
+    saved = await storage.save_meme(b"x")
+
+    await storage.delete_memes([(saved.meme_id, saved.url)])
+    await storage.delete_memes([(saved.meme_id, saved.url)])
+
+    assert not saved.path.exists()
+
+
+async def test_delete_sends_remote_memes_to_r2_by_their_own_key(monkeypatch):
+    _fake_settings(monkeypatch, **_R2)
+    calls = []
+
+    class FakeR2Client:
+        def delete_objects(self, **kwargs):
+            calls.append(kwargs)
+            return {}
+
+    monkeypatch.setattr(storage, "_r2_client", lambda settings: FakeR2Client())
+
+    await storage.delete_memes([
+        ("abc1234567", "https://pub-xxx.r2.dev/abc1234567.png"),
+        ("gif7654321", "https://pub-xxx.r2.dev/gif7654321.gif"),
+    ])
+
+    assert len(calls) == 1
+    assert calls[0]["Bucket"] == "my-bucket"
+    assert [o["Key"] for o in calls[0]["Delete"]["Objects"]] == ["abc1234567.png", "gif7654321.gif"]
+
+
+async def test_delete_never_builds_a_key_from_the_stored_url_path(monkeypatch):
+    """The key is the meme id plus a known extension. Whatever else a url
+    column holds, it cannot point the delete at another object."""
+    _fake_settings(monkeypatch, **_R2)
+    calls = []
+
+    class FakeR2Client:
+        def delete_objects(self, **kwargs):
+            calls.append(kwargs)
+            return {}
+
+    monkeypatch.setattr(storage, "_r2_client", lambda settings: FakeR2Client())
+
+    await storage.delete_memes([("abc1234567", "https://pub-xxx.r2.dev/../someone-else/victim.png")])
+
+    assert [o["Key"] for o in calls[0]["Delete"]["Objects"]] == ["abc1234567.png"]
+
+
+async def test_delete_raises_when_r2_reports_an_object_it_could_not_remove(monkeypatch):
+    _fake_settings(monkeypatch, **_R2)
+
+    class FakeR2Client:
+        def delete_objects(self, **kwargs):
+            return {"Errors": [{"Key": "abc1234567.png", "Code": "AccessDenied"}]}
+
+    monkeypatch.setattr(storage, "_r2_client", lambda settings: FakeR2Client())
+
+    with pytest.raises(storage.MemeDeleteError):
+        await storage.delete_memes([("abc1234567", "https://pub-xxx.r2.dev/abc1234567.png")])
+
+
+async def test_delete_raises_for_a_remote_meme_when_r2_is_not_configured(monkeypatch):
+    """An image this process has no way to reach must be reported, not skipped."""
+    _fake_settings(monkeypatch)
+
+    with pytest.raises(storage.MemeDeleteError):
+        await storage.delete_memes([("abc1234567", "https://pub-xxx.r2.dev/abc1234567.png")])
+
+
+async def test_delete_batches_large_requests(monkeypatch):
+    _fake_settings(monkeypatch, **_R2)
+    sizes = []
+
+    class FakeR2Client:
+        def delete_objects(self, **kwargs):
+            sizes.append(len(kwargs["Delete"]["Objects"]))
+            return {}
+
+    monkeypatch.setattr(storage, "_r2_client", lambda settings: FakeR2Client())
+
+    await storage.delete_memes([(f"id{i:08d}", f"https://pub-xxx.r2.dev/id{i:08d}.png") for i in range(2300)])
+
+    assert sizes == [1000, 1000, 300]
+
+
+async def test_delete_with_nothing_to_delete_makes_no_calls(monkeypatch):
+    _fake_settings(monkeypatch, **_R2)
+    monkeypatch.setattr(storage, "_r2_client", lambda settings: pytest.fail("no call expected"))
+
+    await storage.delete_memes([])

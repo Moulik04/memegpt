@@ -153,9 +153,10 @@ class LexiconExtractionResponse(BaseModel):
 
 
 class ForgetMeResponse(BaseModel):
-    """DELETE /me/'s response — same shape/precedent as FeedbackResponse.
-    Always "ok", whether there was data to erase or not (a no-op absence is
-    not an error, matching every other db.py function's contract)."""
+    """DELETE /me's response — same shape/precedent as FeedbackResponse.
+    "ok" whether or not there was anything to erase (absence is not an
+    error). An erase that could not be completed is never reported this way:
+    it is an error response, see routers/me.py."""
 
     status: str
 

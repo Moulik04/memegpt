@@ -5,6 +5,9 @@ Cloudflare R2 when creds are configured, falling back to the local
 static/generated/ directory (today's pre-Phase-B behavior) when they're
 not. Local storage is the fully-functional default, not a degraded mode
 — every test in this repo runs against it with zero new env vars set.
+
+delete_memes() is the matching removal, used when a user deletes a
+conversation or asks to be forgotten.
 """
 
 from __future__ import annotations
@@ -117,3 +120,64 @@ async def save_meme(
     path = OUTPUT_DIR / f"{meme_id}.{extension}"
     path.write_bytes(data)
     return SavedMeme(meme_id=meme_id, url=f"/static/generated/{meme_id}.{extension}", path=path)
+
+
+class MemeDeleteError(RuntimeError):
+    """A stored meme image could not be removed. Raised, never swallowed:
+    a caller deleting on a user's behalf has to be able to tell them."""
+
+
+_LOCAL_URL_PREFIX = "/static/generated/"
+_KNOWN_EXTENSIONS = ("png", "gif")
+_R2_DELETE_BATCH = 1000  # the S3 API's limit for one DeleteObjects call
+
+
+def _object_name(meme_id: str, url: str) -> str:
+    """The name save_meme() stored this meme under. Built from the meme id
+    and a known extension only — the url is read for its extension and for
+    nothing else, so a bad url value can never aim a delete at another
+    object."""
+    extension = url.rsplit(".", 1)[-1].lower() if "." in url else ""
+    if extension not in _KNOWN_EXTENSIONS:
+        extension = "png"
+    return f"{meme_id}.{extension}"
+
+
+async def delete_memes(memes: list[tuple[str, str]]) -> None:
+    """Remove the stored image for each (meme_id, url). Until this existed
+    nothing ever deleted an image: removing a meme's database row left the
+    file reachable at its url indefinitely.
+
+    Safe to repeat — an image that is already gone is not an error, so a
+    caller can retry after a partial failure. Anything that could not be
+    removed raises MemeDeleteError."""
+    if not memes:
+        return
+    settings = get_settings()
+
+    local = [(meme_id, url) for meme_id, url in memes if url.startswith(_LOCAL_URL_PREFIX)]
+    remote = [(meme_id, url) for meme_id, url in memes if not url.startswith(_LOCAL_URL_PREFIX)]
+
+    for meme_id, url in local:
+        (OUTPUT_DIR / _object_name(meme_id, url)).unlink(missing_ok=True)
+
+    if not remote:
+        return
+    if not _r2_configured(settings):
+        raise MemeDeleteError(
+            f"{len(remote)} stored image(s) are in remote storage, which is not configured here"
+        )
+
+    client = _r2_client(settings)
+    keys = [_object_name(meme_id, url) for meme_id, url in remote]
+    failed = 0
+    for start in range(0, len(keys), _R2_DELETE_BATCH):
+        batch = keys[start : start + _R2_DELETE_BATCH]
+        response = await asyncio.to_thread(
+            client.delete_objects,
+            Bucket=settings.r2_bucket,
+            Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+        )
+        failed += len((response or {}).get("Errors") or [])
+    if failed:
+        raise MemeDeleteError(f"{failed} stored image(s) could not be removed")

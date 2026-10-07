@@ -47,7 +47,7 @@ class _AcquireCM:
     """Fakes pool.acquire()'s async context manager, returning a FakeConn
     bound to the same pool so query capture (self.executed) works
     identically whether a test goes through pool.execute() directly or the
-    conn.transaction() path (delete_anon_user_data, migrate_anon_data_to_user)."""
+    conn.transaction() path (delete_identity_data, migrate_anon_data_to_user)."""
 
     def __init__(self, pool: FakePool):
         self.pool = pool
@@ -713,3 +713,49 @@ async def test_unwind_conversation_contribution_false_when_conversation_delete_m
     result = await db.unwind_conversation_contribution("conv-1", "user-1")
 
     assert result is False
+
+
+# --- "Forget me" (delete_identity_data) — wiring only. What these
+# statements actually remove, and that they get past the foreign keys, is
+# checked against a real Postgres in test_data_lifecycle.py.
+
+
+async def test_delete_identity_data_empty_with_no_pool(monkeypatch):
+    monkeypatch.setattr(db, "get_pool", _no_pool)
+    assert await db.delete_identity_data("anon-1", "user-1") == []
+    assert await db.fetch_identity_memes("anon-1", "user-1") == []
+
+
+async def test_delete_identity_data_touches_nothing_without_an_identity(monkeypatch):
+    pool = FakePool()
+    monkeypatch.setattr(db, "get_pool", _pool_factory(pool))
+
+    assert await db.delete_identity_data(None, None) == []
+    assert pool.executed == [] and pool.fetch_calls == []
+
+
+async def test_delete_identity_data_removes_conversations_before_memes(monkeypatch):
+    """messages.meme_id references memes with no cascade, so the memes can
+    only go once the conversations (and with them the messages) are gone."""
+    pool = FakePool()
+    pool.fetch_return = [{"id": "abc1234567", "url": "https://pub.example/abc1234567.png"}]
+    monkeypatch.setattr(db, "get_pool", _pool_factory(pool))
+
+    erased = await db.delete_identity_data("anon-1", "user-1")
+
+    assert erased == [("abc1234567", "https://pub.example/abc1234567.png")]
+    tables = [query.split("DELETE FROM ")[1].split()[0] for query, _ in pool.executed]
+    assert tables == ["feedback", "lore_lexicon_terms", "lore_lexicon", "conversations", "memes"]
+    assert pool.executed[-1][1] == (["abc1234567"],)
+
+
+async def test_delete_identity_data_signed_out_leaves_account_tables_alone(monkeypatch):
+    pool = FakePool()
+    monkeypatch.setattr(db, "get_pool", _pool_factory(pool))
+
+    await db.delete_identity_data("anon-1", None)
+
+    tables = [query.split("DELETE FROM ")[1].split()[0] for query, _ in pool.executed]
+    assert tables == ["feedback", "lore_lexicon", "memes"]
+    # Rows that belong to an account are out of reach of an anonymous id alone.
+    assert all("user_id IS NULL" in query for query, _ in pool.executed[:2])

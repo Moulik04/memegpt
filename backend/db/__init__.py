@@ -396,7 +396,7 @@ def _affected_row_count(status: str) -> int:
 async def migrate_anon_data_to_user(anon_user_id: str, user_id: str) -> int:
     """Growth Phase H, Stage 2 — links a browser's existing anonymous
     history to a real account on first sign-in. One transaction, same
-    precedent as delete_anon_user_data: partial linking would be a worse
+    precedent as delete_identity_data: partial linking would be a worse
     failure mode than all-or-nothing. `WHERE user_id IS NULL` on every
     statement makes this idempotent (safe to call again, e.g. a returning
     user signing in on the same browser) and never reassigns a row already
@@ -427,32 +427,76 @@ async def migrate_anon_data_to_user(anon_user_id: str, user_id: str) -> int:
     return total
 
 
-async def delete_anon_user_data(anon_user_id: str) -> None:
-    """"Forget me" — erases every row tied to this anon id. No-ops if
-    Postgres is absent, same as every other function here.
+# The rows "Forget me" covers for a caller identified by an anonymous id
+# and, when signed in, a verified user id:
+#   - everything stamped with the verified user id, and
+#   - everything stamped with the anonymous id that belongs to no account.
+# A row carrying this browser's anonymous id AND some account's user id is
+# that account's data. Only a request signed in to that account reaches it:
+# the anonymous id is a value the browser holds, not proof of who is asking.
+# Passing None for either id is safe — a comparison with NULL matches nothing.
+_OWNED_BY_CALLER = "(user_id = $2::text OR (anon_user_id = $1::text AND user_id IS NULL))"
+
+
+async def fetch_identity_memes(anon_user_id: str | None, user_id: str | None) -> list[tuple[str, str]]:
+    """(meme_id, url) for every meme delete_identity_data() would remove —
+    read first so the stored images can be removed before the rows that
+    name them are."""
+    pool = await get_pool()
+    if pool is None or (anon_user_id is None and user_id is None):
+        return []
+    rows = await pool.fetch(
+        f"SELECT id, url FROM memes WHERE {_OWNED_BY_CALLER}", anon_user_id, user_id
+    )
+    return [(row["id"], row["url"]) for row in rows]
+
+
+async def delete_identity_data(anon_user_id: str | None, user_id: str | None) -> list[tuple[str, str]]:
+    """"Forget me" — erases every row the caller owns (see _OWNED_BY_CALLER)
+    and returns the (meme_id, url) of each meme row removed. No-ops (empty
+    list) if Postgres is absent, same as every other function here.
+
+    For a signed-in caller that is: saved conversations and their messages,
+    the opt-in lexicon, feedback, and memes. The humor profile, the
+    avoid-repeats list and Arc are all read live off memes and feedback, so
+    they go with them — there is no separate copy to clear.
 
     Runs inside one transaction: partial deletion would be worse than an
-    all-or-nothing failure for a user-initiated erase request. feedback
-    must be deleted before memes — feedback.meme_id REFERENCES memes(id)
-    with no ON DELETE clause (defaults to RESTRICT), so deleting a
-    referenced memes row first would fail with a FK violation. The OR
-    clause below covers both feedback rows this user posted directly AND
-    feedback (from anyone) attached to a meme this user generated."""
+    all-or-nothing failure for a user-initiated erase request. Order is
+    forced by the foreign keys, none of which cascade from memes:
+      1. feedback first — feedback.meme_id references memes. Covers rows
+         the caller posted and feedback from anyone on the caller's memes.
+      2. lore_lexicon_terms before conversations — its FK is ON DELETE SET
+         NULL, so it would otherwise survive with the link blanked.
+      3. conversations, which cascades to messages. messages.meme_id
+         references memes, so this has to finish before step 4. Skipping it
+         is what used to make this whole function fail for anyone signed in
+         with saved history.
+      4. memes last, once nothing points at them."""
     pool = await get_pool()
-    if pool is None:
-        return
+    if pool is None or (anon_user_id is None and user_id is None):
+        return []
     async with pool.acquire() as conn:
         async with conn.transaction():
-            await conn.execute(
-                """
-                DELETE FROM feedback
-                WHERE anon_user_id = $1
-                   OR meme_id IN (SELECT id FROM memes WHERE anon_user_id = $1)
-                """,
-                anon_user_id,
+            rows = await conn.fetch(
+                f"SELECT id, url FROM memes WHERE {_OWNED_BY_CALLER}", anon_user_id, user_id
             )
-            await conn.execute("DELETE FROM memes WHERE anon_user_id = $1", anon_user_id)
-            await conn.execute("DELETE FROM lore_lexicon WHERE anon_user_id = $1", anon_user_id)
+            memes = [(row["id"], row["url"]) for row in rows]
+            meme_ids = [meme_id for meme_id, _ in memes]
+
+            await conn.execute(
+                f"DELETE FROM feedback WHERE {_OWNED_BY_CALLER} OR meme_id = ANY($3::text[])",
+                anon_user_id, user_id, meme_ids,
+            )
+            if user_id is not None:
+                await conn.execute("DELETE FROM lore_lexicon_terms WHERE user_id = $1", user_id)
+            await conn.execute(
+                f"DELETE FROM lore_lexicon WHERE {_OWNED_BY_CALLER}", anon_user_id, user_id
+            )
+            if user_id is not None:
+                await conn.execute("DELETE FROM conversations WHERE user_id = $1", user_id)
+            await conn.execute("DELETE FROM memes WHERE id = ANY($1::text[])", meme_ids)
+    return memes
 
 
 # --- Growth Phase D — Arc (personal meme stats) ---
@@ -827,6 +871,29 @@ async def delete_conversation(conversation_id: str, user_id: str) -> bool:
     conversation itself. Public signature unchanged from Stage 3's simple
     version, so DELETE /conversations/{id} needed no changes at all."""
     return await unwind_conversation_contribution(conversation_id, user_id)
+
+
+async def fetch_conversation_memes(conversation_id: str, user_id: str) -> list[tuple[str, str]] | None:
+    """(meme_id, url) for every meme this conversation generated, so their
+    stored images can be removed before delete_conversation() removes the
+    rows. None with no pool, or when conversation_id doesn't exist or isn't
+    owned by user_id — the same fail-closed check, made before anything is
+    touched."""
+    pool = await get_pool()
+    if pool is None:
+        return None
+    owner = await fetch_conversation_owner(conversation_id)
+    if owner != user_id:
+        return None
+    rows = await pool.fetch(
+        """
+        SELECT memes.id, memes.url FROM messages
+        JOIN memes ON memes.id = messages.meme_id
+        WHERE messages.conversation_id = $1
+        """,
+        conversation_id,
+    )
+    return [(row["id"], row["url"]) for row in rows]
 
 
 async def unwind_conversation_contribution(conversation_id: str, user_id: str) -> bool:

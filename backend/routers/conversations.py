@@ -13,9 +13,12 @@ db.py call pairs the client-supplied id with the verified user_id, same
 "never trust a bare id" posture as every other Stage 3 primitive.
 """
 
+import logging
+
 from fastapi import APIRouter, HTTPException, Request
 
 import db
+import storage
 from auth import get_verified_user
 from rate_limit import limiter
 from schemas import (
@@ -26,7 +29,11 @@ from schemas import (
     RenameConversationRequest,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+_DELETE_FAILED = "MemeGPT couldn't delete that conversation. Please try again."
 
 
 async def _require_user_id(request: Request) -> str:
@@ -88,8 +95,20 @@ async def rename_conversation(
 @router.delete("/{conversation_id}")
 @limiter.limit("10/minute")
 async def delete_conversation(request: Request, conversation_id: str) -> dict:
+    """Removes the conversation, its messages, the memes it generated and
+    their stored images. Images go first, while the rows still say where
+    they are: if that fails nothing else has been touched, the caller is
+    told (500), and a retry is safe."""
     user_id = await _require_user_id(request)
-    deleted = await db.delete_conversation(conversation_id, user_id)
+    memes = await db.fetch_conversation_memes(conversation_id, user_id)
+    if memes is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        await storage.delete_memes(memes)
+        deleted = await db.delete_conversation(conversation_id, user_id)
+    except Exception as exc:
+        logger.exception("delete_conversation_failed")
+        raise HTTPException(status_code=500, detail=_DELETE_FAILED) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Not found")
     return {"status": "ok"}

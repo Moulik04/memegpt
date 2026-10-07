@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from httpx import ASGITransport, AsyncClient
 
 import db
+import storage
 from auth import VerifiedUser
 from main import app
 
@@ -220,28 +221,79 @@ async def test_delete_conversation_requires_auth(monkeypatch):
 
 async def test_delete_conversation_404_when_not_owned(monkeypatch):
     _mock_verified_user(monkeypatch, "user-1")
+    touched = []
 
-    async def fake_delete(conversation_id, user_id):
-        return False
+    async def not_owned(conversation_id, user_id):
+        return None
 
-    monkeypatch.setattr(db, "delete_conversation", fake_delete)
+    async def record_delete_memes(memes):
+        touched.append("storage")
+
+    async def record_delete(conversation_id, user_id):
+        touched.append("db")
+        return True
+
+    monkeypatch.setattr(db, "fetch_conversation_memes", not_owned)
+    monkeypatch.setattr(storage, "delete_memes", record_delete_memes)
+    monkeypatch.setattr(db, "delete_conversation", record_delete)
 
     resp = await _delete("/conversations/not-mine")
 
     assert resp.status_code == 404
+    assert touched == []  # nothing is removed for a conversation the caller does not own
 
 
-async def test_delete_conversation_success(monkeypatch):
+async def test_delete_conversation_removes_images_before_rows(monkeypatch):
     _mock_verified_user(monkeypatch, "user-1")
+    order = []
+
+    async def fake_fetch_memes(conversation_id, user_id):
+        assert (conversation_id, user_id) == ("conv-1", "user-1")
+        return [("abc1234567", "https://pub.example/abc1234567.png")]
+
+    async def fake_delete_memes(memes):
+        order.append(("storage", memes))
 
     async def fake_delete(conversation_id, user_id):
-        assert conversation_id == "conv-1"
-        assert user_id == "user-1"
+        order.append(("db", conversation_id, user_id))
         return True
 
+    monkeypatch.setattr(db, "fetch_conversation_memes", fake_fetch_memes)
+    monkeypatch.setattr(storage, "delete_memes", fake_delete_memes)
     monkeypatch.setattr(db, "delete_conversation", fake_delete)
 
     resp = await _delete("/conversations/conv-1")
 
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
+    assert order == [
+        ("storage", [("abc1234567", "https://pub.example/abc1234567.png")]),
+        ("db", "conv-1", "user-1"),
+    ]
+
+
+async def test_delete_conversation_reports_a_storage_failure_and_keeps_the_rows(monkeypatch):
+    """If the images cannot be removed, the rows that say where they are
+    must survive so a retry can find them, and the caller must be told."""
+    _mock_verified_user(monkeypatch, "user-1")
+    db_deletes = []
+
+    async def fake_fetch_memes(conversation_id, user_id):
+        return [("abc1234567", "https://pub.example/abc1234567.png")]
+
+    async def failing_delete_memes(memes):
+        raise storage.MemeDeleteError("1 stored image(s) could not be removed")
+
+    async def fake_delete(conversation_id, user_id):
+        db_deletes.append(conversation_id)
+        return True
+
+    monkeypatch.setattr(db, "fetch_conversation_memes", fake_fetch_memes)
+    monkeypatch.setattr(storage, "delete_memes", failing_delete_memes)
+    monkeypatch.setattr(db, "delete_conversation", fake_delete)
+
+    resp = await _delete("/conversations/conv-1")
+
+    assert resp.status_code == 500
+    assert "couldn't delete" in resp.json()["detail"]
+    assert db_deletes == []
