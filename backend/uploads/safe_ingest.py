@@ -28,7 +28,7 @@ from fastapi import UploadFile
 from PIL import Image, ImageOps
 
 from config import get_settings
-from uploads.moderation import moderate_image
+from uploads.moderation import CATEGORY_RATE_LIMITED, moderate_image
 
 # Defense-in-depth pixel-count cap, in addition to the explicit per-side
 # check below (catches extreme-aspect-ratio images that dodge a per-side
@@ -57,6 +57,18 @@ class ModerationRejected(IngestRejected):
     def __init__(self, category: str):
         self.category = category
         super().__init__(f"moderation_rejected:{category}")
+
+
+class ModerationBusy(ModerationRejected):
+    """The content-safety check could not be run: the provider stayed rate
+    limited through every retry. The image is rejected like any other that
+    has not passed the check, which is why this is a ModerationRejected and
+    anything catching that keeps failing closed. It says nothing about the
+    image, so unlike a real refusal the caller may tell the user to try
+    again shortly."""
+
+    def __init__(self) -> None:
+        super().__init__(CATEGORY_RATE_LIMITED)
 
 
 @dataclass
@@ -142,7 +154,8 @@ def _strip_metadata(img: Image.Image) -> Image.Image:
 
 async def safe_ingest(upload: UploadFile) -> CleanImage:
     """The only entry point for any uploaded image. Raises UploadRejected or
-    ModerationRejected on failure; never writes the original bytes to disk."""
+    ModerationRejected (ModerationBusy when the check could not be run for
+    a rate limit) on failure; never writes the original bytes to disk."""
     settings = get_settings()
 
     data = await _read_capped(upload, settings.max_image_bytes)
@@ -160,6 +173,8 @@ async def safe_ingest(upload: UploadFile) -> CleanImage:
 
     moderation = await moderate_image(clean_img)
     if not moderation.passed:
+        if moderation.category == CATEGORY_RATE_LIMITED:
+            raise ModerationBusy()
         raise ModerationRejected(moderation.category or "unknown")
 
     return CleanImage(

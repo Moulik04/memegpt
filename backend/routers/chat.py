@@ -26,6 +26,7 @@ SSE event stream:
   {"type": "plan",     "situations": [...], "total": N}   — only when N > 1; also carries
                        "take_of": [null, ..., 0] when some entries are another take on an
                        earlier moment rather than a moment of their own
+  {"type": "thinking", "stage": "looking",    "message": "..."}   — photo uploads only, sent first
   {"type": "thinking", "stage": "analyzing",  "index": 0, "total": 1, "message": "..."}
   {"type": "thinking", "stage": "rendering",  "index": 0, "total": 1, "template_id": "...", "message": "..."}
   {"type": "done",     "index": 0, "total": 1, "conversation_id": "...", "message": {...}, "template_used": "...", "fallback": false}
@@ -54,10 +55,16 @@ from memory.conversation_store import add_turn, get_recent_templates
 from nlp.intent_router import is_fallback, parse_intent
 from nlp.lexicon import schedule_lexicon_extraction
 from nlp.segmentation import resolve_contexts
-from nlp.vision import describe_image, generate_canvas_captions, infer_mode
+from nlp.vision import VisionBusy, describe_image, generate_canvas_captions, infer_mode
 from rate_limit import limiter
 from schemas import ChatMessage, ChatRequest, ChatResponse, SegmentedContext, VisionDescription
-from uploads.safe_ingest import CleanImage, ModerationRejected, UploadRejected, safe_ingest
+from uploads.safe_ingest import (
+    CleanImage,
+    ModerationBusy,
+    ModerationRejected,
+    UploadRejected,
+    safe_ingest,
+)
 from vector_db.chroma_client import log_usage
 
 logger = logging.getLogger(__name__)
@@ -69,6 +76,9 @@ _DESCRIBE_IN_WORDS_PROMPT = (
     "I couldn't quite look at that image right now — mind describing the "
     "situation in words instead?"
 )
+# A photo call stayed rate limited through its retries. Nothing is wrong
+# with the photo, so this must not read as a refusal of it.
+_BUSY_MESSAGE = "MemeGPT is busy, try again in a minute."
 
 
 def _upload_rejection_message(reason: str) -> str:
@@ -441,9 +451,10 @@ async def _stream_canvas_batch(
 ) -> AsyncGenerator[str, None]:
     """Mode 2 (canvas) batch — captions each surviving photo directly via
     generate_canvas_captions(), never touching resolve_contexts/parse_intent
-    at all (there's no template to pick). generate_canvas_captions() never
-    raises, so no return_exceptions=True needed here — it returns None on
-    failure, filtered out below. meme_count is intentionally ignored: its
+    at all (there's no template to pick). generate_canvas_captions() returns
+    None on failure, filtered out below, and raises only VisionBusy (rate
+    limited past its retries): photos that got captions still become memes,
+    and if none did the reply says busy. meme_count is intentionally ignored: its
     semantics don't transfer (segmentation splits one input into N
     synthetic situations; canvas mode's count is already fixed by how many
     photos survived ingestion)."""
@@ -453,13 +464,17 @@ async def _stream_canvas_batch(
         await db.insert_message(conversation_row_id, "user", message)
 
     caption_results = await asyncio.gather(
-        *[generate_canvas_captions(ci.image, message) for ci in clean_images]
+        *[generate_canvas_captions(ci.image, message) for ci in clean_images],
+        return_exceptions=True,
     )
     pairs = [
-        (ci, captions) for ci, captions in zip(clean_images, caption_results) if captions is not None
+        (ci, captions) for ci, captions in zip(clean_images, caption_results) if isinstance(captions, dict)
     ]
 
     if not pairs:
+        if any(isinstance(r, VisionBusy) for r in caption_results):
+            yield _sse({"type": "error", "message": _BUSY_MESSAGE})
+            return
         # Every canvas-caption call failed — graceful degrade, a normal
         # assistant reply, not a hard error.
         reply = ChatMessage(role="assistant", content=_DESCRIBE_IN_WORDS_PROMPT)
@@ -570,7 +585,13 @@ async def handle_image_stream(
     uploads/moderation.py's category-never-echoed invariant exists to
     prevent). A non-safety UploadRejected on one image in a batch just drops
     that image and continues with the rest. This gate is identical for both
-    modes and both surfaces."""
+    modes and both surfaces.
+
+    A photo whose safety check could not be run (ModerationBusy: rate
+    limited past the retries) also stops the whole request, but with "busy,
+    try again in a minute" rather than a refusal. It is never processed
+    unchecked, and the photos that did pass are not turned into a partial
+    result the user didn't ask for. A real refusal in the same batch wins."""
     anon_user_id = get_anon_user_id(request)
     verified = await get_verified_user(request)
     user_id = verified.user_id if verified else None
@@ -588,13 +609,26 @@ async def handle_image_stream(
         settings = get_settings()
         capped_images = images[: settings.max_images_per_request]
 
+        # Sent before any photo call: a rate-limited safety check can hold
+        # this stream for most of a minute, and a connection with nothing
+        # on it looks dead to whatever sits in front of the backend.
+        yield _sse({
+            "type": "thinking",
+            "stage": "looking",
+            "message": "Looking at your photo..." if len(capped_images) == 1 else "Looking at your photos...",
+        })
+
         ingest_results = await asyncio.gather(
             *[safe_ingest(img) for img in capped_images],
             return_exceptions=True,
         )
 
-        if any(isinstance(r, ModerationRejected) for r in ingest_results):
+        moderation_rejections = [r for r in ingest_results if isinstance(r, ModerationRejected)]
+        if any(not isinstance(r, ModerationBusy) for r in moderation_rejections):
             yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
+            return
+        if moderation_rejections:
+            yield _sse({"type": "error", "message": _BUSY_MESSAGE})
             return
 
         clean_images = [r for r in ingest_results if isinstance(r, CleanImage)]
@@ -632,6 +666,9 @@ async def handle_image_stream(
         descriptions = [d.situation for d in description_results if isinstance(d, VisionDescription)]
 
         if not descriptions:
+            if any(isinstance(d, VisionBusy) for d in description_results):
+                yield _sse({"type": "error", "message": _BUSY_MESSAGE})
+                return
             # Every vision call failed (VisionUnavailable) — graceful
             # degrade, a normal assistant reply, not a hard error.
             reply = ChatMessage(role="assistant", content=_DESCRIBE_IN_WORDS_PROMPT)

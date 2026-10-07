@@ -26,14 +26,22 @@ both raw httpx too).
 call_groq_vision() is also reused by uploads/moderation.py for the content-
 safety check, since that's the same kind of call (image in, short
 classification text out) against the same already-verified vision model.
+
+A rate-limit response is waited out and retried inside call_groq_vision(),
+so all three photo calls get the same patience. When the retries run out
+the caller is told it was a rate limit (VisionRateLimited / VisionBusy)
+rather than a generic failure, so the user can be asked to try again
+shortly instead of being told their photo was the problem.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
 import logging
+import random
 
 import httpx
 from PIL import Image
@@ -71,12 +79,45 @@ _CANVAS_CAPTION_SYSTEM_PROMPT = (
 
 _CANVAS_PHRASES = ("make this a meme", "meme this", "meme-ify", "meme ify", "turn this into a meme")
 
+# Rate-limit patience for one photo call. Each photo costs two calls of
+# about 1.9k tokens on a model whose budget is per minute and shared with
+# the router: measured with photos sent 12 seconds apart, 4 of 9 uploads hit
+# a 429. Groq's retry-after says when the budget frees up, so that is what
+# gets waited, a few times over. The budget caps the waiting for one call,
+# because the person is watching a spinner: past it they are told to try
+# again in a minute, which is about how long the limit's window is anyway.
+# A photo is two calls, so its worst case is twice the budget.
+_RATE_LIMIT_ATTEMPTS = 4
+_RATE_LIMIT_WAIT_BUDGET_SECONDS = 45.0
+_RATE_LIMIT_FALLBACK_WAIT_SECONDS = 2.0  # doubles per attempt when Groq sends no retry-after
+_RATE_LIMIT_JITTER_SECONDS = 1.0  # photos in one upload are called together, and would retry together
+
+
+class VisionRateLimited(Exception):
+    """Groq answered 429 until call_groq_vision()'s retries ran out."""
+
 
 class VisionUnavailable(Exception):
     """Raised when no configured vision provider could produce a
     description. Unlike parse_intent(), there is no safe hardcoded fallback
     description here — the caller must handle degrading to asking the user
     to describe the image in words."""
+
+
+class VisionBusy(VisionUnavailable):
+    """VisionUnavailable because of a rate limit that outlasted the retries.
+    Trying the same photo again shortly is likely to work, so the caller
+    says that instead of asking for a description in words."""
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """Groq's retry-after header, in seconds (whole or decimal). None when
+    it is missing or unreadable."""
+    try:
+        seconds = float(response.headers.get("retry-after", ""))
+    except ValueError:
+        return None
+    return seconds if seconds >= 0 else None
 
 
 def _encode_for_api(image: Image.Image, max_side: int = 1568, quality: int = 85) -> str:
@@ -111,7 +152,11 @@ async def call_groq_vision(
     failure, message-free). `response_format` is only included in the
     payload when the caller passes it (e.g. {"type": "json_object"} for
     generate_canvas_captions) — describe_image()'s and moderate_image()'s
-    plain-text calls are unaffected."""
+    plain-text calls are unaffected.
+
+    A 429 is waited out and retried (see _RATE_LIMIT_ATTEMPTS above), for
+    as long as Groq's retry-after asks. Raises VisionRateLimited once the
+    attempts or the wait budget are used up. Nothing else is retried."""
     b64 = _encode_for_api(image)
     payload: dict = {
         "model": model,
@@ -137,11 +182,28 @@ async def call_groq_vision(
         "Authorization": f"Bearer {settings.groq_api_key}",
         "Content-Type": "application/json",
     }
+    waited = 0.0
     async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(_GROQ_CHAT_URL, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-    return data["choices"][0]["message"]["content"].strip()
+        for attempt in range(_RATE_LIMIT_ATTEMPTS):
+            resp = await client.post(_GROQ_CHAT_URL, json=payload, headers=headers)
+            if resp.status_code != 429:
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+            if attempt == _RATE_LIMIT_ATTEMPTS - 1:
+                break
+            wait = _retry_after_seconds(resp)
+            if wait is None:
+                wait = _RATE_LIMIT_FALLBACK_WAIT_SECONDS * 2**attempt
+            wait += random.uniform(0, _RATE_LIMIT_JITTER_SECONDS)
+            if waited + wait > _RATE_LIMIT_WAIT_BUDGET_SECONDS:
+                # Sleeping through a wait the budget cannot cover would only
+                # delay the same answer.
+                break
+            await asyncio.sleep(wait)
+            waited += wait
+    logger.warning("vision_rate_limited", extra={"waited_seconds": round(waited, 1)})
+    raise VisionRateLimited(f"still rate limited after waiting {waited:.0f}s")
 
 
 async def _describe_groq(image: Image.Image, user_text: str | None, settings: Settings) -> str:
@@ -194,13 +256,16 @@ def infer_mode(user_text: str | None) -> str:
 async def describe_image(image: Image.Image, user_text: str | None = None) -> VisionDescription:
     """Provider-agnostic vision description (Mode 1: image as context).
     Tries Groq first, falls back to Anthropic if ANTHROPIC_API_KEY is
-    configured. Raises VisionUnavailable if every configured provider fails."""
+    configured. Raises VisionUnavailable if every configured provider fails,
+    as VisionBusy when what stopped Groq was a rate limit."""
     settings = get_settings()
 
     raw: str | None = None
+    rate_limited = False
     try:
         raw = await _describe_groq(image, user_text, settings)
-    except Exception:
+    except Exception as exc:
+        rate_limited = isinstance(exc, VisionRateLimited)
         logger.warning("vision_provider_error", extra={"provider": "groq"})
         if settings.anthropic_api_key:
             try:
@@ -209,6 +274,8 @@ async def describe_image(image: Image.Image, user_text: str | None = None) -> Vi
                 logger.warning("vision_provider_error", extra={"provider": "anthropic"})
 
     if not raw:
+        if rate_limited:
+            raise VisionBusy("the vision provider is rate limited")
         raise VisionUnavailable("no configured vision provider produced a description")
 
     return VisionDescription(situation=raw)
@@ -259,16 +326,19 @@ async def generate_canvas_captions(image: Image.Image, user_text: str | None = N
     """Mode 2 (canvas): one vision call asking directly for top/bottom meme
     captions on the photo itself, rather than a separate describe-then-
     caption round trip — the caption writer sees the actual pixels, not a
-    lossy paraphrase, and it's half the latency/cost. Returns None on ANY
-    failure (network, malformed JSON, missing keys) — never raises, so a
-    caller gathering several of these can just filter out the Nones rather
-    than needing return_exceptions=True."""
+    lossy paraphrase, and it's half the latency/cost. Returns None on a
+    failure of the call or its output (network, malformed JSON, missing
+    keys). The one thing it raises is VisionBusy, when a rate limit outlasted
+    the retries: that photo is worth sending again in a minute, which None
+    could not say."""
     settings = get_settings()
 
     raw: str | None = None
+    rate_limited = False
     try:
         raw = await _caption_groq(image, user_text, settings)
-    except Exception:
+    except Exception as exc:
+        rate_limited = isinstance(exc, VisionRateLimited)
         logger.warning("canvas_caption_provider_error", extra={"provider": "groq"})
         if settings.anthropic_api_key:
             try:
@@ -277,6 +347,8 @@ async def generate_canvas_captions(image: Image.Image, user_text: str | None = N
                 logger.warning("canvas_caption_provider_error", extra={"provider": "anthropic"})
 
     if not raw:
+        if rate_limited:
+            raise VisionBusy("the vision provider is rate limited")
         return None
 
     try:
