@@ -9,11 +9,12 @@ Three separate metrics, because they fail for different reasons:
   - Nothing repeats: no two entries presented as moments are exact or
     reworded copies of each other, and every extra is marked as a take. A
     miss means a repeat reached the plan.
-  - Moments found: the number of distinct moments equals the number really
-    in the paste. Fewer means a real moment was missed (or a real one was
+  - Moments found: the number of distinct moments is the number really in
+    the paste. Fewer means a real moment was missed (or a real one was
     wrongly merged as a repeat), more means one moment was split in two.
     This is the model's judgment, and the only one of the three that can
-    legitimately vary from run to run.
+    legitimately vary from run to run. Where a paste has no single right
+    answer, its case gives an accepted range instead of one number.
 
 Each case runs several times: segmentation runs at a non-zero temperature,
 so one pass says little. Runs where the model call failed outright (the
@@ -45,12 +46,16 @@ class Case:
     known_moments: int
     requested: int
     text: str
+    # Lower end of the accepted range, for a paste whose moments can fairly
+    # be counted more than one way. None means only known_moments is right.
+    at_least: int | None = None
 
 
-# Rebuilt from a real Lore plan that listed these four. The last two are
-# consecutive lines from one person about one subject (anticipating a
-# release, then having already heard it live), which makes them the hardest
-# pair here to keep apart.
+# Rebuilt from a real Lore plan that listed four moments, but that split
+# was an earlier model's reading, not a ground truth. The key hunt and "he
+# has it and won't hand it over" are arguably one story, and so are the two
+# lines about the album, so anything from 2 to 4 is accepted. Extra takes
+# cover the count either way.
 _FOUR_MOMENTS = """\
 jay: has anyone seen the mail room key
 jay: i have checked the front desk, the kitchen drawer, the plant pot and INSIDE THE MICROWAVE
@@ -110,7 +115,7 @@ at this point we announce it in the group chat before heating anything so people
 """
 
 CASES: list[Case] = [
-    Case("four moments, ask 5", 4, 5, _FOUR_MOMENTS),
+    Case("two to four moments, ask 5", 4, 5, _FOUR_MOMENTS, at_least=2),
     Case("five moments, ask 5", 5, 5, _FIVE_MOMENTS),
     Case("five moments same people, ask 5", 5, 5, _FIVE_MOMENTS_SAME_PEOPLE),
     Case("five moments, ask 3", 5, 3, _FIVE_MOMENTS),
@@ -130,8 +135,22 @@ class Run:
     repeats: int = 0
 
     @property
-    def expected_moments(self) -> int:
+    def most_expected(self) -> int:
         return min(self.case.known_moments, self.case.requested)
+
+    @property
+    def least_expected(self) -> int:
+        return min(self.case.at_least or self.case.known_moments, self.case.requested)
+
+    @property
+    def expected_label(self) -> str:
+        if self.least_expected == self.most_expected:
+            return str(self.most_expected)
+        return f"{self.least_expected} to {self.most_expected}"
+
+    @property
+    def moments_in_range(self) -> bool:
+        return self.least_expected <= self.moments_found <= self.most_expected
 
     @property
     def count_honoured(self) -> bool:
@@ -177,10 +196,10 @@ async def main() -> None:
             if run.failed:
                 print(f"  [FAILED ] {case.name}: model call failed, excluded")
                 continue
-            verdict = "OK" if run.count_honoured and run.nothing_repeats and run.moments_found == run.expected_moments else "CHECK"
+            verdict = "OK" if run.count_honoured and run.nothing_repeats and run.moments_in_range else "CHECK"
             print(
                 f"  [{verdict:7s}] {case.name}: returned {run.total}/{case.requested}, "
-                f"{run.moments_found} moments (expected {run.expected_moments}) + {run.takes} takes, "
+                f"{run.moments_found} moments (expected {run.expected_label}) + {run.takes} takes, "
                 f"repeats {run.repeats}"
             )
             for i, moment in enumerate(run.moments or []):
@@ -197,18 +216,18 @@ async def main() -> None:
     n = len(scored)
     honoured = sum(1 for r in scored if r.count_honoured)
     clean = sum(1 for r in scored if r.nothing_repeats)
-    exact = sum(1 for r in scored if r.moments_found == r.expected_moments)
-    under = sum(1 for r in scored if r.moments_found < r.expected_moments)
-    over = sum(1 for r in scored if r.moments_found > r.expected_moments)
+    in_range = sum(1 for r in scored if r.moments_in_range)
+    under = sum(1 for r in scored if r.moments_found < r.least_expected)
+    over = sum(1 for r in scored if r.moments_found > r.most_expected)
     print(f"Runs scored:          {n}  (excluded as failed model calls: {excluded})")
     print(f"Count honoured:       {honoured}/{n} ({100 * honoured / n:.0f}%)")
     print(f"Nothing repeats:      {clean}/{n} ({100 * clean / n:.0f}%)")
-    print(f"Moments found exact:  {exact}/{n} ({100 * exact / n:.0f}%)  — missed a real one: {under}, split one: {over}")
+    print(f"Moments as expected:  {in_range}/{n} ({100 * in_range / n:.0f}%)  — missed a real one: {under}, split one: {over}")
     print("\nPer case (moments found across passes, expected):")
     for case in CASES:
-        found = [r.moments_found for r in scored if r.case is case]
-        if found:
-            print(f"  {case.name:34s} {found}  expected {min(case.known_moments, case.requested)}")
+        case_runs = [r for r in scored if r.case is case]
+        if case_runs:
+            print(f"  {case.name:34s} {[r.moments_found for r in case_runs]}  expected {case_runs[0].expected_label}")
 
 
 if __name__ == "__main__":
