@@ -21,6 +21,7 @@ caller from hitting a real-compute-costing endpoint, not to satisfy
 Discord's own protocol.
 """
 
+import hmac
 import logging
 import uuid
 
@@ -44,7 +45,7 @@ def _check_shared_secret(request: Request) -> None:
         # silently pass every request through.
         raise HTTPException(status_code=503, detail="Discord integration not configured")
     provided = request.headers.get("x-discord-worker-secret", "")
-    if provided != settings.discord_worker_shared_secret:
+    if not hmac.compare_digest(provided.encode(), settings.discord_worker_shared_secret.encode()):
         raise HTTPException(status_code=403, detail="Invalid or missing shared secret")
 
 

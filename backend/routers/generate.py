@@ -74,7 +74,9 @@ async def generate(request: Request, body: MemeGenerationRequest) -> MemeGenerat
 
 
 @router.get("/file/{template_id}")
+@limiter.limit("20/minute")
 async def generate_file(
+    request: Request,  # required by slowapi's key_func, unused otherwise
     template_id: str,
     top: str = "",
     bottom: str = "",
@@ -83,7 +85,15 @@ async def generate_file(
     image. Serves the file directly when storage is local-disk (true in
     every test environment and any deployment without R2 creds); redirects
     to the public URL when storage is R2 (saved.path is None — nothing
-    local to serve)."""
+    local to serve).
+
+    The captions are caller-typed text landing on a public image, exactly
+    as in POST /generate/ above, so they pass the same moderation gate and
+    the same rate limit. Without them this route was a way around both."""
+    moderation = await moderate_text(f"{top}\n{bottom}")
+    if not moderation.passed:
+        raise HTTPException(status_code=400, detail=_GENERIC_CAPTION_REFUSAL)
+
     try:
         saved = await compose_meme(
             template_id=template_id,

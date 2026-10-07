@@ -19,6 +19,7 @@ router = APIRouter()
 
 
 @router.get("/whoami", response_model=WhoAmIResponse)
+@limiter.limit("30/minute")
 async def whoami(request: Request) -> WhoAmIResponse:
     user = await get_verified_user(request)
     if user is None:

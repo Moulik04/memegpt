@@ -44,7 +44,9 @@ async def test_thumbs_up_also_records_feedback_row(monkeypatch):
     assert calls[0] == ("abc1234567", "up", None)
 
 
-async def test_thumbs_up_with_message_also_upserts_few_shot_example(monkeypatch):
+async def test_thumbs_up_with_message_and_captions_writes_no_few_shot_example(monkeypatch):
+    """Anyone can call this route. Text sent to it must not reach the
+    examples that get quoted in other people's prompts."""
     async def fake_insert_feedback(
         meme_id, rating, conversation_id=None, anon_user_id=None, template_id=None, user_id=None
     ):
@@ -57,7 +59,11 @@ async def test_thumbs_up_with_message_also_upserts_few_shot_example(monkeypatch)
     async def fake_upsert_example(user_message, template_id, texts):
         example_calls.append((user_message, template_id, texts))
 
-    monkeypatch.setattr("routers.feedback.upsert_example", fake_upsert_example)
+    async def fake_insert_few_shot_example(*args, **kwargs):
+        example_calls.append(args)
+
+    monkeypatch.setattr("vector_db.examples_store.upsert_example", fake_upsert_example)
+    monkeypatch.setattr(db, "insert_few_shot_example", fake_insert_few_shot_example)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -73,5 +79,5 @@ async def test_thumbs_up_with_message_also_upserts_few_shot_example(monkeypatch)
         )
 
     assert resp.status_code == 200
-    assert len(example_calls) == 1
-    assert example_calls[0] == ("waiting forever", "drake", {"top_text": "a", "bottom_text": "b"})
+    assert resp.json() == {"status": "ok", "rating": "up"}
+    assert example_calls == []

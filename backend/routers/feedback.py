@@ -5,7 +5,6 @@ from auth import get_verified_user
 from identity import get_anon_user_id
 from rate_limit import limiter
 from schemas import FeedbackRequest, FeedbackResponse
-from vector_db.examples_store import upsert_example
 
 router = APIRouter()
 
@@ -21,12 +20,15 @@ async def submit_feedback(request: Request, body: FeedbackRequest) -> FeedbackRe
     gracefully when DATABASE_URL isn't configured, same as every other
     Postgres write in this app.
 
-    👍 (up)   → additionally stores the (user_message, template_id, texts)
-               triplet as a positive few-shot example in ChromaDB + Postgres
-               so future similar queries are more likely to pick the same
-               template.
-
-    👎 (down) → recorded in the feedback table only; no few-shot example.
+    A rating is all this stores. It used to also turn a 👍 that arrived
+    with a message and captions into a few-shot example, and those examples
+    are quoted in the prompt for every later request on a similar topic.
+    This route takes no sign-in, so that was a way for anyone to put text
+    of their choosing into other people's prompts, kept in Postgres across
+    restarts. The app itself never sent captions, so it never wrote one.
+    `user_message` and `texts` are still accepted, for older clients, and
+    ignored. Examples now come only from the curated seed set and the
+    offline scripts (vector_db/examples_store.py).
 
     Growth Phase C: also persists anon_user_id and template_id on the
     feedback row itself (template_id was previously read off the request
@@ -49,12 +51,5 @@ async def submit_feedback(request: Request, body: FeedbackRequest) -> FeedbackRe
         template_id=body.template_id,
         user_id=verified.user_id if verified else None,
     )
-
-    if body.rating == "up" and body.user_message and body.texts:
-        await upsert_example(
-            user_message=body.user_message,
-            template_id=body.template_id,
-            texts=body.texts,
-        )
 
     return FeedbackResponse(status="ok", rating=body.rating)

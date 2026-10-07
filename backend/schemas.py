@@ -288,7 +288,7 @@ class FeedbackRequest(BaseModel):
     rating: Literal["up", "down"]
     texts: dict[str, str] = {}
     conversation_id: str | None = None
-    user_message: str | None = None  # used to create positive few-shot example on 👍
+    user_message: str | None = None  # accepted for older clients, ignored — see routers/feedback.py
     meme_id: str | None = None  # Growth Phase B — links this rating to a durable memes row
 
 
