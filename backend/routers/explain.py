@@ -27,7 +27,6 @@ def _build_response(record: dict, template_id: str) -> ExplainResponse:
         description=record.get("description", ""),
         tags=record.get("tags", []),
         usage_count=record.get("usage_count", 0),
-        recent_uses=record.get("recent_uses", []),
         image_url=template_image_url(template_id),
         text_boxes=_text_boxes_for(template_id),
     )
@@ -50,7 +49,7 @@ async def list_templates(request: Request) -> list[ExplainResponse]:
 @limiter.limit("30/minute")
 async def explain(request: Request, body: ExplainRequest) -> ExplainResponse:
     """
-    Returns metadata, usage history, and caption-field structure for a
+    Returns metadata, a usage count, and caption-field structure for a
     given meme template.
 
     Useful for the frontend's "Why this meme?" tooltip / info drawer, and

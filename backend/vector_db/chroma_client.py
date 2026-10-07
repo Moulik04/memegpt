@@ -17,7 +17,6 @@ zero-cost local dev path.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -181,13 +180,14 @@ def upsert_templates_batch_with_embeddings(records: list[dict[str, Any]]) -> Non
     )
 
 
-def log_usage(
-    template_id: str,
-    top_text: str,
-    bottom_text: str,
-    conversation_id: str,
-) -> None:
-    """Append a usage event to the template's metadata."""
+def log_usage(template_id: str) -> None:
+    """Count one more use of a template. The count is all that is kept.
+
+    This used to keep the last 20 uses per template with their caption text
+    and the conversation they came from, and GET /explain/ handed that list
+    to any caller. Captions routinely quote what the user wrote, so nothing
+    about an individual use is recorded here any more. Writing the count
+    also blanks whatever an older version left behind for this template."""
     col = _get_collection()
     try:
         result = col.get(ids=[template_id])
@@ -198,24 +198,40 @@ def log_usage(
         return
 
     meta = result["metadatas"][0]
-    recent: list[dict[str, Any]] = json.loads(meta.get("recent_uses", "[]"))
-    recent.insert(0, {
-        "ts": datetime.now(tz=UTC).isoformat(),
-        "top_text": top_text,
-        "bottom_text": bottom_text,
-        "conversation_id": conversation_id,
-    })
-    # Keep only the 20 most recent uses
-    recent = recent[:20]
-
     col.update(
         ids=[template_id],
         metadatas=[{
             **meta,
             "usage_count": int(meta.get("usage_count", 0)) + 1,
-            "recent_uses": json.dumps(recent),
+            "recent_uses": json.dumps([]),
         }],
     )
+
+
+def purge_logged_captions() -> int:
+    """Blank the per-use caption history an older version of log_usage()
+    stored, for every template that still carries any. Run at startup: a
+    deployment whose ChromaDB data outlives a restart (the docker-compose
+    stack, local dev) would otherwise keep those captions until each
+    template happened to be used again. Returns how many templates were
+    cleaned. Never raises — a failure here must not stop the app starting,
+    and nothing reads the field any more either way."""
+    try:
+        col = _get_collection()
+        result = col.get(include=["metadatas"])
+        stale = [
+            (template_id, meta)
+            for template_id, meta in zip(result["ids"], result["metadatas"])
+            if meta.get("recent_uses", "[]") not in ("[]", "")
+        ]
+        if stale:
+            col.update(
+                ids=[template_id for template_id, _ in stale],
+                metadatas=[{**meta, "recent_uses": json.dumps([])} for _, meta in stale],
+            )
+        return len(stale)
+    except Exception:
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +300,6 @@ def get_template_record(template_id: str) -> dict[str, Any] | None:
         "description": meta.get("description", ""),
         "tags": json.loads(meta.get("tags", "[]")),
         "usage_count": int(meta.get("usage_count", 0)),
-        "recent_uses": json.loads(meta.get("recent_uses", "[]")),
     }
 
 
@@ -307,7 +322,6 @@ def list_all_template_records() -> list[dict[str, Any]]:
                 "description": meta.get("description", ""),
                 "tags": json.loads(meta.get("tags", "[]")),
                 "usage_count": int(meta.get("usage_count", 0)),
-                "recent_uses": json.loads(meta.get("recent_uses", "[]")),
             }
         )
     return records

@@ -265,12 +265,7 @@ async def _render_and_record_turn(
     add_turn(conversation_id, intent.template_id)
 
     telemetry.record_template_selection(intent.template_id)
-    log_usage(
-        template_id=intent.template_id,
-        top_text=next(iter(intent.texts.values()), ""),
-        bottom_text=list(intent.texts.values())[-1] if len(intent.texts) > 1 else "",
-        conversation_id=conversation_id,
-    )
+    log_usage(intent.template_id)
     await db.insert_meme(
         meme_id=saved.meme_id,
         url=saved.url,

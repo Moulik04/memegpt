@@ -268,7 +268,6 @@ class ExplainResponse(BaseModel):
     description: str
     tags: list[str]
     usage_count: int
-    recent_uses: list[dict[str, Any]]
     # Populated on both the bulk GET /explain/ list (thumbnails in the
     # picker grid) and the single-template POST /explain/ — both are pure
     # in-memory lookups (image_processing/template_configs.py's static

@@ -51,7 +51,6 @@ export interface ExplainResponse {
   description: string;
   tags: string[];
   usage_count: number;
-  recent_uses: Array<Record<string, string>>;
   image_url: string | null;
   text_boxes: TextBoxInfo[];
 }
