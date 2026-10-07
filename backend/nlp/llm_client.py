@@ -30,6 +30,19 @@ import circuit_breaker
 # Gemini's docs do).
 _GROQ_CIRCUIT_COOLDOWN_SECONDS = 60.0
 
+# Output budget when a caller does not ask for one. It has to cover the
+# router's reply on the fallback model, which is a reasoning model: hidden
+# reasoning comes out of the same budget before any JSON is written.
+# Measured on the router's prompt: at a cap of 200 that model used 149-194
+# tokens (43-114 of them reasoning), one reply was cut off, and two of
+# twelve requests were rejected with nothing generated at all. At 400 one
+# reply in six still ran into the cap, with 181 tokens of reasoning. Each
+# failure there becomes a stock fallback meme, so this is set with room to
+# spare; a cap costs nothing unless it is reached. The primary model's
+# replies ran 71-151 tokens on the full prompt and 126-200 on the retry
+# prompt.
+_DEFAULT_MAX_TOKENS = 600
+
 
 async def call_ollama(
     client: httpx.AsyncClient,
@@ -43,7 +56,7 @@ async def call_ollama(
         "messages": messages,
         "stream": False,
         "format": "json",
-        "options": {"temperature": temperature, "num_predict": max_tokens or 150},
+        "options": {"temperature": temperature, "num_predict": max_tokens or _DEFAULT_MAX_TOKENS},
     }
     try:
         base = settings.ollama_host.rstrip("/")
@@ -71,15 +84,16 @@ async def call_groq(
 ) -> str:
     """Groq cloud inference — free tier, ~400 t/s, no GPU required.
 
-    max_tokens defaults to 200, which fits one meme's captions. A caller
-    whose reply is longer than that has to ask for more: a reply cut off at
-    the cap still comes back as valid JSON, just with the end missing."""
+    max_tokens defaults to _DEFAULT_MAX_TOKENS, sized for one meme's
+    captions. A caller whose reply is longer than that has to ask for more:
+    a reply cut off at the cap can still come back as valid JSON, just with
+    the end missing."""
     for attempt in range(2):
         payload: dict = {
             "model": settings.groq_model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens or 200,
+            "max_tokens": max_tokens or _DEFAULT_MAX_TOKENS,
             "response_format": {"type": "json_object"},
         }
         # Qwen 3.x thinking mode emits reasoning tokens before JSON, breaking the parser.
@@ -88,8 +102,8 @@ async def call_groq(
             payload["reasoning_effort"] = "none"
         # gpt-oss models don't support "none" (400s: must be low/medium/high) and,
         # left unset, spend the whole max_tokens budget on hidden reasoning before
-        # ever emitting content — the response comes back empty. "low" leaves
-        # enough of the 200-token budget for the actual JSON.
+        # ever emitting content — the response comes back empty. "low" keeps the
+        # reasoning short, and _DEFAULT_MAX_TOKENS is sized to leave room after it.
         elif "gpt-oss" in settings.groq_model.lower():
             payload["reasoning_effort"] = "low"
         response = await client.post(

@@ -8,6 +8,8 @@ AsyncClient against canned responses — no real network call.
 
 from __future__ import annotations
 
+import json
+
 import httpx
 
 import circuit_breaker as cb
@@ -57,3 +59,34 @@ async def test_a_success_resets_that_models_circuit():
 
     assert result == "hello"
     assert cb.is_open("groq:qwen/qwen3.6-27b") is False
+
+
+# --- output budget ----------------------------------------------------------
+
+
+def _client_recording_payloads(seen: list[dict]) -> httpx.AsyncClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": "hello"}}]})
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+async def test_default_output_budget_leaves_room_for_a_reasoning_model():
+    """The fallback model spends part of its budget on hidden reasoning
+    before it writes any JSON. Measured on the router's prompt it used
+    149-194 tokens against a 200 cap, and some requests were rejected
+    outright because nothing was left for the answer."""
+    seen: list[dict] = []
+    async with _client_recording_payloads(seen) as client:
+        await call_groq(client, _settings("openai/gpt-oss-120b"), [{"role": "user", "content": "hi"}])
+
+    assert seen[0]["max_tokens"] >= 400
+
+
+async def test_a_caller_can_ask_for_its_own_output_budget():
+    seen: list[dict] = []
+    async with _client_recording_payloads(seen) as client:
+        await call_groq(client, _settings(), [{"role": "user", "content": "hi"}], max_tokens=700)
+
+    assert seen[0]["max_tokens"] == 700
