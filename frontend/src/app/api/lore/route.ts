@@ -8,6 +8,7 @@
  */
 
 import { NextRequest } from "next/server";
+import { backendHeaders } from "@/lib/proxyHeaders";
 
 const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
 
@@ -17,18 +18,12 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const anonUser = req.headers.get("x-memegpt-user");
-  const authorization = req.headers.get("authorization");
 
   let upstream: Response;
   try {
     upstream = await fetch(`${BACKEND}/lore/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(anonUser ? { "X-MemeGPT-User": anonUser } : {}),
-        ...(authorization ? { Authorization: authorization } : {}),
-      },
+      headers: { "Content-Type": "application/json", ...backendHeaders(req) },
       body: JSON.stringify(body),
     });
   } catch (err) {

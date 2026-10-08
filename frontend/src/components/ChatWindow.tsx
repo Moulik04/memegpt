@@ -9,6 +9,7 @@ import { useConversation } from "@/lib/ConversationContext";
 import { useAuth } from "@/hooks/useAuth";
 import { pickRandomPrompts } from "@/lib/examplePrompts";
 import { MessageBubble } from "./MessageBubble";
+import BudgetNotice from "./BudgetNotice";
 import { ThinkingBubble } from "./ThinkingBubble";
 import type { ChatMessage, MemeItem, PersistedMessage } from "@/types";
 
@@ -74,7 +75,7 @@ export function ChatWindow() {
 
   const { user } = useAuth();
   const { conversationRowId, setConversationRowId, bumpRefresh } = useConversation();
-  const { loading, thinking, error, conversationId, submitText, submitImages } = useMemeStream(
+  const { loading, thinking, error, errorReason, conversationId, submitText, submitImages } = useMemeStream(
     "chat",
     conversationRowId,
   );
@@ -230,6 +231,8 @@ export function ChatWindow() {
   }
 
   const displayError = localError ?? error;
+  // The shared daily budget ran out: the notice comes with a pre-made meme.
+  const showBudgetMeme = !localError && errorReason === "site_budget";
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -291,7 +294,12 @@ export function ChatWindow() {
 
         {thinking && <ThinkingBubble message={thinking.message} />}
 
-        {displayError && (
+        {displayError && showBudgetMeme && (
+          <div className="flex justify-start mb-3">
+            <BudgetNotice message={displayError} />
+          </div>
+        )}
+        {displayError && !showBudgetMeme && (
           <div className="flex justify-start mb-3">
             <p className="text-destructive text-xs bg-destructive/10 border border-destructive/30
                           rounded-xl px-3 py-2 max-w-[80%]">

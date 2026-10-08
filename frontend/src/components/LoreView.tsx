@@ -9,6 +9,7 @@ import { createConversation, getConversationMessages, postFeedback } from "@/lib
 import { useMemeStream, type PlanState } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
 import { useAuth } from "@/hooks/useAuth";
+import BudgetNotice from "./BudgetNotice";
 import { MemeCard } from "./MemeCard";
 import { ThinkingBubble } from "./ThinkingBubble";
 import { DecryptedText } from "./DecryptedText";
@@ -114,7 +115,7 @@ export function LoreView() {
 
   const { user } = useAuth();
   const { conversationRowId, setConversationRowId, bumpRefresh } = useConversation();
-  const { loading, thinking, error, plan, conversationId, submitText, submitImages } = useMemeStream(
+  const { loading, thinking, error, errorReason, plan, conversationId, submitText, submitImages } = useMemeStream(
     "lore",
     conversationRowId,
   );
@@ -272,6 +273,8 @@ export function LoreView() {
   }
 
   const displayError = localError ?? error;
+  // The shared daily budget ran out: the notice comes with a pre-made meme.
+  const showBudgetMeme = !localError && errorReason === "site_budget";
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 chat-scroll">
@@ -446,7 +449,8 @@ export function LoreView() {
           </p>
         </form>
 
-        {displayError && (
+        {displayError && showBudgetMeme && <BudgetNotice message={displayError} />}
+        {displayError && !showBudgetMeme && (
           <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/40
                         rounded-xl px-3 py-2">
             {displayError}

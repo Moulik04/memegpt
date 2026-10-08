@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { backendHeaders } from "@/lib/proxyHeaders";
 
 const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
 
@@ -8,17 +9,11 @@ export async function POST(req: NextRequest) {
   // this hand-written route bypasses next.config.js's generic rewrite, so
   // the anon-identity header must be read and re-attached explicitly.
   // Growth Phase H, Stage 2 — same fix for the Authorization bearer header.
-  const anonUser = req.headers.get("x-memegpt-user");
-  const authorization = req.headers.get("authorization");
   let upstream: Response;
   try {
     upstream = await fetch(`${BACKEND}/feedback/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(anonUser ? { "X-MemeGPT-User": anonUser } : {}),
-        ...(authorization ? { Authorization: authorization } : {}),
-      },
+      headers: { "Content-Type": "application/json", ...backendHeaders(req) },
       body: JSON.stringify(body),
     });
   } catch (err) {

@@ -11,14 +11,13 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 import telemetry  # noqa: F401 — side-effecting import: configures OTel + structlog
 from config import get_settings
 from nlp.intent_router import USE_WHEN
 from nlp.llm_client import log_llm_provider
-from rate_limit import limiter
+from rate_limit import limiter, rate_limit_exceeded_handler
 from routers import (
     arc,
     auth,
@@ -44,6 +43,7 @@ from vector_db.chroma_client import (
 )
 from vector_db.examples_store import _get_collection as _init_examples
 from vector_db.examples_store import seed_examples
+from visitor import log_address_trust
 
 settings = get_settings()
 
@@ -170,6 +170,7 @@ def _auto_seed_if_empty() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log_llm_provider(settings)
+    log_address_trust(settings)
     init_chroma()
     purge_logged_captions()
     _init_examples()  # pre-warm examples store so first request isn't slow
@@ -204,7 +205,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

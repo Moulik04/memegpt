@@ -7,6 +7,7 @@ import type {
   ImageChatOptions,
   MemeGenerationRequest,
   MemeGenerationResponse,
+  NoticeReason,
   PersistedMessage,
   SSEEvent,
 } from "@/types";
@@ -49,15 +50,45 @@ async function authHeaders(): Promise<Record<string, string>> {
 // of the raw `"400 Bad Request: {\"detail\":...}"` blob callers used to
 // throw, since several call sites (MakeView's genError) render the
 // message as-is.
-async function _errorMessage(res: Response): Promise<string> {
+// An error response, with the backend's `reason` when it gave one (see
+// NoticeReason) so a caller can tell "the daily budget is used up" from a
+// failure and show the budget meme with it.
+export class ApiError extends Error {
+  reason?: NoticeReason;
+
+  constructor(message: string, reason?: NoticeReason) {
+    super(message);
+    this.name = "ApiError";
+    this.reason = reason;
+  }
+}
+
+async function _apiError(res: Response): Promise<ApiError> {
   const raw = await res.text();
   try {
     const parsed = JSON.parse(raw);
-    if (typeof parsed?.detail === "string") return parsed.detail;
+    if (typeof parsed?.detail === "string") return new ApiError(parsed.detail, parsed.reason);
   } catch {
     // Not JSON — fall through to the raw body below.
   }
-  return `${res.status} ${res.statusText}: ${raw}`;
+  return new ApiError(`${res.status} ${res.statusText}: ${raw}`);
+}
+
+const VISIT_HEADER = "X-MemeGPT-Visit";
+
+// For requests the browser sends straight to the backend. The frontend's
+// server signs a short-lived note of the address it saw (app/api/visit), so
+// the backend can count its limits per visitor there too. Best effort: with
+// no token the upload still goes, counted against its connection.
+async function visitHeader(): Promise<Record<string, string>> {
+  try {
+    const res = await fetch(`${BASE}/visit`, { cache: "no-store" });
+    if (!res.ok) return {};
+    const { token } = (await res.json()) as { token?: string | null };
+    return token ? { [VISIT_HEADER]: token } : {};
+  } catch {
+    return {};
+  }
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -67,7 +98,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error(await _errorMessage(res));
+    throw await _apiError(res);
   }
   return res.json() as Promise<T>;
 }
@@ -75,7 +106,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { headers: await authHeaders() });
   if (!res.ok) {
-    throw new Error(await _errorMessage(res));
+    throw await _apiError(res);
   }
   return res.json() as Promise<T>;
 }
@@ -143,8 +174,7 @@ export async function sendStream(
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+    throw await _apiError(res);
   }
 
   await _consumeSSE(res, onEvent);
@@ -177,7 +207,7 @@ export async function sendImageStream(
   try {
     res = await fetch(`${BACKEND_BASE}/${surface}/image/`, {
       method: "POST",
-      headers: await authHeaders(),
+      headers: { ...(await authHeaders()), ...(await visitHeader()) },
       body: form,
     });
   } catch {
@@ -190,8 +220,7 @@ export async function sendImageStream(
     if (res.status === 413) {
       throw new Error("Those photos are too large to upload together — try fewer or smaller images.");
     }
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
+    throw await _apiError(res);
   }
 
   await _consumeSSE(res, onEvent);

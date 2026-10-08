@@ -45,6 +45,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image
 
+import daily_quota
 import db
 import telemetry
 from auth import get_verified_user
@@ -62,6 +63,15 @@ from nlp.vision import (
     generate_canvas_captions,
     infer_mode,
 )
+from notices import (
+    BUSY_MESSAGE,
+    DAILY_BUDGET_MESSAGE,
+    REASON_BUSY,
+    REASON_SITE_BUDGET,
+    REASON_VISITOR_LIMIT,
+    notice_event,
+    visitor_limit_message,
+)
 from rate_limit import limiter
 from schemas import ChatMessage, ChatRequest, ChatResponse, SegmentedContext, VisionDescription
 from uploads.safe_ingest import (
@@ -73,6 +83,7 @@ from uploads.safe_ingest import (
     safe_ingest,
 )
 from vector_db.chroma_client import log_usage
+from visitor import Visitor, identify
 
 logger = logging.getLogger(__name__)
 
@@ -83,28 +94,32 @@ _DESCRIBE_IN_WORDS_PROMPT = (
     "I couldn't quite look at that image right now — mind describing the "
     "situation in words instead?"
 )
-# A call stayed rate limited through its retries. Nothing is wrong with the
-# photo or caption, so this must not read as a refusal of it. For the
-# provider's per-minute limit only.
-BUSY_MESSAGE = "MemeGPT is busy, try again in a minute."
-# The provider's daily limit: a minute will not help, and the canned
-# fallback meme would say nothing about why. Owner's wording.
-DAILY_BUDGET_MESSAGE = (
-    "MemeGPT runs on a free daily AI budget, and today's is used up. "
-    "It refills gradually, so try again in a few hours."
-)
-# Marks the error event that carries DAILY_BUDGET_MESSAGE, so a batch can
-# stop there instead of failing the same way once per remaining meme.
-_DAILY_BUDGET_REASON = "daily_budget"
 
 
-def _vision_busy_message(results: list) -> str:
-    """Which of the two messages a set of failed photo calls gets. One call
+def _vision_busy_event(results: list) -> dict:
+    """Which of the two notices a set of failed photo calls gets. One call
     stopped by the daily limit is enough: trying again in a minute would
     not help the others either, they share the model."""
     if any(isinstance(r, VisionOutOfBudget) for r in results):
-        return DAILY_BUDGET_MESSAGE
-    return BUSY_MESSAGE
+        return notice_event(REASON_SITE_BUDGET, DAILY_BUDGET_MESSAGE)
+    return notice_event(REASON_BUSY, BUSY_MESSAGE)
+
+
+def _visitor_limit_event(allowance: daily_quota.Allowance) -> dict:
+    return notice_event(
+        REASON_VISITOR_LIMIT,
+        visitor_limit_message(
+            allowance.limit or 0, network=allowance.limited_by == daily_quota.LIMITED_BY_ADDRESS
+        ),
+    )
+
+
+def _requested_count(meme_count: int | None) -> int:
+    """How many memes an explicit count asks for, after the same clamp
+    segmentation applies. 0 when no count was given."""
+    if meme_count is None:
+        return 0
+    return max(1, min(meme_count, get_settings().max_memes_per_request))
 
 
 def _upload_rejection_message(reason: str) -> str:
@@ -221,13 +236,8 @@ async def _stream_chat_turn(
         return
 
     if is_daily_budget_fallback(intent):
-        yield {
-            "type": "error",
-            "index": index,
-            "total": total,
-            "message": DAILY_BUDGET_MESSAGE,
-            "reason": _DAILY_BUDGET_REASON,
-        }
+        # No canned meme for this one: it would say nothing about why.
+        yield notice_event(REASON_SITE_BUDGET, DAILY_BUDGET_MESSAGE, index=index, total=total)
         return
 
     if exclude_templates and intent.template_id in exclude_templates:
@@ -361,6 +371,7 @@ async def _stream_batch(
     ctx: db.PersonalizationContext | None = None,
     surface: str | None = None,
     conversation_row_id: str | None = None,
+    reservation: daily_quota.Reservation | None = None,
 ) -> AsyncGenerator[str, None]:
     """Runs each context through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
@@ -376,7 +387,13 @@ async def _stream_batch(
     nudge above is a request to the model, this is a guarantee.
 
     The batch ends early at the first meme the model's daily budget could
-    not cover: the ones after it would fail the same way."""
+    not cover: the ones after it would fail the same way.
+
+    reservation: the visitor's daily allowance set aside for this batch
+    (daily_quota.py). `contexts` has already been cut to what it granted,
+    which can be nothing at all. Whatever was not made is handed back when
+    the batch ends, however it ends, and if the visitor asked for more than
+    they had left the batch says so before it closes."""
     total = len(contexts)
     if total > 1:
         # "Plan theater" for a single meme is pointless — only worth
@@ -398,23 +415,29 @@ async def _stream_batch(
     succeeded = 0
     templates_by_moment: dict[int, list[str]] = {}
     out_of_budget = False
-    for i, context in enumerate(contexts):
-        if out_of_budget:
-            break
-        moment = i if context.take_of is None else context.take_of
-        async for event in _stream_chat_turn(
-            context.situation, conversation_id, ctx, surface, index=i, total=total,
-            conversation_row_id=conversation_row_id,
-            take_of=context.take_of,
-            exclude_templates=list(templates_by_moment.get(moment, [])) if context.take_of is not None else None,
-        ):
-            if event.get("type") == "done":
-                succeeded += 1
-                if event.get("template_used"):
-                    templates_by_moment.setdefault(moment, []).append(event["template_used"])
-            elif event.get("reason") == _DAILY_BUDGET_REASON:
-                out_of_budget = True
-            yield _sse(event)
+    try:
+        for i, context in enumerate(contexts):
+            if out_of_budget:
+                break
+            moment = i if context.take_of is None else context.take_of
+            async for event in _stream_chat_turn(
+                context.situation, conversation_id, ctx, surface, index=i, total=total,
+                conversation_row_id=conversation_row_id,
+                take_of=context.take_of,
+                exclude_templates=list(templates_by_moment.get(moment, [])) if context.take_of is not None else None,
+            ):
+                if event.get("type") == "done":
+                    succeeded += 1
+                    if event.get("template_used"):
+                        templates_by_moment.setdefault(moment, []).append(event["template_used"])
+                elif event.get("reason") == REASON_SITE_BUDGET:
+                    out_of_budget = True
+                yield _sse(event)
+    finally:
+        if reservation:
+            reservation.settle(succeeded)
+    if reservation and reservation.ran_out():
+        yield _sse(_visitor_limit_event(reservation.allowance_now()))
     yield _sse({"type": "batch_done", "total": total, "succeeded": succeeded})
 
 
@@ -492,6 +515,7 @@ async def _stream_canvas_batch(
     surface: str | None = None,
     user_id: str | None = None,
     conversation_row_id: str | None = None,
+    visitor: Visitor | None = None,
 ) -> AsyncGenerator[str, None]:
     """Mode 2 (canvas) batch — captions each surviving photo directly via
     generate_canvas_captions(), never touching resolve_contexts/parse_intent
@@ -501,7 +525,14 @@ async def _stream_canvas_batch(
     and if none did the reply says busy. meme_count is intentionally ignored: its
     semantics don't transfer (segmentation splits one input into N
     synthetic situations; canvas mode's count is already fixed by how many
-    photos survived ingestion)."""
+    photos survived ingestion).
+
+    One photo is one meme here, so the visitor's daily allowance
+    (daily_quota.py) is applied to the photos before any of them is
+    captioned: the ones past it are not sent to the model at all."""
+    wanted = len(clean_images)
+    if visitor:
+        clean_images = clean_images[: daily_quota.allowance(visitor).cap(wanted)]
     if conversation_row_id and user_id and message:
         # Written once for the whole batch — every photo shares this same
         # accompanying text, unlike _stream_canvas_turn's per-photo reply.
@@ -515,9 +546,9 @@ async def _stream_canvas_batch(
         (ci, captions) for ci, captions in zip(clean_images, caption_results) if isinstance(captions, dict)
     ]
 
-    if not pairs:
+    if not pairs and clean_images:
         if any(isinstance(r, VisionBusy) for r in caption_results):
-            yield _sse({"type": "error", "message": _vision_busy_message(caption_results)})
+            yield _sse(_vision_busy_event(caption_results))
             return
         # Every canvas-caption call failed — graceful degrade, a normal
         # assistant reply, not a hard error.
@@ -526,16 +557,25 @@ async def _stream_canvas_batch(
         yield _sse({"type": "done", **response.model_dump(mode="json")})
         return
 
+    reservation = daily_quota.reserve(visitor, wanted) if visitor else None
+    if reservation:
+        pairs = pairs[: reservation.granted]
     total = len(pairs)
     succeeded = 0
-    for i, (clean_image, captions) in enumerate(pairs):
-        async for event in _stream_canvas_turn(
-            clean_image.image, captions, conversation_id, anon_user_id, surface,
-            index=i, total=total, user_id=user_id, conversation_row_id=conversation_row_id,
-        ):
-            if event.get("type") == "done":
-                succeeded += 1
-            yield _sse(event)
+    try:
+        for i, (clean_image, captions) in enumerate(pairs):
+            async for event in _stream_canvas_turn(
+                clean_image.image, captions, conversation_id, anon_user_id, surface,
+                index=i, total=total, user_id=user_id, conversation_row_id=conversation_row_id,
+            ):
+                if event.get("type") == "done":
+                    succeeded += 1
+                yield _sse(event)
+    finally:
+        if reservation:
+            reservation.settle(succeeded)
+    if reservation and reservation.ran_out():
+        yield _sse(_visitor_limit_event(reservation.allowance_now()))
     yield _sse({"type": "batch_done", "total": total, "succeeded": succeeded})
 
 
@@ -566,6 +606,31 @@ async def _resolve_conversation_row_id(
     return conversation_row_id_in if owner == user_id else None
 
 
+async def _contexts_within_allowance(
+    visitor: Visitor,
+    text: str | None,
+    image_descriptions: list[str] | None,
+    meme_count: int | None,
+    lexicon: list[str] | None,
+) -> tuple[list[SegmentedContext], daily_quota.Reservation]:
+    """resolve_contexts(), held to the visitor's daily allowance
+    (daily_quota.py). Returns the situations to render, never more than the
+    allowance covers, and the reservation that _stream_batch settles.
+
+    A visitor with nothing left gets no situations and no model call. One
+    asking for more than they have left is only split into that many: the
+    count is cut before segmentation, so no tokens go on moments that would
+    be thrown away."""
+    current = daily_quota.allowance(visitor)
+    contexts: list[SegmentedContext] = []
+    if not current.exhausted:
+        contexts = await resolve_contexts(text, image_descriptions, current.cap(meme_count), lexicon=lexicon)
+    # At least one, so that a visitor with nothing left is told so.
+    wanted = max(len(contexts), _requested_count(meme_count), 1)
+    reservation = daily_quota.reserve(visitor, wanted)
+    return contexts[: reservation.granted], reservation
+
+
 async def handle_text_stream(
     request: Request,
     message_in: str,
@@ -588,11 +653,12 @@ async def handle_text_stream(
     conversation_id = conversation_id_in or ""
     conversation_row_id = await _resolve_conversation_row_id(conversation_row_id_in, user_id)
     message = _clamp_dump_text(message_in) or ""
-    if remember_lore:
+    visitor = identify(request)
+    if remember_lore and not daily_quota.allowance(visitor).exhausted:
         schedule_lexicon_extraction(anon_user_id, message, user_id, conversation_row_id)
-    contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
+    contexts, reservation = await _contexts_within_allowance(visitor, message, None, meme_count, ctx.lexicon)
     return _sse_response(
-        _stream_batch(contexts, conversation_id, ctx, surface, conversation_row_id)
+        _stream_batch(contexts, conversation_id, ctx, surface, conversation_row_id, reservation)
     )
 
 
@@ -644,7 +710,8 @@ async def handle_image_stream(
     conv_id = conversation_id_in or ""
     conversation_row_id = await _resolve_conversation_row_id(conversation_row_id_in, user_id)
     message = _clamp_dump_text(message_in)
-    if remember_lore:
+    visitor = identify(request)
+    if remember_lore and not daily_quota.allowance(visitor).exhausted:
         schedule_lexicon_extraction(anon_user_id, message, user_id, conversation_row_id)
     if mode not in ("context", "canvas"):
         mode = None
@@ -653,6 +720,13 @@ async def handle_image_stream(
     async def event_stream() -> AsyncGenerator[str, None]:
         settings = get_settings()
         capped_images = images[: settings.max_images_per_request]
+
+        # Checked before a single photo call: every photo costs model
+        # tokens whether or not a meme comes out of it.
+        allowance = daily_quota.allowance(visitor)
+        if allowance.exhausted:
+            yield _sse(_visitor_limit_event(allowance))
+            return
 
         # Sent before any photo call: a rate-limited safety check can hold
         # this stream for most of a minute, and a connection with nothing
@@ -673,8 +747,10 @@ async def handle_image_stream(
             yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
             return
         if moderation_rejections:
-            out_of_budget = any(isinstance(r, ModerationOutOfBudget) for r in moderation_rejections)
-            yield _sse({"type": "error", "message": DAILY_BUDGET_MESSAGE if out_of_budget else BUSY_MESSAGE})
+            if any(isinstance(r, ModerationOutOfBudget) for r in moderation_rejections):
+                yield _sse(notice_event(REASON_SITE_BUDGET, DAILY_BUDGET_MESSAGE))
+            else:
+                yield _sse(notice_event(REASON_BUSY, BUSY_MESSAGE))
             return
 
         clean_images = [r for r in ingest_results if isinstance(r, CleanImage)]
@@ -684,8 +760,12 @@ async def handle_image_stream(
             # Degrade to a text-only turn if there's accompanying text,
             # rather than hard-refusing when the user's words are still usable.
             if message:
-                contexts = await resolve_contexts(message, None, meme_count, lexicon=ctx.lexicon)
-                async for event in _stream_batch(contexts, conv_id, ctx, surface, conversation_row_id):
+                contexts, reservation = await _contexts_within_allowance(
+                    visitor, message, None, meme_count, ctx.lexicon
+                )
+                async for event in _stream_batch(
+                    contexts, conv_id, ctx, surface, conversation_row_id, reservation
+                ):
                     yield event
                 return
             # No ModerationRejected made it this far (that check already
@@ -700,7 +780,7 @@ async def handle_image_stream(
         if resolved_mode == "canvas":
             async for event in _stream_canvas_batch(
                 clean_images, message, conv_id, anon_user_id, surface,
-                user_id=user_id, conversation_row_id=conversation_row_id,
+                user_id=user_id, conversation_row_id=conversation_row_id, visitor=visitor,
             ):
                 yield event
             return
@@ -713,7 +793,7 @@ async def handle_image_stream(
 
         if not descriptions:
             if any(isinstance(d, VisionBusy) for d in description_results):
-                yield _sse({"type": "error", "message": _vision_busy_message(description_results)})
+                yield _sse(_vision_busy_event(description_results))
                 return
             # Every vision call failed (VisionUnavailable) — graceful
             # degrade, a normal assistant reply, not a hard error.
@@ -722,8 +802,10 @@ async def handle_image_stream(
             yield _sse({"type": "done", **response.model_dump(mode="json")})
             return
 
-        contexts = await resolve_contexts(message, descriptions, meme_count, lexicon=ctx.lexicon)
-        async for event in _stream_batch(contexts, conv_id, ctx, surface, conversation_row_id):
+        contexts, reservation = await _contexts_within_allowance(
+            visitor, message, descriptions, meme_count, ctx.lexicon
+        )
+        async for event in _stream_batch(contexts, conv_id, ctx, surface, conversation_row_id, reservation):
             yield event
 
     return _sse_response(event_stream())

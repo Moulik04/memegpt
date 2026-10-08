@@ -12,6 +12,7 @@ from fastapi import UploadFile
 from PIL import Image
 
 import circuit_breaker
+import daily_quota
 from config import Settings, get_settings
 from rate_limit import limiter
 from storage import OUTPUT_DIR
@@ -89,6 +90,15 @@ def _reset_rate_limiter():
     each test rather than exhausting a real per-minute budget across a full
     test run."""
     limiter.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_daily_quota():
+    """daily_quota.py counts memes per visitor in module state, and every
+    test is the same visitor. Without this the eleventh meme of a test run
+    would be refused."""
+    daily_quota.reset()
     yield
 
 

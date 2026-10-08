@@ -110,11 +110,19 @@ export interface BatchDoneEvent {
   succeeded: number;
 }
 
+// Why MemeGPT could not make a meme, when it is one of the three expected
+// cases (backend/notices.py). Absent on every other error.
+//   busy          a per-minute limit; a minute is enough
+//   site_budget   the shared daily AI budget; shown with a pre-made meme
+//   visitor_limit this visitor's own daily allowance
+export type NoticeReason = "busy" | "site_budget" | "visitor_limit";
+
 export interface ErrorEvent {
   type: "error";
   index?: number;
   total?: number;
   message: string;
+  reason?: NoticeReason;
 }
 
 export type SSEEvent = PlanEvent | ThinkingEvent | DoneEvent | BatchDoneEvent | ErrorEvent;

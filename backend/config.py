@@ -48,6 +48,16 @@ class Settings(BaseSettings):
     segmentation_text_threshold_chars: int = 240  # longer text triggers segmentation
     max_dump_chars: int = 20000  # Lore mode's big-paste ceiling — clamped, never rejected
 
+    # Per-visitor daily allowance, in memes — see daily_quota.py. 0 switches
+    # that limit off. The per-address ceiling also needs proxy_shared_secret:
+    # without it every visitor arrives from the frontend server's address.
+    daily_memes_per_browser: int = 10
+    daily_memes_per_address: int = 30
+    # Shared with the frontend's server (same variable name there), which
+    # uses it to pass on the visitor's address — see visitor.py. Empty =
+    # no address is believed beyond the connection itself.
+    proxy_shared_secret: str = ""
+
     # Watermark — see image_processing/compositor.py's _draw_watermark()
     watermark_enabled: bool = True
     watermark_text: str = "memegpt"

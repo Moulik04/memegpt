@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { sendImageStream, sendStream, type Surface } from "@/lib/api";
-import type { MemeItem, SSEEvent } from "@/types";
+import { ApiError, sendImageStream, sendStream, type Surface } from "@/lib/api";
+import type { MemeItem, NoticeReason, SSEEvent } from "@/types";
 
 interface ThinkingState {
   message: string;
@@ -39,6 +39,9 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
   const [loading, setLoading] = useState(false);
   const [thinking, setThinking] = useState<ThinkingState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set with `error` when the backend said which expected case it was, so
+  // the caller can show the budget meme for "site_budget".
+  const [errorReason, setErrorReason] = useState<NoticeReason | null>(null);
   const [plan, setPlan] = useState<PlanState | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
 
@@ -77,6 +80,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
       }
     } else if (event.type === "error") {
       setError(event.message);
+      setErrorReason(event.reason ?? null);
     }
     // batch_done needs no handling here — finalization runs once the
     // stream itself ends, which covers every exit path (a full multi-meme
@@ -89,6 +93,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
   ): Promise<MemeStreamResult> {
     setLoading(true);
     setError(null);
+    setErrorReason(null);
     setPlan(null);
     setThinking({ message: "Reading your vibe…" });
 
@@ -103,6 +108,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
+      setErrorReason(err instanceof ApiError ? (err.reason ?? null) : null);
     } finally {
       setLoading(false);
       setThinking(null);
@@ -161,5 +167,5 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     );
   }
 
-  return { loading, thinking, error, plan, conversationId, submitText, submitImages };
+  return { loading, thinking, error, errorReason, plan, conversationId, submitText, submitImages };
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { generateMeme, listTemplates, memeImageUrl } from "@/lib/api";
+import { ApiError, generateMeme, listTemplates, memeImageUrl } from "@/lib/api";
+import BudgetNotice from "./BudgetNotice";
 import { MemeCard } from "./MemeCard";
 import type { ExplainResponse } from "@/types";
 
@@ -33,6 +34,9 @@ export function MakeView() {
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  // True when genError is the shared daily budget notice, which comes with
+  // a pre-made meme.
+  const [genErrorIsBudget, setGenErrorIsBudget] = useState(false);
   const [result, setResult] = useState<{ url: string; templateId: string } | null>(null);
 
   useEffect(() => {
@@ -84,6 +88,7 @@ export function MakeView() {
       setResult({ url: res.meme_url, templateId: res.template_id });
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "Couldn't generate that meme — try again.");
+      setGenErrorIsBudget(err instanceof ApiError && err.reason === "site_budget");
     } finally {
       setGenerating(false);
     }
@@ -202,7 +207,8 @@ export function MakeView() {
                   </div>
                 ))}
 
-                {genError && <p className="text-destructive text-xs">{genError}</p>}
+                {genError && genErrorIsBudget && <BudgetNotice message={genError} />}
+                {genError && !genErrorIsBudget && <p className="text-destructive text-xs">{genError}</p>}
 
                 <button
                   type="submit"
