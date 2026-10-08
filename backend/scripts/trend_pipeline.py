@@ -1,5 +1,5 @@
 """
-Weekly, fully automated template discovery.
+Weekly template discovery, reviewed before anything is added.
 
 Fetches Imgflip's free public template list, diffs it against the ~118
 templates already in backend/templates/, and for genuinely new candidates
@@ -8,12 +8,13 @@ near-duplicate of one we already have under a different name): downloads
 the image, runs it through the same content-moderation gate every
 user-uploaded image goes through, asks a vision LLM to draft a
 USE_WHEN-style catalog entry, precomputes its Gemini embedding, and
-commits the new template file plus its USE_WHEN entry plus its embedding
-directly to main. No PR, no human review step — the automated gates
-(perceptual-hash dedup, content moderation, and the workflow's own
-pytest run before it ever commits) are what stand in for one. A template
-that clears every gate is live on the next deploy, available to Chat,
-Lore, and Make alike, the same as a hand-curated one.
+leaves the new template file, its USE_WHEN entry and its embedding in the
+working tree. This script commits nothing. The workflow that runs it
+(.github/workflows/trend-pipeline.yml) puts the result on a review branch
+and opens a pull request, and a template joins the catalog only when the
+owner merges it. The automated gates (perceptual-hash dedup, content
+moderation, the workflow's own pytest run) decide what is worth showing a
+reviewer. They do not stand in for one.
 
 Run:
     cd backend && python -m scripts.trend_pipeline --dry-run   # no Groq/Gemini calls, no writes
@@ -55,7 +56,7 @@ from vector_db.gemini_embedding_function import GeminiEmbeddingFunction
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 INTENT_ROUTER_PATH = Path(__file__).resolve().parent.parent / "nlp" / "intent_router.py"
 EMBEDDINGS_PATH = Path(__file__).resolve().parent.parent / "data" / "template_embeddings.json"
-COMMIT_BODY_PATH = Path(__file__).resolve().parent.parent / "trend_pipeline_commit_body.md"
+PR_BODY_PATH = Path(__file__).resolve().parent.parent / "trend_pipeline_pr_body.md"
 
 IMGFLIP_API = "https://api.imgflip.com/get_memes"
 _HASH_SIZE = 16  # must match find_duplicate_templates.py's default
@@ -229,7 +230,7 @@ def insert_use_when_entries(source: str, new_entries: dict[str, str]) -> str:
     )
     # Section header makes it obvious in the diff which entries came from
     # this automated pass, distinct from hand-curated ones above it.
-    header = "    # --- Trend pipeline additions (auto-merged) ---\n"
+    header = "    # --- Trend pipeline additions ---\n"
     new_source = source[:close_idx] + "\n" + header + new_lines + source[close_idx:]
 
     # Refuse to write a source file that doesn't even parse — the string
@@ -255,7 +256,7 @@ def _merge_embeddings(existing: dict[str, dict], new_entries: dict[str, dict]) -
     return merged
 
 
-def _write_commit_body(candidates: list[dict]) -> None:
+def _write_pr_body(candidates: list[dict]) -> None:
     sections = []
     for c in candidates:
         sections.append(
@@ -271,16 +272,28 @@ def _write_commit_body(candidates: list[dict]) -> None:
         )
 
     body = f"""\
-## New template(s) added by this week's Imgflip scan
+## Template candidate(s) from this week's Imgflip scan
 
-Automated by `backend/scripts/trend_pipeline.py`. Each one cleared the \
+Found by `backend/scripts/trend_pipeline.py`. Nothing here is in the \
+catalog until this pull request is merged. Each candidate cleared the \
 perceptual-hash duplicate filter, the same content-moderation gate every \
-user-uploaded image goes through, and the workflow's own pytest run \
-before landing here — no PR, no manual merge.
+user-uploaded image goes through, and the workflow's own pytest run. \
+Those decide what is worth a look. The decision is yours.
+
+For each one, before merging:
+
+- Open the image in the Files tab. Is it something MemeGPT should offer?
+- Is it an image the catalog already has under another name? The duplicate \
+filter compares pixels and has missed a different crop of the same photo before.
+- Does the `USE_WHEN` text say when to use it, and does it name real template ids?
+
+To drop a candidate, delete its image and its `USE_WHEN` and embedding \
+entries from the branch, or close the pull request to drop them all. \
+Merging deploys, which sends one real chat as a smoke test.
 
 {"".join(sections)}
 """
-    COMMIT_BODY_PATH.write_text(body)
+    PR_BODY_PATH.write_text(body)
 
 
 async def _run(dry_run: bool) -> None:
@@ -323,10 +336,9 @@ async def _run(dry_run: bool) -> None:
                 continue
 
             # Same fail-closed content-safety gate every user-uploaded image
-            # already goes through (uploads/moderation.py) — this candidate
-            # is about to become part of the public template catalog with
-            # no human ever looking at it, so it gets no less scrutiny than
-            # a user's own photo upload does.
+            # already goes through (uploads/moderation.py). A candidate that
+            # fails it is never shown to the reviewer at all: the review is
+            # in addition to this gate, not instead of it.
             moderation = await moderate_image(Image.open(tmp_path).convert("RGB"))
             if not moderation.passed:
                 print(f"[skip] {template_id} — failed content moderation "
@@ -422,9 +434,9 @@ async def _run(dry_run: bool) -> None:
     merged = _merge_embeddings(existing_embeddings, new_embeddings)
     EMBEDDINGS_PATH.write_text(json.dumps(merged, separators=(",", ":")))
 
-    _write_commit_body(added)
-    print(f"\nAdded {len(added)} new template(s): updated USE_WHEN, precomputed embeddings, "
-          f"and wrote {COMMIT_BODY_PATH} for the commit message.")
+    _write_pr_body(added)
+    print(f"\nPrepared {len(added)} new template(s) for review: updated USE_WHEN, precomputed embeddings, "
+          f"and wrote {PR_BODY_PATH} for the pull request.")
 
 
 def _template_path(template_id: str) -> Path:

@@ -1,6 +1,6 @@
-## New template(s) added by this week's Imgflip scan
+## Template candidate(s) from this week's Imgflip scan
 
-Automated by `backend/scripts/trend_pipeline.py`. Each one cleared the perceptual-hash duplicate filter, the same content-moderation gate every user-uploaded image goes through, and the workflow's own pytest run before landing here — no PR, no manual merge.
+Found by `backend/scripts/trend_pipeline.py`. Nothing here is in the catalog until this pull request is merged. This file is an example of the description the workflow writes. A real run overwrites it and uses it as the pull request's description.
 
 ### `example_template` — Example Template
 

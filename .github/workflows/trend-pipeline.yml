@@ -1,14 +1,20 @@
 name: Trend pipeline
 
-# Weekly, fully automated template discovery. Scans Imgflip's free public
-# template list for anything genuinely new (not just renamed — see
-# backend/scripts/trend_pipeline.py's perceptual-hash dedup), runs each
-# candidate through the same content-moderation gate every user-uploaded
-# image goes through, drafts a catalog entry and precomputes its
-# embedding, then commits directly to main. No PR, no manual merge — the
-# automated gates (dedup, moderation, and this workflow's own pytest run)
-# stand in for one. A push to main triggers ci-deploy.yml on its own,
-# which is what actually makes a new template live.
+# Weekly template discovery, reviewed before anything is added. Scans
+# Imgflip's free public template list for anything genuinely new (not just
+# renamed, see backend/scripts/trend_pipeline.py's perceptual-hash dedup),
+# runs each candidate through the same content-moderation gate every
+# user-uploaded image goes through, drafts a catalog entry and precomputes
+# its embedding, then puts the result on a review branch and opens a pull
+# request. Nothing reaches main from here: a template joins the catalog
+# when the pull request is merged by hand, and that merge is what deploys.
+#
+# The pull request is opened with the workflow's own token, and GitHub does
+# not start other workflows for those, so ci-pr.yml will not run on it. The
+# pytest step below is the automated check it gets.
+#
+# An unmerged pull request from an earlier week is replaced, not stacked:
+# every run rebuilds the review branch from main plus everything still new.
 #
 # workflow_dispatch lets you trigger a real run manually (Actions tab ->
 # Trend pipeline -> Run workflow) instead of waiting for Monday.
@@ -19,7 +25,13 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: write # pushes the review branch, never main
+  pull-requests: write
+
+env:
+  REVIEW_BRANCH: trend-pipeline/review
+  CATALOG_PATHS: backend/templates backend/nlp/intent_router.py backend/data/template_embeddings.json
+  PR_BODY: backend/trend_pipeline_pr_body.md
 
 jobs:
   scan:
@@ -44,23 +56,36 @@ jobs:
 
       - name: Check for changes
         id: changes
-        run: echo "dirty=$(if [ -n "$(git status --porcelain)" ]; then echo true; else echo false; fi)" >> "$GITHUB_OUTPUT"
+        run: echo "dirty=$(if [ -n "$(git status --porcelain -- ${CATALOG_PATHS})" ]; then echo true; else echo false; fi)" >> "$GITHUB_OUTPUT"
 
-      # This is the one gate ci-pr.yml would normally provide for a change
-      # landing on main — a direct push here skips that workflow entirely,
-      # so this step is what stands in for it. A syntax error or a broken
-      # import in the edited intent_router.py fails the run right here,
-      # before anything gets committed.
+      # A syntax error or a broken import in the edited intent_router.py
+      # fails the run right here, before a reviewer is asked to look at it.
       - name: Run backend test suite
         if: steps.changes.outputs.dirty == 'true'
         working-directory: backend
         run: python -m pytest -q
 
-      - name: Commit and push directly to main
+      - name: Put the candidates on the review branch
         if: steps.changes.outputs.dirty == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/templates backend/nlp/intent_router.py backend/data/template_embeddings.json backend/trend_pipeline_commit_body.md
-          git commit -F backend/trend_pipeline_commit_body.md
-          git push origin HEAD:main
+          git checkout -B "${REVIEW_BRANCH}"
+          git add ${CATALOG_PATHS}
+          git commit -m "Template candidates from the weekly scan"
+          git push --force origin "HEAD:refs/heads/${REVIEW_BRANCH}"
+
+      - name: Open or update the pull request
+        if: steps.changes.outputs.dirty == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          open=$(gh pr list --head "${REVIEW_BRANCH}" --base main --state open --json number --jq '.[0].number')
+          if [ -n "${open}" ]; then
+            gh pr edit "${open}" --body-file "${PR_BODY}"
+            echo "Updated pull request #${open}."
+          else
+            gh pr create --base main --head "${REVIEW_BRANCH}" \
+              --title "Template candidates from the weekly scan" \
+              --body-file "${PR_BODY}"
+          fi

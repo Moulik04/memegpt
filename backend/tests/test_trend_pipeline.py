@@ -8,6 +8,8 @@ contract.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from scripts.trend_pipeline import _merge_embeddings, diff_new_candidates, insert_use_when_entries
@@ -120,3 +122,49 @@ def test_merge_embeddings_new_entry_overwrites_same_id():
     new = {"drake": {"embedding": [0.9], "document": "new"}}
     merged = _merge_embeddings(existing, new)
     assert merged["drake"]["document"] == "new"
+
+
+# --- nothing reaches the catalog without a review ----------------------------
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_WORKFLOW = _REPO_ROOT / ".github" / "workflows" / "trend-pipeline.yml"
+_SCRIPT = _REPO_ROOT / "backend" / "scripts" / "trend_pipeline.py"
+
+
+def _workflow_commands() -> list[str]:
+    """The workflow without its comments, one line each."""
+    if not _WORKFLOW.exists():
+        pytest.skip("the workflow file is not part of this checkout")
+    return [line.split(" #")[0].rstrip() for line in _WORKFLOW.read_text().splitlines() if not line.strip().startswith("#")]
+
+
+def test_the_workflow_asks_for_a_review_and_never_writes_to_main():
+    """A template found by the scan joins the catalog when the owner merges
+    a pull request, and no other way. Owner's rule since 2026-10-08."""
+    lines = _workflow_commands()
+    text = "\n".join(lines)
+
+    pushes = [line.strip() for line in lines if "git push" in line]
+    assert pushes == ['git push --force origin "HEAD:refs/heads/${REVIEW_BRANCH}"']
+    review_branch = next(line.split(":", 1)[1].strip() for line in lines if line.strip().startswith("REVIEW_BRANCH:"))
+    assert review_branch not in ("", "main", "master")
+
+    assert "gh pr create --base main" in text
+    for never in ("HEAD:main", "gh pr merge", "--auto", "--admin", "gh api"):
+        assert never not in text
+
+
+def test_the_workflow_still_runs_the_tests_before_asking_for_review():
+    lines = _workflow_commands()
+    tests_at = next(i for i, line in enumerate(lines) if "python -m pytest" in line)
+    push_at = next(i for i, line in enumerate(lines) if "git push" in line)
+
+    assert tests_at < push_at
+
+
+def test_the_script_checks_every_candidate_and_commits_nothing_itself():
+    source = _SCRIPT.read_text()
+
+    assert "await moderate_image(" in source
+    assert "subprocess" not in source
+    assert "os.system" not in source
