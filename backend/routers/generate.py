@@ -1,7 +1,6 @@
 import time
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, RedirectResponse
 
 import db
 import telemetry
@@ -72,36 +71,3 @@ async def generate(request: Request, body: MemeGenerationRequest) -> MemeGenerat
         texts=body.texts,
     )
 
-
-@router.get("/file/{template_id}")
-@limiter.limit("20/minute")
-async def generate_file(
-    request: Request,  # required by slowapi's key_func, unused otherwise
-    template_id: str,
-    top: str = "",
-    bottom: str = "",
-):
-    """Convenience GET — renders with top/bottom text and returns the raw
-    image. Serves the file directly when storage is local-disk (true in
-    every test environment and any deployment without R2 creds); redirects
-    to the public URL when storage is R2 (saved.path is None — nothing
-    local to serve).
-
-    The captions are caller-typed text landing on a public image, exactly
-    as in POST /generate/ above, so they pass the same moderation gate and
-    the same rate limit. Without them this route was a way around both."""
-    moderation = await moderate_text(f"{top}\n{bottom}")
-    if not moderation.passed:
-        raise HTTPException(status_code=400, detail=_GENERIC_CAPTION_REFUSAL)
-
-    try:
-        saved = await compose_meme(
-            template_id=template_id,
-            texts={"top_text": top, "bottom_text": bottom},
-        )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    if saved.path is not None:
-        return FileResponse(str(saved.path), media_type="image/png")
-    return RedirectResponse(saved.url)

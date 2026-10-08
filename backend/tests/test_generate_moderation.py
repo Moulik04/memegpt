@@ -69,9 +69,9 @@ async def test_no_groq_key_fails_closed_by_default(monkeypatch):
 
 
 async def test_blank_captions_do_not_require_moderation_to_be_configured(monkeypatch):
-    """Make's GET /generate/file/ convenience route and any blank-caption
-    submission shouldn't be blocked just because Groq isn't configured —
-    moderate_text already treats blank text as trivially safe."""
+    """A blank-caption submission shouldn't be blocked just because Groq
+    isn't configured — moderate_text already treats blank text as trivially
+    safe."""
     resp = await _post_generate(texts={"rejected_option": "", "approved_option": ""})
 
     assert resp.status_code == 200
@@ -80,64 +80,11 @@ async def test_blank_captions_do_not_require_moderation_to_be_configured(monkeyp
 # --- GET /generate/file/{template_id} ---------------------------------------
 
 
-async def _get_file(**params):
+async def test_file_route_is_gone():
+    """It rendered and stored an image with no memes row, so nothing could
+    ever delete it, and nothing called it."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        return await client.get("/generate/file/drake", params=params)
+        resp = await client.get("/generate/file/drake", params={"top": "a", "bottom": "b"})
 
-
-async def test_file_route_checks_its_captions_too(monkeypatch):
-    """Same caller-typed text on a public image as POST /generate/, so the
-    same gate. This route used to render whatever it was given."""
-    calls = []
-
-    async def fake_moderate_text(text):
-        calls.append(text)
-        return ModerationResult(passed=False, category="hate")
-
-    async def fake_compose_meme(**kwargs):
-        raise AssertionError("compose_meme must not run when moderation rejects the request")
-
-    monkeypatch.setattr(generate_router, "moderate_text", fake_moderate_text)
-    monkeypatch.setattr(generate_router, "compose_meme", fake_compose_meme)
-
-    resp = await _get_file(top="something", bottom="else")
-
-    assert resp.status_code == 400
-    assert "hate" not in resp.text
-    assert calls == ["something\nelse"]
-
-
-async def test_file_route_fails_closed_without_a_moderation_provider(monkeypatch):
-    async def fake_compose_meme(**kwargs):
-        raise AssertionError("compose_meme must not run when moderation is unavailable")
-
-    monkeypatch.setattr(generate_router, "compose_meme", fake_compose_meme)
-
-    resp = await _get_file(top="something")
-
-    assert resp.status_code == 400
-
-
-async def test_file_route_still_renders_safe_captions(monkeypatch):
-    async def fake_moderate_text(text):
-        return ModerationResult(passed=True)
-
-    monkeypatch.setattr(generate_router, "moderate_text", fake_moderate_text)
-
-    resp = await _get_file(top="a", bottom="b")
-
-    assert resp.status_code == 200
-    assert resp.headers["content-type"] == "image/png"
-
-
-async def test_file_route_is_rate_limited(monkeypatch):
-    async def fake_moderate_text(text):
-        return ModerationResult(passed=True)
-
-    monkeypatch.setattr(generate_router, "moderate_text", fake_moderate_text)
-
-    statuses = [(await _get_file()).status_code for _ in range(21)]
-
-    assert statuses[:20] == [200] * 20
-    assert statuses[20] == 429
+    assert resp.status_code == 404

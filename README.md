@@ -280,7 +280,6 @@ python scripts/dummy_template_test.py
 | `GET` | `/explain/` | Every template's metadata, Make's picker |
 | `POST` | `/explain/` | One template's metadata and usage count |
 | `POST` | `/generate/` | Make: render `template_id` + `texts` directly, moderation-gated |
-| `GET` | `/generate/file/{template_id}` | Convenience render, moderation-gated, returns the image (or redirects to R2) directly |
 | `POST` | `/feedback/` | Thumbs up or down on a generated meme |
 | `GET` | `/memes/{id}` | Durable share-page lookup, `/m/{id}` on the frontend |
 | `GET` | `/auth/whoami` | Verified identity for the current bearer token |
