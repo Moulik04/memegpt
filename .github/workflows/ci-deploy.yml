@@ -92,6 +92,10 @@ jobs:
 
       - name: Smoke test the candidate (NOT the live URL)
         id: smoke
+        env:
+          # Empty until the repository has this secret. The script only
+          # uses it when it is set, and a backend without one ignores it.
+          PROXY_SHARED_SECRET: ${{ secrets.PROXY_SHARED_SECRET }}
         run: |
           set -e
           curl -sf "${{ steps.candidate.outputs.url }}/health"

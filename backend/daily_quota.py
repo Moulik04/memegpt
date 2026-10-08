@@ -15,8 +15,8 @@ Two limits, over a rolling 24 hours:
 The address ceiling only means something when the address can be believed
 (visitor.py). With no PROXY_SHARED_SECRET configured it is skipped, since
 "the address" would be the frontend's server for everybody. With one
-configured, a request that proves nothing is counted against its
-connection, which is the strict reading.
+configured, a request that proves nothing never gets this far: the routes
+that make memes turn it away (visitor.require_vouched).
 
 Counts live in this process and nowhere else: no database, no log. A
 restart forgets them, which hands out a second allowance at worst.

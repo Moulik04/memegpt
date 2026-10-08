@@ -1,0 +1,78 @@
+name: Production check
+
+# Run by hand, against the backend that is serving the site.
+#
+# That backend only makes memes for requests the frontend's server has
+# vouched for with PROXY_SHARED_SECRET, so a check that calls it directly
+# has to hold the same value. Keeping the value as a repository secret means
+# it is read here and nowhere else: nobody pastes it into a terminal.
+#
+# By default this makes no model call. It sends an empty chat request twice:
+#   - without the secret, which must be refused for having no voucher (403);
+#   - with the secret, which must get past that and be refused for being
+#     empty instead (422).
+# The second answer is what shows the repository's value matches the
+# backend's. Tick "real chat" to also send one real message, which costs one
+# model call and fails unless the router actually picked a template.
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: Backend to check
+        required: true
+        default: https://memegpt-backend.onrender.com
+      real_chat:
+        description: Also send one real chat (one model call)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      BACKEND_URL: ${{ inputs.backend_url }}
+      PROXY_SHARED_SECRET: ${{ secrets.PROXY_SHARED_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The repository has the secret
+        run: |
+          if [ -z "${PROXY_SHARED_SECRET}" ]; then
+            echo "::error::PROXY_SHARED_SECRET is not set as a repository secret."
+            exit 1
+          fi
+
+      - name: Backend is up
+        # A cold start on the free tier can take most of a minute.
+        run: curl -fsS --max-time 90 --retry 3 --retry-delay 5 --retry-all-errors "${BACKEND_URL%/}/health"
+
+      - name: A request without the secret is refused
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 -X POST "${BACKEND_URL%/}/chat/" \
+            -H 'Content-Type: application/json' -d '{}')
+          echo "HTTP ${code}"
+          if [ "${code}" != "403" ]; then
+            echo "::error::Expected 403 for a request nobody vouched for, got ${code}. 422 means the backend has no secret configured and is open to direct calls."
+            exit 1
+          fi
+
+      - name: A request with the secret is let through
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 -X POST "${BACKEND_URL%/}/chat/" \
+            -H 'Content-Type: application/json' \
+            -H "X-MemeGPT-Proxy-Secret: ${PROXY_SHARED_SECRET}" \
+            -H 'X-MemeGPT-Client-Address: 192.0.2.1' \
+            -d '{}')
+          echo "HTTP ${code}"
+          if [ "${code}" != "422" ]; then
+            echo "::error::Expected 422 (vouched for, then refused for being empty), got ${code}. 403 means this repository's secret does not match the backend's."
+            exit 1
+          fi
+
+      - name: One real chat
+        if: ${{ inputs.real_chat }}
+        run: scripts/smoke_chat.sh "${BACKEND_URL}"

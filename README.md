@@ -295,6 +295,8 @@ python scripts/dummy_template_test.py
 | `GET` | `/share-intake/{token}/` | PWA share-target retrieve |
 | `GET` | `/health` | Liveness check |
 
+On the hosted backend, the routes that make memes (`/chat/`, `/lore/`, `/generate/` and the two photo routes) only answer requests that come through the app. The frontend's server vouches for each one with a secret it shares with the backend, and photo uploads carry a short-lived token it signs. A direct call without either gets a 403. Run the backend yourself without `PROXY_SHARED_SECRET` and those routes are open.
+
 ### `POST /chat/`, an SSE stream
 
 ```

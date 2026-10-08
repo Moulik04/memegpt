@@ -78,8 +78,9 @@ const VISIT_HEADER = "X-MemeGPT-Visit";
 
 // For requests the browser sends straight to the backend. The frontend's
 // server signs a short-lived note of the address it saw (app/api/visit), so
-// the backend can count its limits per visitor there too. Best effort: with
-// no token the upload still goes, counted against its connection.
+// the backend can count its limits per visitor there too. A backend that
+// shares the signing secret refuses an upload without one, with a message
+// the caller shows as it would any other error.
 async function visitHeader(): Promise<Record<string, string>> {
   try {
     const res = await fetch(`${BASE}/visit`, { cache: "no-store" });

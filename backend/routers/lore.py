@@ -14,17 +14,18 @@ routers/chat.py never imports this module, so importing its helpers here is
 cycle-free.
 """
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
 from config import get_settings
 from rate_limit import limiter
 from routers.chat import handle_image_stream, handle_text_stream
 from schemas import LoreRequest
+from visitor import require_vouched
 
 router = APIRouter()
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(require_vouched)])
 @limiter.limit("20/minute")
 async def lore(request: Request, body: LoreRequest):
     """Lore surface — big-context dumps, explicit meme-count override, opt-in
@@ -36,7 +37,7 @@ async def lore(request: Request, body: LoreRequest):
     )
 
 
-@router.post("/image/")
+@router.post("/image/", dependencies=[Depends(require_vouched)])
 @limiter.limit(get_settings().upload_rate_limit)
 async def lore_with_image(
     request: Request,  # required by slowapi's key_func, unused otherwise

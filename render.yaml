@@ -18,7 +18,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false          # add this manually in Render dashboard → Environment
       - key: PROXY_SHARED_SECRET
-        sync: false          # same value as the frontend's PROXY_SHARED_SECRET on Vercel
+        sync: false          # same value as the frontend's PROXY_SHARED_SECRET on Vercel, set there first
       - key: GEMINI_EMBEDDING_MODEL
         value: gemini-embedding-2
       - key: CORS_ALLOW_ALL_ORIGINS

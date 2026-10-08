@@ -55,7 +55,8 @@ class Settings(BaseSettings):
     daily_memes_per_address: int = 30
     # Shared with the frontend's server (same variable name there), which
     # uses it to pass on the visitor's address — see visitor.py. Empty =
-    # no address is believed beyond the connection itself.
+    # no address is believed beyond the connection itself. Set = Chat, Lore
+    # and Make refuse any request that server has not vouched for.
     proxy_shared_secret: str = ""
 
     # One vision call per photo instead of two (safety verdict and

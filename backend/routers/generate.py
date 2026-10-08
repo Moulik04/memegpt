@@ -1,6 +1,6 @@
 import time
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import daily_quota
@@ -20,7 +20,7 @@ from notices import (
 )
 from rate_limit import limiter
 from schemas import MemeGenerationRequest, MemeGenerationResponse
-from visitor import identify
+from visitor import identify, require_vouched
 
 router = APIRouter()
 
@@ -34,7 +34,7 @@ def _notice(status_code: int, reason: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"detail": message, "reason": reason})
 
 
-@router.post("/", response_model=MemeGenerationResponse)
+@router.post("/", response_model=MemeGenerationResponse, dependencies=[Depends(require_vouched)])
 @limiter.limit("20/minute")
 async def generate(request: Request, body: MemeGenerationRequest):
     """

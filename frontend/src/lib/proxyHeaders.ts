@@ -6,7 +6,9 @@ import type { NextRequest } from "next/server";
 // cannot tell visitors apart for its limits unless this server says who is
 // asking. It says so with the visitor's address plus PROXY_SHARED_SECRET,
 // which the backend also holds: without the secret the backend ignores the
-// address, so nobody calling the backend directly can make one up.
+// address, so nobody calling the backend directly can make one up. A
+// backend that holds the secret also refuses Chat, Lore and Make requests
+// that arrive without it, so the two values have to match.
 //
 // The address is only as good as the host's headers. Vercel sets these
 // itself and discards whatever the browser sent. Anywhere a browser could

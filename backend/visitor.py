@@ -16,9 +16,15 @@ and this backend hold (settings.proxy_shared_secret):
     which the browser sends here directly because they are too large to
     pass through the frontend's server.
 
-Anything else is keyed on the connection, with no trust placed in any
-header. A direct caller therefore gains nothing by inventing an address:
-without the secret it is ignored.
+Anything else is keyed on the connection, and the connection is not to be
+relied on either: behind a host's own proxy, request.client is whatever
+that proxy and the server in front of this app make of the forwarding
+headers, and where the first X-Forwarded-For entry is believed a direct
+caller picks their own address with one header. That is acceptable for a
+per-minute limit on a route that costs nothing. It is not for the routes
+that spend the model budget, so those do not fall back to it: with a secret
+configured they turn away any request that neither case above vouches for
+(require_vouched).
 
 Nothing here is stored or logged. The anonymous browser id (identity.py) is
 a different thing: the browser chooses it, so on its own it limits nothing.
@@ -34,7 +40,7 @@ import ipaddress
 import time
 from dataclasses import dataclass
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 
 from config import get_settings
 from identity import get_anon_user_id
@@ -42,6 +48,10 @@ from identity import get_anon_user_id
 PROXY_SECRET_HEADER = "X-MemeGPT-Proxy-Secret"
 PROXY_ADDRESS_HEADER = "X-MemeGPT-Client-Address"
 VISIT_TOKEN_HEADER = "X-MemeGPT-Visit"
+
+# Shown when a meme-making request arrives with nothing to vouch for it. A
+# visitor only sees it if the page failed to fetch its upload token.
+UNVOUCHED_MESSAGE = "MemeGPT couldn't confirm this request came from the app. Reload the page and try again."
 
 _TOKEN_VERSION = "v1"
 _MAX_ADDRESS_LEN = 64  # an IPv6 address is at most 45 characters
@@ -139,6 +149,22 @@ def identify(request: Request) -> Visitor:
     )
 
 
+def require_vouched(request: Request) -> Visitor:
+    """Dependency for the routes that make memes (Chat, Lore, Make, with or
+    without photos). With a secret configured, a request the frontend's
+    server has not vouched for is refused before anything is read from it,
+    counted or sent to a model: the daily allowance is only worth having if
+    the address it is counted against cannot be chosen by the caller.
+
+    With no secret configured there is no frontend server to vouch for
+    anyone (a local run), and every request is let in.
+    """
+    visitor = identify(request)
+    if get_settings().proxy_shared_secret and not visitor.address_verified:
+        raise HTTPException(status_code=403, detail=UNVOUCHED_MESSAGE)
+    return visitor
+
+
 def rate_limit_key(request: Request) -> str:
     """slowapi's key: the visitor's address when it can be believed, the
     connection otherwise."""
@@ -150,7 +176,10 @@ def describe_address_trust(settings) -> tuple[str, str]:
     llm_client.describe_llm_provider: a missing secret changes behavior
     quietly, so say it once where it will be seen."""
     if settings.proxy_shared_secret:
-        return "info", "Visitor addresses: taken from the frontend's server (PROXY_SHARED_SECRET is set)."
+        return "info", (
+            "Visitor addresses: taken from the frontend's server (PROXY_SHARED_SECRET is set). "
+            "Chat, Lore and Make refuse requests it has not vouched for."
+        )
     return "warning", (
         "PROXY_SHARED_SECRET is not set. Requests that come through the frontend's "
         "server all look like one address, so per-minute limits there are shared by "

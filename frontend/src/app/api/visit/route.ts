@@ -11,8 +11,9 @@ import { clientAddress } from "@/lib/proxyHeaders";
 // implementation of this format).
 //
 // Without a secret, or off a host that sets the address headers itself,
-// there is nothing to sign: the upload goes without a token and the backend
-// counts it against the connection it arrived on.
+// there is nothing to sign and the upload goes without a token. A backend
+// with no secret of its own (local development) accepts it. One that has a
+// secret refuses it.
 
 export const dynamic = "force-dynamic";
 

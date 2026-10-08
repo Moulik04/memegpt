@@ -41,7 +41,7 @@ import logging
 import time
 from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image
 
@@ -83,7 +83,7 @@ from uploads.safe_ingest import (
     safe_ingest,
 )
 from vector_db.chroma_client import log_usage
-from visitor import Visitor, identify
+from visitor import Visitor, identify, require_vouched
 
 logger = logging.getLogger(__name__)
 
@@ -826,7 +826,7 @@ async def handle_image_stream(
     return _sse_response(event_stream())
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(require_vouched)])
 @limiter.limit("20/minute")
 async def chat(request: Request, body: ChatRequest):
     """Chat surface — minimal chrome, always auto-detects meme count, no Lore
@@ -838,7 +838,7 @@ async def chat(request: Request, body: ChatRequest):
     )
 
 
-@router.post("/image/")
+@router.post("/image/", dependencies=[Depends(require_vouched)])
 @limiter.limit(get_settings().upload_rate_limit)
 async def chat_with_image(
     request: Request,  # required by slowapi's key_func, unused otherwise

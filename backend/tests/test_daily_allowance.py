@@ -10,7 +10,9 @@ Covered here, bottom to top:
     meme is not made. A network is one IPv4 address or one IPv6 /64;
   - the routes: a visitor with nothing left costs no model call, one asking
     for more than is left gets what is left and is told, and each of the
-    three "can't make that right now" cases says its own thing.
+    three "can't make that right now" cases says its own thing;
+  - who may ask at all: with a secret configured, the routes that make memes
+    turn away any request the frontend's server has not vouched for.
 
 No network call: the model, moderation and rendering are stubbed.
 """
@@ -39,6 +41,7 @@ from uploads.safe_ingest import CleanImage
 from visitor import (
     PROXY_ADDRESS_HEADER,
     PROXY_SECRET_HEADER,
+    UNVOUCHED_MESSAGE,
     VISIT_TOKEN_HEADER,
     Visitor,
     identify,
@@ -390,7 +393,9 @@ def picks(monkeypatch) -> list[str]:
     return asked
 
 
-_HEADERS = {"X-MemeGPT-User": "browser-a"}
+# How a request looks when it has come through the frontend's server.
+_VIA_FRONTEND = {PROXY_SECRET_HEADER: _SECRET, PROXY_ADDRESS_HEADER: "203.0.113.9"}
+_HEADERS = {"X-MemeGPT-User": "browser-a", **_VIA_FRONTEND}
 
 
 async def _post(path: str, body: dict, headers: dict | None = None):
@@ -416,7 +421,9 @@ async def test_another_browser_is_not_affected(limits, picks):
     limits(browser=1, address=30)
     await _post("/chat/", {"message": "monday again"})
 
-    events = _events((await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": "browser-b"})).text)
+    events = _events(
+        (await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": "browser-b", **_VIA_FRONTEND})).text
+    )
 
     assert len(_memes(events)) == 1
 
@@ -456,7 +463,7 @@ async def test_a_meme_that_was_not_made_does_not_count(limits, monkeypatch):
     events = _events((await _post("/chat/", {"message": "monday again"})).text)
 
     assert _memes(events) == []
-    assert daily_quota.allowance(_visitor(address="127.0.0.1")).remaining == 2
+    assert daily_quota.allowance(_visitor()).remaining == 2
 
 
 async def test_the_site_budget_notice_does_not_count(limits, monkeypatch):
@@ -475,19 +482,18 @@ async def test_the_site_budget_notice_does_not_count(limits, monkeypatch):
     events = _events((await _post("/chat/", {"message": "monday again"})).text)
 
     assert _notices(events) == [("site_budget", _DAILY)]
-    assert daily_quota.allowance(_visitor(address="127.0.0.1")).remaining == 2
+    assert daily_quota.allowance(_visitor()).remaining == 2
 
 
 async def test_the_network_ceiling_says_whose_allowance_ran_out(limits, picks):
     """Someone opening the app for the first time on a busy network has made
     no memes, so the wording must not say the memes were theirs."""
     limits(browser=2, address=3)
-    via_frontend = {PROXY_SECRET_HEADER: _SECRET, PROXY_ADDRESS_HEADER: "203.0.113.9"}
     for browser in ("first", "first", "second"):
-        await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": browser, **via_frontend})
+        await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": browser, **_VIA_FRONTEND})
 
     events = _events(
-        (await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": "third", **via_frontend})).text
+        (await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": "third", **_VIA_FRONTEND})).text
     )
 
     assert _notices(events) == [("visitor_limit", _NETWORK)]
@@ -510,27 +516,6 @@ async def test_rotating_through_a_64_does_not_dodge_the_ceiling(limits, picks):
         assert len(_memes(_events((await _post("/chat/", {"message": "monday again"}, rotated(n))).text))) == 1
 
     events = _events((await _post("/chat/", {"message": "monday again"}, rotated(3))).text)
-
-    assert _notices(events) == [("visitor_limit", _NETWORK)]
-    assert len(picks) == 3
-
-
-async def test_a_direct_caller_cannot_borrow_someone_elses_address(limits, picks):
-    """The forged header is ignored, so these all count against the one
-    connection they really came from."""
-    limits(browser=2, address=3)
-    for n in range(3):
-        await _post(
-            "/chat/", {"message": "monday again"},
-            {"X-MemeGPT-User": f"made-up-{n}", PROXY_ADDRESS_HEADER: f"203.0.113.{n}"},
-        )
-
-    events = _events(
-        (await _post(
-            "/chat/", {"message": "monday again"},
-            {"X-MemeGPT-User": "made-up-3", PROXY_ADDRESS_HEADER: "203.0.113.3"},
-        )).text
-    )
 
     assert _notices(events) == [("visitor_limit", _NETWORK)]
     assert len(picks) == 3
@@ -636,7 +621,7 @@ async def test_a_refused_caption_does_not_count(limits, picks, monkeypatch):
     monkeypatch.setattr(generate_router, "moderate_text", refuses)
 
     assert (await _post("/generate/", _MAKE_BODY)).status_code == 400
-    assert daily_quota.allowance(_visitor(address="127.0.0.1")).remaining == 2
+    assert daily_quota.allowance(_visitor()).remaining == 2
 
 
 async def test_this_apps_own_per_minute_limit_says_busy(limits, picks, captions_pass):
@@ -649,3 +634,118 @@ async def test_this_apps_own_per_minute_limit_says_busy(limits, picks, captions_
     assert resp.status_code == 429
     assert resp.json()["detail"] == _BUSY
     assert resp.json()["reason"] == "busy"
+
+
+# --- who may ask at all -----------------------------------------------------
+
+_MEME_ROUTES = {"/chat/", "/chat/image/", "/lore/", "/lore/image/", "/generate/"}
+_UNVOUCHED = [
+    ("nothing at all", {}),
+    ("a made-up address", {PROXY_ADDRESS_HEADER: "198.51.100.1"}),
+    ("a made-up address and a guess at the secret", {PROXY_SECRET_HEADER: "a guess", PROXY_ADDRESS_HEADER: "198.51.100.1"}),
+    ("the secret with no address", {PROXY_SECRET_HEADER: _SECRET}),
+    ("a forwarded-for header", {"X-Forwarded-For": "198.51.100.1"}),
+    ("a token signed with another secret", {VISIT_TOKEN_HEADER: sign_visit("198.51.100.1", 4102444800, "not it")}),
+    ("an expired token", {VISIT_TOKEN_HEADER: sign_visit("198.51.100.1", 1, _SECRET)}),
+]
+
+
+async def _status_and_detail(path: str, body: dict, headers: dict) -> tuple[int, object]:
+    resp = await _post(path, body, headers)
+    return resp.status_code, resp.json().get("detail")
+
+
+@pytest.mark.parametrize("why,headers", _UNVOUCHED, ids=[case[0] for case in _UNVOUCHED])
+@pytest.mark.parametrize(
+    "path,body",
+    [("/chat/", {"message": "monday again"}), ("/lore/", {"message": "monday again"}), ("/generate/", _MAKE_BODY)],
+    ids=["chat", "lore", "make"],
+)
+async def test_a_request_nobody_vouched_for_makes_no_meme(limits, picks, captions_pass, why, headers, path, body):
+    """Calling the backend directly lets a caller say anything about who
+    they are, so with a secret configured it gets nothing: no model call
+    and nothing taken from anyone's allowance."""
+    limits(browser=2, address=3)
+
+    assert await _status_and_detail(path, body, {"X-MemeGPT-User": "direct", **headers}) == (403, UNVOUCHED_MESSAGE)
+    assert picks == []
+    assert daily_quota._made == {}
+
+
+@pytest.mark.parametrize("path", ["/chat/image/", "/lore/image/"])
+async def test_a_photo_nobody_vouched_for_is_not_looked_at(limits, monkeypatch, path):
+    limits()
+
+    async def must_not_ingest(upload):
+        raise AssertionError("no photo call for a request nobody vouched for")
+
+    monkeypatch.setattr("routers.chat.safe_ingest", must_not_ingest)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            path, files=[("images", ("photo.jpg", _jpeg(), "image/jpeg"))], headers={"X-MemeGPT-User": "direct"}
+        )
+
+    assert resp.status_code == 403
+    assert resp.json() == {"detail": UNVOUCHED_MESSAGE}
+
+
+async def test_a_photo_sent_with_the_frontends_token_is_let_in(limits, monkeypatch):
+    """Uploads go from the browser straight to the backend, so the token is
+    the only thing that can vouch for them."""
+    limits(browser=1, address=30)
+    daily_quota.reserve(_visitor(), 1)  # nothing left: the answer is the limit notice, with no photo call
+    token = sign_visit("203.0.113.9", int(time.time()) + 600, _SECRET)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/chat/image/",
+            files=[("images", ("photo.jpg", _jpeg(), "image/jpeg"))],
+            headers={"X-MemeGPT-User": "browser-a", VISIT_TOKEN_HEADER: token},
+        )
+
+    assert resp.status_code == 200
+    assert _notices(_events(resp.text)) == [
+        ("visitor_limit", "That's your 1 memes for today. They refill over the next 24 hours.")
+    ]
+
+
+async def test_being_turned_away_comes_before_what_was_asked(limits, picks):
+    """An empty request is refused for having no voucher, and one with a
+    voucher for being empty. A check that holds the secret can tell the two
+    apart without a model call (.github/workflows/production-check.yml)."""
+    limits()
+
+    assert (await _post("/chat/", {}, {"X-MemeGPT-User": "direct"})).status_code == 403
+    assert (await _post("/chat/", {}, _HEADERS)).status_code == 422
+    assert picks == []
+
+
+async def test_with_no_secret_configured_everyone_is_let_in(limits, picks):
+    """A local run, or a backend with no frontend server in front of it."""
+    limits(browser=2, address=3, secret="")
+
+    events = _events((await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": "local"})).text)
+
+    assert len(_memes(events)) == 1
+
+
+async def test_only_the_routes_that_make_memes_ask_for_a_voucher(limits):
+    """Arc, Forget me, sign-in, history and the rest answer a request nobody
+    vouched for as they always did. Adding a route that makes memes means
+    adding it here."""
+    limits()
+    posts = [
+        path
+        for path, operations in app.openapi()["paths"].items()
+        if "post" in operations and "{" not in path
+    ]
+
+    refused = set()
+    for path in posts:
+        resp = await _post(path, {}, {"X-MemeGPT-User": "direct"})
+        if resp.status_code == 403 and resp.json() == {"detail": UNVOUCHED_MESSAGE}:
+            refused.add(path)
+
+    assert refused == _MEME_ROUTES
+    assert len(posts) > len(_MEME_ROUTES)
