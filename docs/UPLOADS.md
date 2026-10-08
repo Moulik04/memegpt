@@ -41,7 +41,9 @@ disk write, no renderer.** No code path in this app is allowed to bypass it.
    are told to come back in a few hours instead. An image is never let
    through unchecked.
 5. **Rate limiting.** The upload endpoint is rate-limited per user to guard
-   against abuse.
+   against abuse. Photo memes also count toward the daily allowance every
+   visitor has, and a visitor with nothing left is told so before any photo
+   is sent to the model.
 6. **Retention.** The original photo is held only for the duration of your
    request and is discarded when your meme is generated or the request
    fails. There are two things that outlast the request. If you ask for

@@ -140,6 +140,22 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
+        <Section title="Daily limits">
+          <p>
+            MemeGPT runs on a free daily AI budget, so each browser and each
+            network can make a limited number of memes a day. To count them,
+            the server keeps your browser&apos;s id and your network address
+            (your IP address) in its memory next to a number, for up to 24
+            hours. That count is never written to the database, and it is
+            gone whenever the server restarts.
+          </p>
+          <p>
+            Separately, the companies that host MemeGPT see your network
+            address, as the host of any website does, and keep their own
+            access logs.
+          </p>
+        </Section>
+
         <Section title="Analytics">
           <p>
             MemeGPT uses Google Analytics to see aggregate things like which
@@ -161,7 +177,13 @@ export default function PrivacyPage() {
             <li>Groq runs the AI model. It receives your messages, and your photos when you upload them.</li>
             <li>
               Google&apos;s Gemini turns your message into a search of the
-              template library, so it receives your message text too.
+              template library, so it receives your message text too. For a
+              photo, it receives MemeGPT&apos;s description of the photo, not
+              the photo. MemeGPT uses Gemini&apos;s free tier. Under
+              Google&apos;s terms for that tier, Google may use what it
+              receives to improve its products, and people at Google may read
+              it. Please don&apos;t put anything in a message that you
+              wouldn&apos;t want a stranger to read.
             </li>
             <li>Cloudflare stores the finished meme images.</li>
             <li>Supabase runs sign-in and hosts the database that holds everything described on this page.</li>
