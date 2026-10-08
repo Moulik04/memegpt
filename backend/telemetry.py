@@ -16,6 +16,7 @@ recording function anywhere needs its own disabled-check as a result.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Iterable
 
@@ -74,6 +75,7 @@ structlog.configure(
 )
 
 _meter = metrics.get_meter("memegpt-backend")
+logger = logging.getLogger(__name__)
 
 meme_generation_duration_seconds = _meter.create_histogram(
     "meme_generation_duration_seconds",
@@ -96,6 +98,10 @@ hard_fallback_hits_total = _meter.create_counter(
 moderation_rejections_total = _meter.create_counter(
     "moderation_rejections_total",
     description="Count of moderation rejections (image or text), by category.",
+)
+upload_refusals_total = _meter.create_counter(
+    "upload_refusals_total",
+    description="Count of uploaded photos a visitor was told MemeGPT can't use, by label and surface.",
 )
 cold_start_seconds = _meter.create_histogram(
     "cold_start_seconds",
@@ -143,6 +149,39 @@ def record_hard_fallback_hit() -> None:
 
 def record_moderation_rejection(category: str) -> None:
     moderation_rejections_total.add(1, attributes={"category": category})
+
+
+# What a refused upload is counted under. The safety check's category is
+# whatever the model wrote after "UNSAFE:", which is free text and could
+# describe the picture, so it is never used as it came: it is matched to one
+# of these and nothing else about the photo is kept.
+#   sexual, minors, violence, hate, unclear   the check's own categories
+#   no_verdict     the model's reply could not be read as a verdict
+#   check_failed   the check could not be run (provider error, no key)
+#   other          anything else, including "unsafe" with no category
+_CONTENT_LABELS = ("sexual", "minors", "violence", "hate", "unclear")
+UPLOAD_REFUSAL_LABELS = frozenset({*_CONTENT_LABELS, "no_verdict", "check_failed", "other"})
+
+
+def upload_refusal_label(category: str | None) -> str:
+    text = (category or "").strip().lower()
+    if text == "unparseable_response":
+        return "no_verdict"
+    if text == "moderation_unavailable":
+        return "check_failed"
+    first_word = re.match(r"[a-z]+", text)
+    return first_word.group(0) if first_word and first_word.group(0) in _CONTENT_LABELS else "other"
+
+
+def record_upload_refusal(category: str | None, surface: str | None) -> None:
+    """One uploaded photo was refused. Counted, and written to the log as
+    one line holding the label and the surface: no image, no file name, no
+    visitor. The log line is what makes the numbers readable where no
+    metrics backend is configured."""
+    label = upload_refusal_label(category)
+    surface = surface or "unknown"
+    upload_refusals_total.add(1, attributes={"category": label, "surface": surface})
+    logger.warning("upload_refused category=%s surface=%s", label, surface)
 
 
 def record_cold_start_if_first_request() -> None:

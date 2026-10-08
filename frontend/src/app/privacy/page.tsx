@@ -78,6 +78,12 @@ export default function PrivacyPage() {
             done or the request fails.
           </p>
           <p>
+            If the safety check turns a photo down, MemeGPT counts that it
+            happened and under which broad category (violence, for
+            example). Nothing about the photo, its file name or who sent it
+            is kept with that count.
+          </p>
+          <p>
             There is one exception, and you choose it: if you ask MemeGPT
             to &quot;make this a meme&quot;, your own photo becomes the meme. The
             captioned copy, with its metadata removed, is saved like any

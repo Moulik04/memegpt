@@ -450,7 +450,7 @@ async def test_a_real_refusal_still_wins_over_the_daily_wording(stub_ingest):
     events = await _post_images(["out_of_budget.jpg", "flagged.jpg"])
 
     assert len(_errors(events)) == 1
-    assert "couldn't be processed" in _errors(events)[0]
+    assert "can't use this image" in _errors(events)[0]
 
 
 async def test_description_out_of_budget_gets_the_daily_wording(stub_ingest, monkeypatch):

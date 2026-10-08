@@ -2,7 +2,7 @@
 Rate-limited photo calls. Every uploaded photo costs two vision calls
 (safety check, then description or canvas captions), and a rate-limit
 response on either used to end the upload on the spot: the safety check
-failed closed and the user was told the image couldn't be processed.
+failed closed and the user was told the image had been refused.
 
 Covered here, bottom to top:
   - call_groq_vision() waits and retries on a 429, for as long as the
@@ -286,7 +286,7 @@ async def test_a_real_refusal_wins_over_busy(stub_ingest):
     events = await _post_images(["busy.jpg", "flagged.jpg"])
 
     assert len(_errors(events)) == 1
-    assert "couldn't be processed" in _errors(events)[0]
+    assert "can't use this image" in _errors(events)[0]
 
 
 async def test_description_busy_for_every_photo_says_busy(stub_ingest, monkeypatch):

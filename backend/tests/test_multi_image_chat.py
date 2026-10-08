@@ -92,7 +92,7 @@ async def test_one_moderation_flagged_image_aborts_whole_batch():
     done_events = [e for e in events if e.get("type") == "done"]
     assert len(errors) == 1
     assert len(done_events) == 0
-    assert "couldn't be processed" in errors[0]["message"]
+    assert "can't use this image" in errors[0]["message"]
 
 
 async def test_one_upload_rejected_image_survivor_continues():

@@ -90,6 +90,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _GENERIC_UPLOAD_REFUSAL = "That image couldn't be processed — try a different one."
+# A photo the safety check did not pass. Says what to do next and never why:
+# the check's category stays out of anything a visitor sees.
+_UPLOAD_SAFETY_REFUSAL = "MemeGPT can't use this image. Try describing it in words instead."
 _DESCRIBE_IN_WORDS_PROMPT = (
     "I couldn't quite look at that image right now — mind describing the "
     "situation in words instead?"
@@ -689,7 +692,7 @@ async def handle_image_stream(
 
     ALL uploaded images pass through uploads/safe_ingest.safe_ingest() —
     never bypass it. A content-moderation failure on ANY image aborts the
-    WHOLE request with today's generic refusal (a moderation hit is an
+    WHOLE request with one refusal that never says why (a moderation hit is an
     adversarial signal, unlike a size/type failure, and skip-and-continue
     would leak a per-image "this one got silently dropped" signal that
     uploads/moderation.py's category-never-echoed invariant exists to
@@ -743,8 +746,11 @@ async def handle_image_stream(
         )
 
         moderation_rejections = [r for r in ingest_results if isinstance(r, ModerationRejected)]
-        if any(not isinstance(r, ModerationBusy) for r in moderation_rejections):
-            yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
+        refused = [r for r in moderation_rejections if not isinstance(r, ModerationBusy)]
+        if refused:
+            for rejection in refused:
+                telemetry.record_upload_refusal(rejection.category, surface)
+            yield _sse({"type": "error", "message": _UPLOAD_SAFETY_REFUSAL})
             return
         if moderation_rejections:
             if any(isinstance(r, ModerationOutOfBudget) for r in moderation_rejections):

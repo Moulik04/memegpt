@@ -31,9 +31,11 @@ disk write, no renderer.** No code path in this app is allowed to bypass it.
 4. **Content moderation.** Every image is checked by an AI safety classifier
    before any further processing. Sexual content, content involving minors,
    graphic violence, and hate symbols are all blocked. If an image is
-   rejected here, you'll see a generic message — MemeGPT never describes or
-   echoes back what it detected, and only a category label (never the image
-   itself) is logged for our own abuse-monitoring purposes. The check runs
+   rejected here, the message says MemeGPT can't use it and suggests
+   describing it in words instead. It never says what was detected. Each
+   refusal is counted under one of a few fixed labels (violence, for
+   example) so we can see how often it happens. Nothing about the image,
+   its file name or who sent it is kept with that count. The check runs
    on Groq, so the image is sent there. If Groq is rate limiting, the check
    waits and retries for up to about 45 seconds. If it still can't run, the
    image is not processed and you are asked to try again in a minute. If
