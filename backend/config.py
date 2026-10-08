@@ -59,11 +59,6 @@ class Settings(BaseSettings):
     # and Make refuse any request that server has not vouched for.
     proxy_shared_secret: str = ""
 
-    # One vision call per photo instead of two (safety verdict and
-    # description together) — see uploads/moderation.py. Off until the
-    # combined call has been checked against the separate one on real images.
-    photo_single_call: bool = False
-
     # Watermark — see image_processing/compositor.py's _draw_watermark()
     watermark_enabled: bool = True
     watermark_text: str = "memegpt"

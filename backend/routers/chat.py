@@ -122,15 +122,6 @@ def _requested_count(meme_count: int | None) -> int:
     return max(1, min(meme_count, get_settings().max_memes_per_request))
 
 
-async def _description_for(clean_image: CleanImage, message: str | None) -> VisionDescription:
-    """What a checked photo shows. Already known when the safety check
-    described it in the same call (settings.photo_single_call); otherwise
-    the separate description call, as before."""
-    if clean_image.description:
-        return VisionDescription(situation=clean_image.description)
-    return await describe_image(clean_image.image, user_text=message)
-
-
 def _upload_rejection_message(reason: str) -> str:
     """Maps a non-safety UploadRejected.reason to specific, friendly text.
 
@@ -746,14 +737,8 @@ async def handle_image_stream(
             "message": "Looking at your photo..." if len(capped_images) == 1 else "Looking at your photos...",
         })
 
-        # Canvas mode never needs a description, and its captions depend on
-        # the visitor's message, which stays out of the safety call. Passed
-        # only when wanted, so the common call keeps the shape it has always had.
-        with_description = (
-            {"describe": True} if settings.photo_single_call and resolved_mode != "canvas" else {}
-        )
         ingest_results = await asyncio.gather(
-            *[safe_ingest(img, **with_description) for img in capped_images],
+            *[safe_ingest(img) for img in capped_images],
             return_exceptions=True,
         )
 
@@ -801,7 +786,7 @@ async def handle_image_stream(
             return
 
         description_results = await asyncio.gather(
-            *[_description_for(ci, message) for ci in clean_images],
+            *[describe_image(ci.image, user_text=message) for ci in clean_images],
             return_exceptions=True,
         )
         descriptions = [d.situation for d in description_results if isinstance(d, VisionDescription)]

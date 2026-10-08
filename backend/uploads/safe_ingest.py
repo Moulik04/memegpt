@@ -28,12 +28,7 @@ from fastapi import UploadFile
 from PIL import Image, ImageOps
 
 from config import get_settings
-from uploads.moderation import (
-    CATEGORY_DAILY_LIMIT,
-    CATEGORY_RATE_LIMITED,
-    moderate_and_describe_image,
-    moderate_image,
-)
+from uploads.moderation import CATEGORY_DAILY_LIMIT, CATEGORY_RATE_LIMITED, moderate_image
 
 # Defense-in-depth pixel-count cap, in addition to the explicit per-side
 # check below (catches extreme-aspect-ratio images that dodge a per-side
@@ -98,9 +93,6 @@ class CleanImage:
     height: int
     content_type: str            # sniffed from magic bytes, never client-supplied
     source_filename: str | None  # original filename — LOGGING ONLY, never used as a path
-    # What the photo shows, when safe_ingest(describe=True) got it from the
-    # same model call as the safety verdict. None means ask separately.
-    description: str | None = None
 
 
 _SIGNATURE_JPEG = b"\xff\xd8\xff"
@@ -170,16 +162,10 @@ def _strip_metadata(img: Image.Image) -> Image.Image:
     return Image.frombytes(img.mode, img.size, img.tobytes())
 
 
-async def safe_ingest(upload: UploadFile, describe: bool = False) -> CleanImage:
+async def safe_ingest(upload: UploadFile) -> CleanImage:
     """The only entry point for any uploaded image. Raises UploadRejected or
     ModerationRejected (ModerationBusy when the check could not be run for
-    a rate limit) on failure; never writes the original bytes to disk.
-
-    describe: the caller will want to know what the photo shows. With
-    settings.photo_single_call on, the safety check then asks for that in
-    the same model call and the answer comes back on CleanImage.description.
-    It changes what is asked alongside the verdict, never whether the
-    verdict is required."""
+    a rate limit) on failure; never writes the original bytes to disk."""
     settings = get_settings()
 
     data = await _read_capped(upload, settings.max_image_bytes)
@@ -195,10 +181,7 @@ async def safe_ingest(upload: UploadFile, describe: bool = False) -> CleanImage:
 
     clean_img = _strip_metadata(img)
 
-    if describe and settings.photo_single_call:
-        moderation = await moderate_and_describe_image(clean_img)
-    else:
-        moderation = await moderate_image(clean_img)
+    moderation = await moderate_image(clean_img)
     if not moderation.passed:
         if moderation.category == CATEGORY_DAILY_LIMIT:
             raise ModerationOutOfBudget()
@@ -212,5 +195,4 @@ async def safe_ingest(upload: UploadFile, describe: bool = False) -> CleanImage:
         height=clean_img.height,
         content_type=content_type,
         source_filename=upload.filename,
-        description=moderation.description,
     )
