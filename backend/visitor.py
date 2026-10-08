@@ -30,6 +30,7 @@ import base64
 import binascii
 import hashlib
 import hmac
+import ipaddress
 import time
 from dataclasses import dataclass
 
@@ -66,6 +67,28 @@ def _clean_address(value: str | None) -> str | None:
     if not value or len(value) > _MAX_ADDRESS_LEN:
         return None
     return value
+
+
+def network_of(address: str) -> str:
+    """The network an address counts against for the daily ceiling
+    (daily_quota.py). An IPv4 address is its own network. An IPv6 address
+    counts as its /64: that is what one home or office connection is
+    normally given, and a device picks, and can keep changing, the half
+    after it. Counting whole IPv6 addresses would make the ceiling a
+    matter of asking for a new one.
+
+    Anything that is not an address ("unknown", a test client's name) is
+    returned as it came.
+    """
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if ip.version == 4:
+        return str(ip)
+    if ip.ipv4_mapped is not None:
+        return str(ip.ipv4_mapped)
+    return str(ipaddress.IPv6Network((int(ip) >> 64 << 64, 64)))
 
 
 def sign_visit(address: str, expires_at: int, secret: str) -> str:

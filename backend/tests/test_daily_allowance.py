@@ -5,9 +5,9 @@ Covered here, bottom to top:
   - visitor.py: an address is believed only when the frontend's server
     vouches for it with the shared secret, directly or through a signed
     token. Anything a direct caller can type is ignored;
-  - daily_quota.py: 10 memes per browser and 30 per address over a rolling
+  - daily_quota.py: 10 memes per browser and 30 per network over a rolling
     24 hours, counted in memes, reserved up front and handed back when a
-    meme is not made;
+    meme is not made. A network is one IPv4 address or one IPv6 /64;
   - the routes: a visitor with nothing left costs no model call, one asking
     for more than is left gets what is left and is told, and each of the
     three "can't make that right now" cases says its own thing.
@@ -42,13 +42,14 @@ from visitor import (
     VISIT_TOKEN_HEADER,
     Visitor,
     identify,
+    network_of,
     rate_limit_key,
     sign_visit,
 )
 
 _SECRET = "shared-between-frontend-and-backend"
 _YOURS = "That's your 2 memes for today. They refill over the next 24 hours."
-_NETWORK = "Your network has made its 3 memes for today. They refill over the next 24 hours."
+_NETWORK = "Everyone on your network has used today's 3 memes. They refill over the next 24 hours."
 _DAILY = (
     "MemeGPT runs on a free daily AI budget, and today's is used up. "
     "It refills gradually, so try again in a few hours."
@@ -253,6 +254,69 @@ def test_another_address_is_not_affected(limits):
     assert daily_quota.reserve(_visitor("third", address="198.51.100.1"), 2).granted == 2
 
 
+@pytest.mark.parametrize(
+    "address,network",
+    [
+        ("203.0.113.9", "203.0.113.9"),
+        ("2001:db8:1:2::1", "2001:db8:1:2::/64"),
+        ("2001:db8:1:2:aaaa:bbbb:cccc:dddd", "2001:db8:1:2::/64"),
+        ("2001:DB8:0001:0002:0000:0000:0000:0001", "2001:db8:1:2::/64"),
+        ("2001:db8:1:3::1", "2001:db8:1:3::/64"),
+        ("fe80::1%en0", "fe80::/64"),
+        ("::ffff:203.0.113.9", "203.0.113.9"),
+        ("unknown", "unknown"),
+        ("testclient", "testclient"),
+    ],
+)
+def test_a_network_is_an_ipv4_address_or_an_ipv6_64(address, network):
+    assert network_of(address) == network
+
+
+def test_ipv6_addresses_in_one_64_share_the_ceiling(limits):
+    """One device can give itself a new address inside its /64 whenever it
+    likes, so each of those must not be a fresh ceiling."""
+    limits(browser=2, address=3)
+
+    assert daily_quota.reserve(_visitor("first", address="2001:db8:1:2::1"), 2).granted == 2
+    second = daily_quota.reserve(_visitor("second", address="2001:db8:1:2:aaaa:bbbb:cccc:dddd"), 2)
+
+    assert second.granted == 1
+    assert second.allowance_now().limited_by == daily_quota.LIMITED_BY_ADDRESS
+    assert daily_quota.reserve(_visitor("third", address="2001:db8:1:2:1234::9"), 1).granted == 0
+
+
+def test_the_next_64_is_another_network(limits):
+    limits(browser=2, address=3)
+    daily_quota.reserve(_visitor("first", address="2001:db8:1:2::1"), 2)
+    daily_quota.reserve(_visitor("second", address="2001:db8:1:2::2"), 2)
+
+    assert daily_quota.reserve(_visitor("third", address="2001:db8:1:3::1"), 2).granted == 2
+
+
+def test_neighbouring_ipv4_addresses_are_not_grouped(limits):
+    limits(browser=2, address=3)
+    daily_quota.reserve(_visitor("first", address="203.0.113.9"), 2)
+    daily_quota.reserve(_visitor("second", address="203.0.113.9"), 2)
+
+    assert daily_quota.reserve(_visitor("third", address="203.0.113.10"), 2).granted == 2
+
+
+def test_an_ipv4_address_written_as_ipv6_is_the_same_network(limits):
+    limits(browser=2, address=3)
+    daily_quota.reserve(_visitor("first", address="203.0.113.9"), 2)
+
+    assert daily_quota.reserve(_visitor("second", address="::ffff:203.0.113.9"), 2).granted == 1
+
+
+def test_handing_back_reaches_the_shared_64(limits):
+    limits(browser=5, address=5)
+
+    reservation = daily_quota.reserve(_visitor("first", address="2001:db8:1:2::1"), 5)
+    reservation.settle(made=1)
+
+    assert daily_quota.allowance(_visitor("second", address="2001:db8:1:2::2")).remaining == 4
+
+
 def test_leaving_the_browser_id_off_is_not_worth_more(limits):
     limits(browser=2, address=30)
 
@@ -416,7 +480,7 @@ async def test_the_site_budget_notice_does_not_count(limits, monkeypatch):
 
 async def test_the_network_ceiling_says_whose_allowance_ran_out(limits, picks):
     """Someone opening the app for the first time on a busy network has made
-    no memes, so "your memes" would be wrong."""
+    no memes, so the wording must not say the memes were theirs."""
     limits(browser=2, address=3)
     via_frontend = {PROXY_SECRET_HEADER: _SECRET, PROXY_ADDRESS_HEADER: "203.0.113.9"}
     for browser in ("first", "first", "second"):
@@ -425,6 +489,27 @@ async def test_the_network_ceiling_says_whose_allowance_ran_out(limits, picks):
     events = _events(
         (await _post("/chat/", {"message": "monday again"}, {"X-MemeGPT-User": "third", **via_frontend})).text
     )
+
+    assert _notices(events) == [("visitor_limit", _NETWORK)]
+    assert len(picks) == 3
+
+
+async def test_rotating_through_a_64_does_not_dodge_the_ceiling(limits, picks):
+    """A new address and a new browser id on every request, all inside one
+    /64: the fourth is refused without a model call."""
+    limits(browser=2, address=3)
+
+    def rotated(n: int) -> dict:
+        return {
+            "X-MemeGPT-User": f"browser-{n}",
+            PROXY_SECRET_HEADER: _SECRET,
+            PROXY_ADDRESS_HEADER: f"2001:db8:1:2::{n + 1:x}",
+        }
+
+    for n in range(3):
+        assert len(_memes(_events((await _post("/chat/", {"message": "monday again"}, rotated(n))).text))) == 1
+
+    events = _events((await _post("/chat/", {"message": "monday again"}, rotated(3))).text)
 
     assert _notices(events) == [("visitor_limit", _NETWORK)]
     assert len(picks) == 3

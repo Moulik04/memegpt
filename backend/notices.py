@@ -25,15 +25,15 @@ DAILY_BUDGET_MESSAGE = (
     "It refills gradually, so try again in a few hours."
 )
 
-# This visitor's own allowance (daily_quota.py). Owner's wording for the
-# per-browser case. The per-network one says whose allowance it was: someone
-# opening the app for the first time on a busy network has made no memes.
+# This visitor's own allowance (daily_quota.py). Owner's wording for both.
+# The per-network one says whose allowance it was: someone opening the app
+# for the first time on a busy network has made no memes.
 REASON_VISITOR_LIMIT = "visitor_limit"
 
 
 def visitor_limit_message(limit: int, *, network: bool = False) -> str:
     if network:
-        return f"Your network has made its {limit} memes for today. They refill over the next 24 hours."
+        return f"Everyone on your network has used today's {limit} memes. They refill over the next 24 hours."
     return f"That's your {limit} memes for today. They refill over the next 24 hours."
 
 

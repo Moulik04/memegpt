@@ -5,10 +5,12 @@ Lore run that makes five uses five.
 Two limits, over a rolling 24 hours:
 
   - per browser (the anonymous id): settings.daily_memes_per_browser;
-  - per network address: settings.daily_memes_per_address, higher, so an
-    office or campus behind one address is not sharing a single browser's
-    worth. It is also what clearing cookies runs into: a new browser id is
-    a fresh browser allowance, on the same address.
+  - per network: settings.daily_memes_per_address, higher, so an office or
+    campus behind one address is not sharing a single browser's worth. It
+    is also what clearing cookies runs into: a new browser id is a fresh
+    browser allowance, on the same network. A network is one IPv4 address
+    or one IPv6 /64 (visitor.network_of), so a device changing its own
+    IPv6 address stays under the same ceiling.
 
 The address ceiling only means something when the address can be believed
 (visitor.py). With no PROXY_SHARED_SECRET configured it is skipped, since
@@ -32,7 +34,7 @@ from collections import deque
 from dataclasses import dataclass
 
 from config import get_settings
-from visitor import Visitor
+from visitor import Visitor, network_of
 
 _WINDOW_SECONDS = 24 * 3600.0
 _SWEEP_EVERY = 500  # reservations between sweeps of keys that have gone quiet
@@ -75,7 +77,9 @@ def _limits(visitor: Visitor) -> list[tuple[str, str, int]]:
         browser = f"id:{visitor.browser}" if visitor.browser else f"none:{visitor.address}"
         limits.append((LIMITED_BY_BROWSER, f"browser:{browser}", settings.daily_memes_per_browser))
     if settings.daily_memes_per_address > 0 and settings.proxy_shared_secret:
-        limits.append((LIMITED_BY_ADDRESS, f"address:{visitor.address}", settings.daily_memes_per_address))
+        limits.append(
+            (LIMITED_BY_ADDRESS, f"address:{network_of(visitor.address)}", settings.daily_memes_per_address)
+        )
     return limits
 
 
