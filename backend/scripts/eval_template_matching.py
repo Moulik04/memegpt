@@ -33,7 +33,9 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 
-from nlp.intent_router import parse_intent, resolve_prompt_template_ids
+from config import get_settings
+from nlp.intent_router import is_fallback, parse_intent, resolve_prompt_template_ids
+from nlp.llm_client import daily_limit_active
 from vector_db.chroma_client import list_template_ids
 
 
@@ -106,19 +108,13 @@ GOLDEN_SET: list[GoldenCase] = CORE_CLUSTER_CASES + FULL_CATALOG_CASES
 
 _PACING_SECONDS = 10  # bumped from 7s — cumulative Groq usage across repeated
 # eval runs in one session empirically triggered heavy rate-limiting that
-# manifested as parse_intent()'s hard fallback firing on most cases (see
-# _is_fallback below) rather than genuine wrong picks, silently corrupting
-# an earlier run's results. More pacing headroom reduces how often this
-# happens; _is_fallback below means an unavoidable one gets caught either way.
-
-# The exact reasoning strings intent_router.py's two hard-fallback sites use
-# — matching on these distinguishes "LLM genuinely picked wrong" from "Groq
-# rate-limited/timed out and parse_intent() silently returned its hardcoded
-# hide_the_pain_harold fallback," which looks identical in template_id alone.
-_FALLBACK_REASONING_MARKERS = (
-    "Fallback: timed out before producing a result",
-    "Fallback: model failed to produce valid JSON on both attempts",
-)
+# manifested as parse_intent()'s hard fallback firing on most cases rather
+# than genuine wrong picks, silently corrupting an earlier run's results.
+# More pacing headroom reduces how often this happens; intent_router's own
+# is_fallback() means an unavoidable one gets caught either way. It is what
+# distinguishes "LLM genuinely picked wrong" from "Groq rate-limited/timed
+# out and parse_intent() silently returned its hardcoded hide_the_pain_harold
+# fallback," which looks identical in template_id alone.
 
 
 async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
@@ -128,7 +124,7 @@ async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
     t0 = time.monotonic()
     result = await parse_intent(case.message)
     latency = time.monotonic() - t0
-    is_fallback = (result.reasoning or "") in _FALLBACK_REASONING_MARKERS
+    fallback_hit = is_fallback(result)
     final_hit = result.template_id in case.acceptable_ids
 
     return {
@@ -136,7 +132,7 @@ async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
         "acceptable_ids": case.acceptable_ids,
         "rag_hit": rag_hit,
         "final_hit": final_hit,
-        "is_fallback": is_fallback,
+        "is_fallback": fallback_hit,
         "picked": result.template_id,
         "latency": latency,
     }
@@ -153,6 +149,16 @@ async def main() -> None:
         if i > 0:
             await asyncio.sleep(_PACING_SECONDS)
         r = await run_one(case, known_ids)
+        if daily_limit_active(get_settings().groq_model):
+            # The model's daily budget ran out on this case. From here on
+            # the router answers from its second model or not at all, so
+            # nothing more would measure the model under test, and every
+            # further case would only dig into the same empty budget.
+            print(
+                f"\nSTOPPED at case {i + 1} of {len(GOLDEN_SET)}: the model's daily budget is "
+                f"used up. That case is not counted. The summary covers the {len(rows)} before it."
+            )
+            break
         rows.append(r)
         rag_tag = "RAG-OK" if r["rag_hit"] else "RAG-MISS"
         final_tag = "OK" if r["final_hit"] else ("FALLBACK" if r["is_fallback"] else "WRONG")
@@ -163,6 +169,9 @@ async def main() -> None:
         )
 
     n = len(rows)
+    if not n:
+        print("No cases completed.")
+        return
     fallback_rows = [r for r in rows if r["is_fallback"]]
     scored_rows = [r for r in rows if not r["is_fallback"]]  # exclude infra noise from accuracy
     rag_recall = sum(1 for r in rows if r["rag_hit"])

@@ -47,6 +47,7 @@ import httpx
 from PIL import Image
 
 from config import Settings, get_settings
+from nlp.llm_client import daily_limit_active, daily_limit_cooldown, mark_daily_limit
 from schemas import VisionDescription
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,11 @@ class VisionRateLimited(Exception):
     """Groq answered 429 until call_groq_vision()'s retries ran out."""
 
 
+class VisionDailyLimited(VisionRateLimited):
+    """The 429 was Groq's daily cap, not the per-minute one, or the model was
+    already known to be out for the day. Nothing is waited on or retried."""
+
+
 class VisionUnavailable(Exception):
     """Raised when no configured vision provider could produce a
     description. Unlike parse_intent(), there is no safe hardcoded fallback
@@ -108,6 +114,11 @@ class VisionBusy(VisionUnavailable):
     """VisionUnavailable because of a rate limit that outlasted the retries.
     Trying the same photo again shortly is likely to work, so the caller
     says that instead of asking for a description in words."""
+
+
+class VisionOutOfBudget(VisionBusy):
+    """VisionBusy where the limit is the daily one. Trying again in a minute
+    will not work, so the caller says the day's budget is used up."""
 
 
 def _retry_after_seconds(response: httpx.Response) -> float | None:
@@ -156,7 +167,13 @@ async def call_groq_vision(
 
     A 429 is waited out and retried (see _RATE_LIMIT_ATTEMPTS above), for
     as long as Groq's retry-after asks. Raises VisionRateLimited once the
-    attempts or the wait budget are used up. Nothing else is retried."""
+    attempts or the wait budget are used up. Nothing else is retried.
+
+    The daily cap is the exception (see nlp/llm_client.py): it raises
+    VisionDailyLimited on the first 429, and while the model is known to be
+    out for the day the photo is not sent at all."""
+    if daily_limit_active(model):
+        raise VisionDailyLimited("the model is out of its daily budget")
     b64 = _encode_for_api(image)
     payload: dict = {
         "model": model,
@@ -190,6 +207,11 @@ async def call_groq_vision(
                 resp.raise_for_status()
                 data = resp.json()
                 return data["choices"][0]["message"]["content"].strip()
+            daily_cooldown = daily_limit_cooldown(resp)
+            if daily_cooldown is not None:
+                mark_daily_limit(model, daily_cooldown)
+                logger.warning("vision_daily_limit", extra={"cooldown_seconds": round(daily_cooldown)})
+                raise VisionDailyLimited("the model is out of its daily budget")
             if attempt == _RATE_LIMIT_ATTEMPTS - 1:
                 break
             wait = _retry_after_seconds(resp)
@@ -257,15 +279,17 @@ async def describe_image(image: Image.Image, user_text: str | None = None) -> Vi
     """Provider-agnostic vision description (Mode 1: image as context).
     Tries Groq first, falls back to Anthropic if ANTHROPIC_API_KEY is
     configured. Raises VisionUnavailable if every configured provider fails,
-    as VisionBusy when what stopped Groq was a rate limit."""
+    as VisionBusy when what stopped Groq was a rate limit, and as
+    VisionOutOfBudget when that limit was the daily one."""
     settings = get_settings()
 
     raw: str | None = None
-    rate_limited = False
+    rate_limited = out_of_budget = False
     try:
         raw = await _describe_groq(image, user_text, settings)
     except Exception as exc:
         rate_limited = isinstance(exc, VisionRateLimited)
+        out_of_budget = isinstance(exc, VisionDailyLimited)
         logger.warning("vision_provider_error", extra={"provider": "groq"})
         if settings.anthropic_api_key:
             try:
@@ -274,6 +298,8 @@ async def describe_image(image: Image.Image, user_text: str | None = None) -> Vi
                 logger.warning("vision_provider_error", extra={"provider": "anthropic"})
 
     if not raw:
+        if out_of_budget:
+            raise VisionOutOfBudget("the vision provider is out of its daily budget")
         if rate_limited:
             raise VisionBusy("the vision provider is rate limited")
         raise VisionUnavailable("no configured vision provider produced a description")
@@ -330,15 +356,16 @@ async def generate_canvas_captions(image: Image.Image, user_text: str | None = N
     failure of the call or its output (network, malformed JSON, missing
     keys). The one thing it raises is VisionBusy, when a rate limit outlasted
     the retries: that photo is worth sending again in a minute, which None
-    could not say."""
+    could not say. On the daily cap it is the VisionOutOfBudget kind."""
     settings = get_settings()
 
     raw: str | None = None
-    rate_limited = False
+    rate_limited = out_of_budget = False
     try:
         raw = await _caption_groq(image, user_text, settings)
     except Exception as exc:
         rate_limited = isinstance(exc, VisionRateLimited)
+        out_of_budget = isinstance(exc, VisionDailyLimited)
         logger.warning("canvas_caption_provider_error", extra={"provider": "groq"})
         if settings.anthropic_api_key:
             try:
@@ -347,6 +374,8 @@ async def generate_canvas_captions(image: Image.Image, user_text: str | None = N
                 logger.warning("canvas_caption_provider_error", extra={"provider": "anthropic"})
 
     if not raw:
+        if out_of_budget:
+            raise VisionOutOfBudget("the vision provider is out of its daily budget")
         if rate_limited:
             raise VisionBusy("the vision provider is rate limited")
         return None

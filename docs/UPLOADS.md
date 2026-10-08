@@ -36,8 +36,10 @@ disk write, no renderer.** No code path in this app is allowed to bypass it.
    itself) is logged for our own abuse-monitoring purposes. The check runs
    on Groq, so the image is sent there. If Groq is rate limiting, the check
    waits and retries for up to about 45 seconds. If it still can't run, the
-   image is not processed and you are asked to try again in a minute. An
-   image is never let through unchecked.
+   image is not processed and you are asked to try again in a minute. If
+   the free daily budget is what ran out, the check is not retried and you
+   are told to come back in a few hours instead. An image is never let
+   through unchecked.
 5. **Rate limiting.** The upload endpoint is rate-limited per user to guard
    against abuse.
 6. **Retention.** The original photo is held only for the duration of your

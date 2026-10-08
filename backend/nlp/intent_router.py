@@ -21,7 +21,7 @@ import circuit_breaker
 import telemetry
 from config import get_settings
 from image_processing.template_configs import DEFAULT_BOX_DESCRIPTIONS, get_config
-from nlp.llm_client import call_llm, strip_markdown
+from nlp.llm_client import call_llm, daily_limit_active, strip_markdown
 from schemas import IntentResponse
 from vector_db.chroma_client import list_template_ids, query_similar_memes
 from vector_db.examples_store import get_similar_examples
@@ -375,14 +375,43 @@ def _finalize_result(data: dict, known_id_set: set[str]) -> IntentResponse:
 
 _OVERALL_TIMEOUT_SECONDS = 45.0
 
-# Both hard fallbacks below tag their reasoning with this prefix, and
+# Every hard fallback below tags its reasoning with this prefix, and
 # is_fallback() is how everything downstream (the SSE done event, the deploy
 # smoke test) tells a canned meme from a routed one.
 FALLBACK_REASONING_PREFIX = "Fallback:"
 
 
+# The hard fallback's reasoning when the primary model is out of its daily
+# budget. The caller shows the daily-budget notice for this one instead of
+# rendering the canned meme (routers/chat.py).
+DAILY_BUDGET_FALLBACK_REASONING = f"{FALLBACK_REASONING_PREFIX} daily model budget used up"
+
+
 def is_fallback(intent: IntentResponse) -> bool:
     return (intent.reasoning or "").startswith(FALLBACK_REASONING_PREFIX)
+
+
+def is_daily_budget_fallback(intent: IntentResponse) -> bool:
+    return intent.reasoning == DAILY_BUDGET_FALLBACK_REASONING
+
+
+def _hard_fallback(user_message: str, why: str) -> IntentResponse:
+    """The canned meme every failed path ends in. If the primary model is
+    out for the day, that is the reason given, whatever the last attempt
+    happened to fail on: a second model that also could not answer is only
+    being asked because the first one has no budget left."""
+    telemetry.record_hard_fallback_hit()
+    reasoning = f"{FALLBACK_REASONING_PREFIX} {why}"
+    if daily_limit_active(get_settings().groq_model):
+        reasoning = DAILY_BUDGET_FALLBACK_REASONING
+    return IntentResponse(
+        template_id="hide_the_pain_harold",
+        texts={
+            "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
+            "bottom_text": "This is fine.",
+        },
+        reasoning=reasoning,
+    )
 
 
 async def parse_intent(
@@ -433,15 +462,7 @@ async def parse_intent(
             timeout=_OVERALL_TIMEOUT_SECONDS,
         )
     except TimeoutError:
-        telemetry.record_hard_fallback_hit()
-        return IntentResponse(
-            template_id="hide_the_pain_harold",
-            texts={
-                "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
-                "bottom_text": "This is fine.",
-            },
-            reasoning=f"{FALLBACK_REASONING_PREFIX} timed out before producing a result",
-        )
+        return _hard_fallback(user_message, "timed out before producing a result")
 
 
 _RAG_N_RESULTS = 8
@@ -602,12 +623,4 @@ async def _parse_intent_inner(
                 pass
 
     # Hard fallback — always returns something rather than 500-ing
-    telemetry.record_hard_fallback_hit()
-    return IntentResponse(
-        template_id="hide_the_pain_harold",
-        texts={
-            "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
-            "bottom_text": "This is fine.",
-        },
-        reasoning=f"{FALLBACK_REASONING_PREFIX} model failed to produce valid JSON on both attempts",
-    )
+    return _hard_fallback(user_message, "model failed to produce valid JSON on both attempts")

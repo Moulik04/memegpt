@@ -28,7 +28,7 @@ from fastapi import UploadFile
 from PIL import Image, ImageOps
 
 from config import get_settings
-from uploads.moderation import CATEGORY_RATE_LIMITED, moderate_image
+from uploads.moderation import CATEGORY_DAILY_LIMIT, CATEGORY_RATE_LIMITED, moderate_image
 
 # Defense-in-depth pixel-count cap, in addition to the explicit per-side
 # check below (catches extreme-aspect-ratio images that dodge a per-side
@@ -67,8 +67,18 @@ class ModerationBusy(ModerationRejected):
     image, so unlike a real refusal the caller may tell the user to try
     again shortly."""
 
+    category = CATEGORY_RATE_LIMITED
+
     def __init__(self) -> None:
-        super().__init__(CATEGORY_RATE_LIMITED)
+        super().__init__(self.category)
+
+
+class ModerationOutOfBudget(ModerationBusy):
+    """ModerationBusy where the provider's daily budget is what ran out.
+    Still a rejection of an unchecked image. The only difference is what
+    the user can be told: later today, not in a minute."""
+
+    category = CATEGORY_DAILY_LIMIT
 
 
 @dataclass
@@ -173,6 +183,8 @@ async def safe_ingest(upload: UploadFile) -> CleanImage:
 
     moderation = await moderate_image(clean_img)
     if not moderation.passed:
+        if moderation.category == CATEGORY_DAILY_LIMIT:
+            raise ModerationOutOfBudget()
         if moderation.category == CATEGORY_RATE_LIMITED:
             raise ModerationBusy()
         raise ModerationRejected(moderation.category or "unknown")

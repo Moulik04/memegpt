@@ -20,10 +20,17 @@ import httpx
 
 import telemetry
 from config import get_settings
+from nlp.llm_client import daily_limit_active, daily_limit_cooldown, mark_daily_limit
 
 logger = logging.getLogger(__name__)
 
 _GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# The check could not be run because the provider answered 429. Still a
+# failed check (see moderate_text), but one the caller can describe as busy,
+# or as the day's budget being used up, instead of as a refused caption.
+CATEGORY_RATE_LIMITED = "rate_limited"
+CATEGORY_DAILY_LIMIT = "daily_limit"
 
 _MODERATION_SYSTEM_PROMPT = (
     "You are a strict content-safety classifier for a public meme-caption "
@@ -49,8 +56,10 @@ async def moderate_text(text: str) -> ModerationResult:
     """Every caption Make renders onto a public meme must pass this first.
     Fails CLOSED (rejects) on any provider error or missing configuration —
     an inability to run the check is treated the same as a failed check,
-    never as a silent pass-through. Blank/whitespace-only text is
-    trivially safe and skips the network call entirely."""
+    never as a silent pass-through. That includes a rate-limited provider:
+    the caption is rejected, with a category that says which limit it was.
+    Blank/whitespace-only text is trivially safe and skips the network call
+    entirely."""
     if not text.strip():
         return ModerationResult(passed=True)
     settings = get_settings()
@@ -69,6 +78,8 @@ async def moderate_text(text: str) -> ModerationResult:
 
 
 async def _moderate_groq_text(text: str, settings) -> ModerationResult:
+    if daily_limit_active(settings.moderation_model):
+        return ModerationResult(passed=False, category=CATEGORY_DAILY_LIMIT)
     payload: dict = {
         "model": settings.moderation_model,
         "messages": [
@@ -90,6 +101,14 @@ async def _moderate_groq_text(text: str, settings) -> ModerationResult:
                 "Content-Type": "application/json",
             },
         )
+        if resp.status_code == 429:
+            daily_cooldown = daily_limit_cooldown(resp)
+            if daily_cooldown is None:
+                logger.warning("text_moderation_rate_limited")
+                return ModerationResult(passed=False, category=CATEGORY_RATE_LIMITED)
+            mark_daily_limit(settings.moderation_model, daily_cooldown)
+            logger.warning("text_moderation_daily_limit")
+            return ModerationResult(passed=False, category=CATEGORY_DAILY_LIMIT)
         resp.raise_for_status()
         data = resp.json()
 

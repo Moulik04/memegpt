@@ -52,15 +52,22 @@ from config import get_settings
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
-from nlp.intent_router import is_fallback, parse_intent
+from nlp.intent_router import is_daily_budget_fallback, is_fallback, parse_intent
 from nlp.lexicon import schedule_lexicon_extraction
 from nlp.segmentation import resolve_contexts
-from nlp.vision import VisionBusy, describe_image, generate_canvas_captions, infer_mode
+from nlp.vision import (
+    VisionBusy,
+    VisionOutOfBudget,
+    describe_image,
+    generate_canvas_captions,
+    infer_mode,
+)
 from rate_limit import limiter
 from schemas import ChatMessage, ChatRequest, ChatResponse, SegmentedContext, VisionDescription
 from uploads.safe_ingest import (
     CleanImage,
     ModerationBusy,
+    ModerationOutOfBudget,
     ModerationRejected,
     UploadRejected,
     safe_ingest,
@@ -76,9 +83,28 @@ _DESCRIBE_IN_WORDS_PROMPT = (
     "I couldn't quite look at that image right now — mind describing the "
     "situation in words instead?"
 )
-# A photo call stayed rate limited through its retries. Nothing is wrong
-# with the photo, so this must not read as a refusal of it.
-_BUSY_MESSAGE = "MemeGPT is busy, try again in a minute."
+# A call stayed rate limited through its retries. Nothing is wrong with the
+# photo or caption, so this must not read as a refusal of it. For the
+# provider's per-minute limit only.
+BUSY_MESSAGE = "MemeGPT is busy, try again in a minute."
+# The provider's daily limit: a minute will not help, and the canned
+# fallback meme would say nothing about why. Owner's wording.
+DAILY_BUDGET_MESSAGE = (
+    "MemeGPT runs on a free daily AI budget, and today's is used up. "
+    "It refills gradually, so try again in a few hours."
+)
+# Marks the error event that carries DAILY_BUDGET_MESSAGE, so a batch can
+# stop there instead of failing the same way once per remaining meme.
+_DAILY_BUDGET_REASON = "daily_budget"
+
+
+def _vision_busy_message(results: list) -> str:
+    """Which of the two messages a set of failed photo calls gets. One call
+    stopped by the daily limit is enough: trying again in a minute would
+    not help the others either, they share the model."""
+    if any(isinstance(r, VisionOutOfBudget) for r in results):
+        return DAILY_BUDGET_MESSAGE
+    return BUSY_MESSAGE
 
 
 def _upload_rejection_message(reason: str) -> str:
@@ -192,6 +218,16 @@ async def _stream_chat_turn(
         intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx, exclude_templates)
     except Exception as exc:
         yield {"type": "error", "index": index, "total": total, "message": str(exc)}
+        return
+
+    if is_daily_budget_fallback(intent):
+        yield {
+            "type": "error",
+            "index": index,
+            "total": total,
+            "message": DAILY_BUDGET_MESSAGE,
+            "reason": _DAILY_BUDGET_REASON,
+        }
         return
 
     if exclude_templates and intent.template_id in exclude_templates:
@@ -337,7 +373,10 @@ async def _stream_batch(
     same batch, not a moment of its own. The plan says so instead of
     printing that moment's text a second time, and the take is rendered with
     every template the moment has already used ruled out — the recency
-    nudge above is a request to the model, this is a guarantee."""
+    nudge above is a request to the model, this is a guarantee.
+
+    The batch ends early at the first meme the model's daily budget could
+    not cover: the ones after it would fail the same way."""
     total = len(contexts)
     if total > 1:
         # "Plan theater" for a single meme is pointless — only worth
@@ -358,7 +397,10 @@ async def _stream_batch(
         yield _sse(plan)
     succeeded = 0
     templates_by_moment: dict[int, list[str]] = {}
+    out_of_budget = False
     for i, context in enumerate(contexts):
+        if out_of_budget:
+            break
         moment = i if context.take_of is None else context.take_of
         async for event in _stream_chat_turn(
             context.situation, conversation_id, ctx, surface, index=i, total=total,
@@ -370,6 +412,8 @@ async def _stream_batch(
                 succeeded += 1
                 if event.get("template_used"):
                     templates_by_moment.setdefault(moment, []).append(event["template_used"])
+            elif event.get("reason") == _DAILY_BUDGET_REASON:
+                out_of_budget = True
             yield _sse(event)
     yield _sse({"type": "batch_done", "total": total, "succeeded": succeeded})
 
@@ -473,7 +517,7 @@ async def _stream_canvas_batch(
 
     if not pairs:
         if any(isinstance(r, VisionBusy) for r in caption_results):
-            yield _sse({"type": "error", "message": _BUSY_MESSAGE})
+            yield _sse({"type": "error", "message": _vision_busy_message(caption_results)})
             return
         # Every canvas-caption call failed — graceful degrade, a normal
         # assistant reply, not a hard error.
@@ -589,7 +633,8 @@ async def handle_image_stream(
 
     A photo whose safety check could not be run (ModerationBusy: rate
     limited past the retries) also stops the whole request, but with "busy,
-    try again in a minute" rather than a refusal. It is never processed
+    try again in a minute" rather than a refusal, or with the daily-budget
+    wording when the provider's daily limit is what stopped the check. It is never processed
     unchecked, and the photos that did pass are not turned into a partial
     result the user didn't ask for. A real refusal in the same batch wins."""
     anon_user_id = get_anon_user_id(request)
@@ -628,7 +673,8 @@ async def handle_image_stream(
             yield _sse({"type": "error", "message": _GENERIC_UPLOAD_REFUSAL})
             return
         if moderation_rejections:
-            yield _sse({"type": "error", "message": _BUSY_MESSAGE})
+            out_of_budget = any(isinstance(r, ModerationOutOfBudget) for r in moderation_rejections)
+            yield _sse({"type": "error", "message": DAILY_BUDGET_MESSAGE if out_of_budget else BUSY_MESSAGE})
             return
 
         clean_images = [r for r in ingest_results if isinstance(r, CleanImage)]
@@ -667,7 +713,7 @@ async def handle_image_stream(
 
         if not descriptions:
             if any(isinstance(d, VisionBusy) for d in description_results):
-                yield _sse({"type": "error", "message": _BUSY_MESSAGE})
+                yield _sse({"type": "error", "message": _vision_busy_message(description_results)})
                 return
             # Every vision call failed (VisionUnavailable) — graceful
             # degrade, a normal assistant reply, not a hard error.

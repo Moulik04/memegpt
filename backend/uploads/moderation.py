@@ -25,7 +25,7 @@ from PIL import Image
 
 import telemetry
 from config import get_settings
-from nlp.vision import VisionRateLimited, call_groq_vision
+from nlp.vision import VisionDailyLimited, VisionRateLimited, call_groq_vision
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 # through every retry. Still a failed check (see moderate_image), but one
 # the caller can describe as "busy" instead of as a refusal.
 CATEGORY_RATE_LIMITED = "rate_limited"
+# Same, where the limit was the provider's daily one: no retry in the next
+# minute will get the check run.
+CATEGORY_DAILY_LIMIT = "daily_limit"
 
 _MODERATION_SYSTEM_PROMPT = (
     "You are a strict content-safety classifier for a public meme-generation "
@@ -60,7 +63,8 @@ async def moderate_image(image: Image.Image) -> ModerationResult:
     an inability to run the check is treated the same as a failed check,
     never as a silent pass-through. That includes a rate limit that outlasts
     call_groq_vision()'s retries: the image is rejected, with
-    CATEGORY_RATE_LIMITED so the caller knows a retry is worth suggesting."""
+    CATEGORY_RATE_LIMITED so the caller knows a retry is worth suggesting,
+    or CATEGORY_DAILY_LIMIT when the provider's daily budget is what ran out."""
     settings = get_settings()
     if not settings.groq_api_key:
         logger.warning("moderation_not_configured")
@@ -68,6 +72,9 @@ async def moderate_image(image: Image.Image) -> ModerationResult:
     else:
         try:
             result = await _moderate_groq(image, settings)
+        except VisionDailyLimited:
+            logger.warning("moderation_daily_limit")
+            result = ModerationResult(passed=False, category=CATEGORY_DAILY_LIMIT)
         except VisionRateLimited:
             logger.warning("moderation_rate_limited")
             result = ModerationResult(passed=False, category=CATEGORY_RATE_LIMITED)

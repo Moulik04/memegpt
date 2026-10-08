@@ -7,8 +7,9 @@ import telemetry
 from auth import get_verified_user
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme
-from nlp.text_moderation import moderate_text
+from nlp.text_moderation import CATEGORY_DAILY_LIMIT, CATEGORY_RATE_LIMITED, moderate_text
 from rate_limit import limiter
+from routers.chat import BUSY_MESSAGE, DAILY_BUDGET_MESSAGE
 from schemas import MemeGenerationRequest, MemeGenerationResponse
 
 router = APIRouter()
@@ -31,6 +32,9 @@ async def generate(request: Request, body: MemeGenerationRequest) -> MemeGenerat
     — the text equivalent of uploads/safe_ingest's image moderation gate.
     Fails closed: a moderation-unavailable result blocks the request the
     same as an actual unsafe classification (never echoes the category).
+    A check the provider was too rate limited to run blocks the request
+    too, but says so (busy, or the day's budget used up) rather than
+    blaming the caption.
 
     Stamps identity + surface="make" on the resulting meme the same way
     chat.py/lore.py do (was missing entirely before — Make usage was
@@ -40,6 +44,10 @@ async def generate(request: Request, body: MemeGenerationRequest) -> MemeGenerat
     combined_text = "\n".join(body.texts.values())
     moderation = await moderate_text(combined_text)
     if not moderation.passed:
+        if moderation.category == CATEGORY_DAILY_LIMIT:
+            raise HTTPException(status_code=503, detail=DAILY_BUDGET_MESSAGE)
+        if moderation.category == CATEGORY_RATE_LIMITED:
+            raise HTTPException(status_code=503, detail=BUSY_MESSAGE)
         raise HTTPException(status_code=400, detail=_GENERIC_CAPTION_REFUSAL)
 
     try:

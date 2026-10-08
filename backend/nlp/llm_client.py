@@ -43,6 +43,54 @@ _GROQ_CIRCUIT_COOLDOWN_SECONDS = 60.0
 # prompt.
 _DEFAULT_MAX_TOKENS = 600
 
+# Groq answers 429 for two different limits. The per-minute one frees up in
+# seconds and is worth waiting for. The daily one is a rolling 24 hours:
+# its retry-after runs from minutes to hours, so waiting helps nobody and
+# the model is left alone until then. Told apart by what the response says
+# (the body names "tokens per day (TPD)" or "requests per day (RPD)"), or
+# failing that by a wait no per-minute window could need.
+_DAILY_CIRCUIT_PREFIX = "groq-daily:"
+_DAILY_LIMIT_MIN_RETRY_AFTER_SECONDS = 120.0
+_DAILY_LIMIT_DEFAULT_COOLDOWN_SECONDS = 900.0  # a daily 429 with no usable retry-after
+_DAILY_LIMIT_MAX_COOLDOWN_SECONDS = 6 * 3600.0  # the window is rolling, so some of it is back by then
+
+
+def retry_after_seconds(response: httpx.Response) -> float | None:
+    """Groq's retry-after header, in seconds (whole or decimal). None when
+    it is missing or unreadable."""
+    try:
+        seconds = float(response.headers.get("retry-after", ""))
+    except ValueError:
+        return None
+    return seconds if seconds >= 0 else None
+
+
+def daily_limit_cooldown(response: httpx.Response) -> float | None:
+    """How long to stay off a model if this response is its daily cap, in
+    seconds. None for anything else, the per-minute 429 included."""
+    if response.status_code != 429:
+        return None
+    retry_after = retry_after_seconds(response)
+    names_daily_limit = "per day" in response.text.lower()
+    if not names_daily_limit and (retry_after is None or retry_after < _DAILY_LIMIT_MIN_RETRY_AFTER_SECONDS):
+        return None
+    if retry_after is None:
+        return _DAILY_LIMIT_DEFAULT_COOLDOWN_SECONDS
+    return min(retry_after, _DAILY_LIMIT_MAX_COOLDOWN_SECONDS)
+
+
+def mark_daily_limit(model: str, cooldown_seconds: float) -> None:
+    """Record that `model` is out of its daily budget for this long. Every
+    Groq caller shares this (text, photos, moderation), since the budget is
+    per model, not per kind of call. The ordinary circuit is opened as well
+    so intent_router.py goes straight to its second model."""
+    circuit_breaker.trip(_DAILY_CIRCUIT_PREFIX + model, cooldown_seconds)
+    circuit_breaker.trip(f"groq:{model}", cooldown_seconds)
+
+
+def daily_limit_active(model: str) -> bool:
+    return circuit_breaker.is_open(_DAILY_CIRCUIT_PREFIX + model)
+
 
 async def call_ollama(
     client: httpx.AsyncClient,
@@ -87,7 +135,13 @@ async def call_groq(
     max_tokens defaults to _DEFAULT_MAX_TOKENS, sized for one meme's
     captions. A caller whose reply is longer than that has to ask for more:
     a reply cut off at the cap can still come back as valid JSON, just with
-    the end missing."""
+    the end missing.
+
+    A model known to be out of its daily budget is not called at all, and a
+    429 that turns out to be the daily cap is not waited on or retried: both
+    return empty at once, like the exhausted per-minute case below."""
+    if daily_limit_active(settings.groq_model):
+        return ""
     for attempt in range(2):
         payload: dict = {
             "model": settings.groq_model,
@@ -116,9 +170,13 @@ async def call_groq(
             timeout=30.0,
         )
         if response.status_code == 429:
-            # Rate limited — respect Groq's retry-after (cap at 30s so we don't stall forever)
-            retry_after = int(response.headers.get("retry-after", "3"))
-            await asyncio.sleep(min(retry_after, 8))
+            daily_cooldown = daily_limit_cooldown(response)
+            if daily_cooldown is not None:
+                mark_daily_limit(settings.groq_model, daily_cooldown)
+                return ""
+            # Rate limited — respect Groq's retry-after (cap at 8s so we don't stall forever)
+            retry_after = retry_after_seconds(response)
+            await asyncio.sleep(min(3 if retry_after is None else retry_after, 8))
             continue
         response.raise_for_status()
         circuit_breaker.reset(f"groq:{settings.groq_model}")
