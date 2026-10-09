@@ -7,6 +7,13 @@ compatibility_date = "2025-01-01"
 [vars]
 BACKEND_URL = "https://memegpt-backend.onrender.com"
 
+# Keep-awake ping, every 5 minutes from 8 AM to midnight Eastern. Cron
+# Triggers run on UTC, so these are the UTC hours that fall inside that
+# window in summer (12:00 to 03:59) or in winter (13:00 to 04:59), and the
+# Worker skips a run that lands outside it on the day (src/wakingHours.ts).
+[triggers]
+crons = ["*/5 0-4,12-23 * * *"]
+
 # Secrets are NOT set here — never commit them. Set both with:
 #   wrangler secret put DISCORD_PUBLIC_KEY
 #   wrangler secret put DISCORD_WORKER_SHARED_SECRET

@@ -16,9 +16,17 @@
  * and never sees DISCORD_PUBLIC_KEY or an interaction token — its only
  * auth is DISCORD_WORKER_SHARED_SECRET, a plain internal secret between
  * this Worker and the backend, unrelated to Discord's own protocol.
+ *
+ * The Worker also keeps the backend awake during the day. Render's free
+ * tier stops a service after 15 idle minutes and the next visitor waits
+ * about a minute for it to start, so a Cron Trigger (wrangler.toml) asks
+ * for /health every 5 minutes between 8 AM and midnight Eastern. It stays
+ * quiet overnight: almost nobody visits then, and Render's free tier is
+ * not meant to be kept running around the clock.
  */
 
 import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
+import { isWakingHour } from "./wakingHours";
 
 export interface Env {
   BACKEND_URL: string;
@@ -110,7 +118,33 @@ export default {
 
     return new Response("Unhandled interaction type", { status: 400 });
   },
+
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (!isWakingHour(new Date(controller.scheduledTime))) {
+      return;
+    }
+    ctx.waitUntil(pingBackend(env));
+  },
 };
+
+// A sleeping backend takes about a minute to answer, so this waits longer
+// than that. The request wakes it whether or not the answer is read.
+const PING_TIMEOUT_MS = 90_000;
+
+async function pingBackend(env: Env): Promise<void> {
+  const started = Date.now();
+  try {
+    const resp = await fetch(`${env.BACKEND_URL.replace(/\/$/, "")}/health`, {
+      signal: AbortSignal.timeout(PING_TIMEOUT_MS),
+    });
+    console.log("Keep-awake ping", { status: resp.status, ms: Date.now() - started });
+  } catch (err) {
+    console.log("Keep-awake ping failed", {
+      error: err instanceof Error ? err.message : String(err),
+      ms: Date.now() - started,
+    });
+  }
+}
 
 async function handleMemeCommand(interaction: DiscordInteraction, text: string, env: Env): Promise<void> {
   const followupUrl =
