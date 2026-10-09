@@ -1,3 +1,4 @@
+import { BackendWake } from "@/components/BackendWake";
 import { ConversationProvider } from "@/lib/ConversationContext";
 import { ConversationSidebar } from "@/components/ConversationSidebar";
 
@@ -13,6 +14,7 @@ import { ConversationSidebar } from "@/components/ConversationSidebar";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <ConversationProvider>
+      <BackendWake />
       <div className="flex h-dvh">
         <ConversationSidebar />
         <div className="flex-1 min-w-0 flex flex-col">{children}</div>

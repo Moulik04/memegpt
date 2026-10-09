@@ -24,6 +24,21 @@ const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"
 
 const ANON_HEADER = "X-MemeGPT-User";
 
+let wakeRequested = false;
+
+// Render's free tier stops the backend after 15 idle minutes, and whoever
+// asks next waits about a minute for it to start. Asking for /health as
+// soon as a page loads moves that wait to while the visitor is still
+// reading or typing. Once per page load, straight to the backend (the
+// frontend's server would only hold a function open for the same minute),
+// and the answer is never read: a backend that is down simply stays down
+// until a real request reports it.
+export function wakeBackend(): void {
+  if (wakeRequested) return;
+  wakeRequested = true;
+  fetch(`${BACKEND_BASE}/health`, { cache: "no-store" }).catch(() => {});
+}
+
 /**
  * Growth Phase H, Stage 2 — the single place every call site attaches
  * identity headers, replacing 6 previously-independent inline copies of

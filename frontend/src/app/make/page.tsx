@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BackendWake } from "@/components/BackendWake";
 import { MakeView } from "@/components/MakeView";
 import { ModeTabs } from "@/components/ModeTabs";
 import { MobileNav } from "@/components/MobileNav";
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 export default function MakePage() {
   return (
     <div className="flex flex-col h-dvh">
+      <BackendWake />
       <ModeTabs active="make" />
       <MakeView />
       <MobileNav active="make" />
