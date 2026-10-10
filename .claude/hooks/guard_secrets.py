@@ -4,8 +4,8 @@
 Two things get blocked:
 
   * commands that mention a secrets file (backend/.env, .env.secrets, shell
-    profiles that export tokens, tfstate, ...), other than harmless
-    metadata verbs like `ls` or `chmod`
+    profiles that export tokens, tfstate, a CLI's saved login, ...), other
+    than harmless metadata verbs like `ls` or `chmod`
   * commands that dump environment variables or cloud config that embeds
     them (printenv, bare env, docker compose config, docker inspect,
     gcloud run describe, Render/Vercel env listings, ...)
@@ -62,6 +62,8 @@ PROTECTED = [
     r"\.config/gcloud",
     r"\.config/gh/hosts",
     r"\.docker/config\.json",
+    # Wrangler's login file. Not a project's own .wrangler/tmp or state.
+    r"\.wrangler/config\b",
     r"\.npmrc\b",
     r"\.ssh/(?:id_|[\w.-]*_key)",
     r"\.pem\b",
@@ -95,6 +97,7 @@ ENV_DUMPS = [
     r"api\.vercel\.com\S*/env\b",
     r"\bgh\s+auth\s+token\b",
     r"\bgh\s+auth\s+status\b.*(?:\s-t\b|--show-token)",
+    r"\bwrangler\s+auth\s+token\b",
     # Echoing a secret-named variable.
     r"\b(?:echo|printf|print)\b[^|;&]*\$\{?\w*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|DATABASE_URL|CREDENTIAL|OIDC)",
     # Dumping a process environment or settings object from a script.

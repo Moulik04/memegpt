@@ -19,6 +19,9 @@
       "Read(~/.docker/config.json)",
       "Read(~/.config/gcloud/**)",
       "Read(~/.config/gh/**)",
+      "Read(~/Library/Preferences/.wrangler/config/**)",
+      "Read(~/.wrangler/config/**)",
+      "Read(~/.config/.wrangler/config/**)",
       "Read(~/.claude/projects/**/*.jsonl)"
     ]
   },
