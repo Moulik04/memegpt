@@ -21,20 +21,34 @@ case (once standalone for the recall check, once again inside
 parse_intent()) — a minor, accepted inefficiency in exchange for not
 re-implementing parse_intent()'s internals here.
 
-Paced at the same ~7s/case as eval_intent_models.py — Groq's free tier is
-~8000 tokens/min and each parse_intent() call burns a comparable budget.
+Every pick is tagged with the prompt that produced it, full or retry, and
+accuracy is reported for each separately. They are different tasks: the
+retry prompt has no examples and is only reached by an unusable reply. One
+number for both hid that until 2026-10-10, when a third of a run turned out
+to have been answered by the retry prompt.
 
-Run: cd backend && python -m scripts.eval_template_matching
+Paced at 10 seconds a case by default. Groq's free tier is ~8000 tokens a
+minute and a pick is close to 3000, so at that pace about one case in three
+waits out a rate limit before it is answered (the latency column shows it).
+For a run with no waits at all, pass --pacing 28.
+
+Run: cd backend && python -m scripts.eval_template_matching [--pacing SECONDS]
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import time
 from dataclasses import dataclass, field
 
 from config import get_settings
-from nlp.intent_router import is_fallback, parse_intent, resolve_prompt_template_ids
+from nlp.intent_router import (
+    is_busy_fallback,
+    is_fallback,
+    parse_intent,
+    resolve_prompt_template_ids,
+)
 from nlp.llm_client import daily_limit_active
 from vector_db.chroma_client import list_template_ids
 
@@ -117,6 +131,39 @@ _PACING_SECONDS = 10  # bumped from 7s — cumulative Groq usage across repeated
 # fallback," which looks identical in template_id alone.
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Template-matching accuracy eval against the golden set.")
+    parser.add_argument(
+        "--pacing", type=float, default=_PACING_SECONDS, metavar="SECONDS",
+        help=f"seconds between cases (default and minimum {_PACING_SECONDS}; 28 avoids every rate-limit wait)",
+    )
+    args = parser.parse_args(argv)
+    if args.pacing < _PACING_SECONDS:
+        parser.error(f"--pacing cannot go below {_PACING_SECONDS} seconds")
+    return args
+
+
+def outcome_tag(row: dict) -> str:
+    if row["final_hit"]:
+        return "OK"
+    if row["is_busy"]:
+        return "BUSY"
+    return "FALLBACK" if row["is_fallback"] else "WRONG"
+
+
+def accuracy_by_prompt(rows: list[dict]) -> dict[str, tuple[int, int]]:
+    """(right, answered) for each prompt that answered at least one case.
+    A case with no pick (a canned fallback, a busy answer) belongs to
+    neither prompt."""
+    counts: dict[str, tuple[int, int]] = {}
+    for row in rows:
+        if row["is_fallback"] or not row["prompt"]:
+            continue
+        right, answered = counts.get(row["prompt"], (0, 0))
+        counts[row["prompt"]] = (right + (1 if row["final_hit"] else 0), answered + 1)
+    return counts
+
+
 async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
     prompt_ids = await resolve_prompt_template_ids(case.message, known_ids)
     rag_hit = any(tid in prompt_ids for tid in case.acceptable_ids)
@@ -133,12 +180,15 @@ async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
         "rag_hit": rag_hit,
         "final_hit": final_hit,
         "is_fallback": fallback_hit,
+        "is_busy": is_busy_fallback(result),
+        "prompt": result.prompt_used,
+        "model": result.model_used,
         "picked": result.template_id,
         "latency": latency,
     }
 
 
-async def main() -> None:
+async def main(pacing: float = _PACING_SECONDS) -> None:
     known_ids = set(list_template_ids())
     if not known_ids:
         print("ChromaDB is empty — run the backend once first to auto-seed templates.")
@@ -147,7 +197,7 @@ async def main() -> None:
     rows: list[dict] = []
     for i, case in enumerate(GOLDEN_SET):
         if i > 0:
-            await asyncio.sleep(_PACING_SECONDS)
+            await asyncio.sleep(pacing)
         r = await run_one(case, known_ids)
         if daily_limit_active(get_settings().groq_model):
             # The model's daily budget ran out on this case. From here on
@@ -161,9 +211,9 @@ async def main() -> None:
             break
         rows.append(r)
         rag_tag = "RAG-OK" if r["rag_hit"] else "RAG-MISS"
-        final_tag = "OK" if r["final_hit"] else ("FALLBACK" if r["is_fallback"] else "WRONG")
+        answered_by = "-" if not r["prompt"] else (r["prompt"] if r["model"] == "primary" else f"{r['prompt']}/2nd")
         print(
-            f"  [{rag_tag:8s}][{final_tag:8s}] {r['latency']:.2f}s  "
+            f"  [{rag_tag:8s}][{outcome_tag(r):8s}][{answered_by:9s}] {r['latency']:5.2f}s  "
             f"{r['message'][:55]:55s} -> {r['picked']}"
             + ("" if r["final_hit"] else f"  (expected: {'/'.join(r['acceptable_ids'])})")
         )
@@ -183,15 +233,21 @@ async def main() -> None:
     print(f"Cases:                       {n}")
     print(f"RAG recall:                  {rag_recall}/{n} ({100 * rag_recall / n:.0f}%)")
     if fallback_rows:
+        busy = sum(1 for r in fallback_rows if r["is_busy"])
         print(
-            f"Hard-fallback hits (excluded from accuracy below — Groq rate-limit/"
-            f"timeout noise, not a real pick): {len(fallback_rows)}/{n}"
+            f"No pick (excluded from accuracy below, not a real pick): {len(fallback_rows)}/{n} "
+            f"({busy} busy, {len(fallback_rows) - busy} canned fallback)"
         )
     print(
-        f"Final-pick accuracy (of {len(scored_rows)} non-fallback cases): "
+        f"Final-pick accuracy (of {len(scored_rows)} cases with a pick): "
         f"{final_accuracy}/{len(scored_rows)} "
         f"({100 * final_accuracy / len(scored_rows) if scored_rows else 0:.0f}%)"
     )
+    for prompt, (right, answered) in sorted(accuracy_by_prompt(rows).items()):
+        print(f"  answered by the {prompt} prompt:    {right}/{answered} ({100 * right / answered:.0f}%)")
+    second_model = sum(1 for r in scored_rows if r["model"] == "second")
+    if second_model:
+        print(f"  of those, answered by the second model: {second_model}")
 
     rag_misses = [r for r in rows if not r["rag_hit"]]
     if rag_misses:
@@ -203,13 +259,16 @@ async def main() -> None:
     if final_misses:
         print("\nFinal-pick misses despite correct candidate set (wording/LLM-judgment problem):")
         for r in final_misses:
-            print(f"  - {r['message'][:60]} (expected: {'/'.join(r['acceptable_ids'])}, got: {r['picked']})")
+            print(
+                f"  - {r['message'][:60]} (expected: {'/'.join(r['acceptable_ids'])}, "
+                f"got: {r['picked']}, {r['prompt']} prompt)"
+            )
 
     if fallback_rows:
-        print("\nHard-fallback hits (rerun these individually if you need a clean read on them):")
+        print("\nCases with no pick (rerun these individually if you need a clean read on them):")
         for r in fallback_rows:
             print(f"  - {r['message'][:60]} (expected: {'/'.join(r['acceptable_ids'])})")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(parse_args().pacing))

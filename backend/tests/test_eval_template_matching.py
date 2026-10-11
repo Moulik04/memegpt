@@ -1,0 +1,48 @@
+"""
+scripts/eval_template_matching.py reports its accuracy per prompt, because
+the full prompt and the retry prompt are different tasks and one number for
+both hid that until 2026-10-10. Pure functions only: no model call.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from scripts.eval_template_matching import accuracy_by_prompt, outcome_tag, parse_args
+
+
+def _row(prompt, hit, fallback=False, busy=False) -> dict:
+    return {"prompt": prompt, "final_hit": hit, "is_fallback": fallback, "is_busy": busy}
+
+
+def test_accuracy_is_counted_separately_for_each_prompt():
+    rows = [_row("full", True), _row("full", True), _row("full", False), _row("retry", False)]
+
+    assert accuracy_by_prompt(rows) == {"full": (2, 3), "retry": (0, 1)}
+
+
+def test_a_prompt_that_answered_nothing_is_not_listed():
+    assert accuracy_by_prompt([_row("full", True)]) == {"full": (1, 1)}
+
+
+def test_rows_with_no_pick_are_left_out_of_every_prompts_count():
+    rows = [_row("full", True), _row(None, False, fallback=True), _row(None, False, fallback=True, busy=True)]
+
+    assert accuracy_by_prompt(rows) == {"full": (1, 1)}
+
+
+def test_a_busy_case_is_told_apart_from_a_canned_fallback_and_a_wrong_pick():
+    assert outcome_tag(_row("full", True)) == "OK"
+    assert outcome_tag(_row("retry", False)) == "WRONG"
+    assert outcome_tag(_row(None, False, fallback=True)) == "FALLBACK"
+    assert outcome_tag(_row(None, False, fallback=True, busy=True)) == "BUSY"
+
+
+def test_pacing_defaults_to_ten_seconds_and_can_be_raised():
+    assert parse_args([]).pacing == 10
+    assert parse_args(["--pacing", "28"]).pacing == 28
+
+
+def test_pacing_cannot_be_lowered():
+    with pytest.raises(SystemExit):
+        parse_args(["--pacing", "5"])
