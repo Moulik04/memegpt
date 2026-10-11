@@ -209,37 +209,51 @@ def _build_template_catalog(template_ids: list[str]) -> dict:
 def _pick_schema(template_ids: list[str]) -> dict:
     """The JSON schema for one pick out of `template_ids`, in the form
     Groq's strict structured outputs take: every property required, nothing
-    extra allowed. A reply held to it is always well-formed JSON with a
-    template_id from the prompt.
+    extra allowed. A reply held to it is always well-formed JSON, with a
+    template_id from the prompt and captions only in boxes the candidates
+    have.
 
-    "texts" is one entry per distinct set of box labels among the
-    candidates, so templates with the same boxes share an entry. The schema
-    does not tie a template to its own boxes; _finalize_result still checks
-    that."""
-    label_sets: list[tuple[str, ...]] = []
-    for tid in template_ids:
-        labels = tuple(box.label for box in get_config(tid).text_boxes)
-        if labels not in label_sets:
-            label_sets.append(labels)
+    The captions are a list of {"box", "caption"} entries rather than an
+    object keyed by box label. Strict mode has no way to describe an object
+    holding only some of a known set of keys, and Groq refuses an anyOf
+    whose entries share a key, which box labels do across templates
+    (keyset_required_overlap, 2026-10-11). _SECOND_MODEL_TEMPLATE asks for
+    the same list and _finalize_result turns it back into the usual object.
+
+    The schema does not tie a template to its own boxes; _finalize_result
+    still checks that."""
+    boxes = list(dict.fromkeys(box.label for tid in template_ids for box in get_config(tid).text_boxes))
     return {
         "type": "object",
         "properties": {
             "template_id": {"type": "string", "enum": list(template_ids)},
             "texts": {
-                "anyOf": [
-                    {
-                        "type": "object",
-                        "properties": {label: {"type": "string"} for label in labels},
-                        "required": list(labels),
-                        "additionalProperties": False,
-                    }
-                    for labels in label_sets
-                ]
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "box": {"type": "string", "enum": boxes},
+                        "caption": {"type": "string"},
+                    },
+                    "required": ["box", "caption"],
+                    "additionalProperties": False,
+                },
             },
             "reasoning": {"type": "string"},
         },
         "required": ["template_id", "texts", "reasoning"],
         "additionalProperties": False,
+    }
+
+
+def _captions_by_box(entries: list) -> dict:
+    """Captions written as a list of {"box", "caption"} entries (the shape
+    _pick_schema allows), as the object keyed by box label everything
+    downstream expects. Entries of any other shape are left out."""
+    return {
+        entry["box"]: entry["caption"]
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("box"), str) and "caption" in entry
     }
 
 
@@ -319,19 +333,24 @@ def _normalize_texts_to_box_labels(texts: dict, template_id: str) -> dict[str, s
     return normalized
 
 
-def _build_retry_prompt(user_message: str, template_ids: list[str]) -> str:
+def _build_retry_prompt(user_message: str, template_ids: list[str], captions_as_list: bool = False) -> str:
     """The strict prompt sent when the first attempt's reply could not be
     used. It carries the same catalog as the first attempt, every candidate
     with its "when to use" text and its box labels, so the retry is the same
     task asked more bluntly. It leaves out the few-shot examples and the
     taste and recency nudges, and is sent at a low temperature.
 
+    captions_as_list is for the second model, whose reply is held to
+    _pick_schema: the same prompt, asking for the captions in the shape that
+    schema allows.
+
     It used to list only the first fourteen candidates, all of them core
     templates, with box labels and no descriptions. On the 2026-10-10 eval
     run the sixteen slow cases, which by their timing had been rate limited
     and answered from that prompt, were right three times: the fitting
     template was usually not on the list at all."""
-    return _RETRY_TEMPLATE.format(
+    template = _SECOND_MODEL_TEMPLATE if captions_as_list else _RETRY_TEMPLATE
+    return template.format(
         user_message=user_message,
         template_catalog=json.dumps(_build_template_catalog(template_ids), indent=2),
     )
@@ -383,6 +402,22 @@ Return ONLY this exact JSON shape, nothing else:
 Output raw JSON only — no markdown, no explanation.\
 """
 
+# _RETRY_TEMPLATE with the captions as a list, the shape _pick_schema allows.
+_SECOND_MODEL_TEMPLATE = """\
+You are a JSON API. The user said: "{user_message}"
+
+Pick the ONE template below that best fits what the user said. Each key is a
+template_id. "w" = when to use it. "b" = its box labels: write one caption
+for each of them, and use those exact labels as "box" — do not invent your
+own names or change their case.
+{template_catalog}
+
+Return ONLY this exact JSON shape, nothing else:
+{{"template_id": "<id from above>", "texts": [{{"box": "<real box label>", "caption": "<caption>"}}], "reasoning": "WHY"}}
+
+Output raw JSON only — no markdown, no explanation.\
+"""
+
 
 # What the router itself records on a pick. A reply naming them is ignored.
 _ROUTER_OWNED_FIELDS = ("prompt_used", "model_used")
@@ -399,7 +434,10 @@ def _finalize_result(data: dict, known_id_set: set[str], *, prompt: str, model: 
 
     prompt ("full" or "retry") and model ("primary" or "second") say which
     attempt this was. They are kept on the pick and written to the log."""
-    result = IntentResponse(**{k: v for k, v in data.items() if k not in _ROUTER_OWNED_FIELDS})
+    fields = {k: v for k, v in data.items() if k not in _ROUTER_OWNED_FIELDS}
+    if isinstance(fields.get("texts"), list):
+        fields["texts"] = _captions_by_box(fields["texts"])
+    result = IntentResponse(**fields)
     if result.template_id not in known_id_set:
         raise ValueError(f"Hallucinated template_id: {result.template_id}")
     normalized_texts = _normalize_texts_to_box_labels(result.texts, result.template_id)
@@ -654,6 +692,9 @@ async def _parse_intent_inner(
         json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError,
     )
     retry_messages = [{"role": "user", "content": retry_prompt}]
+    second_model_messages = [
+        {"role": "user", "content": _build_retry_prompt(user_message, template_ids, captions_as_list=True)},
+    ]
 
     async with httpx.AsyncClient() as client:
         try:
@@ -676,7 +717,7 @@ async def _parse_intent_inner(
                 except unusable_reply:
                     telemetry.record_intent_parse_failure("retry")
 
-            # Attempt 3 — same strict prompt, a genuinely different Groq
+            # Attempt 3 — the strict prompt again, a genuinely different Groq
             # model. Reached if attempts 1+2 both gave unusable replies, or
             # were skipped because the primary model is out for the day.
             # Its reply is held to a schema: left to write JSON freely, this
@@ -686,7 +727,8 @@ async def _parse_intent_inner(
                 fallback_settings = settings.model_copy(update={"groq_model": settings.groq_fallback_model})
                 try:
                     data = await ask(
-                        fallback_settings, retry_messages, temperature=0.2, json_schema=_pick_schema(template_ids),
+                        fallback_settings, second_model_messages, temperature=0.2,
+                        json_schema=_pick_schema(template_ids),
                     )
                     return _finalize_result(data, known_id_set, prompt="retry", model="second")
                 except unusable_reply:
