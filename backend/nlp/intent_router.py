@@ -206,6 +206,43 @@ def _build_template_catalog(template_ids: list[str]) -> dict:
     return catalog
 
 
+def _pick_schema(template_ids: list[str]) -> dict:
+    """The JSON schema for one pick out of `template_ids`, in the form
+    Groq's strict structured outputs take: every property required, nothing
+    extra allowed. A reply held to it is always well-formed JSON with a
+    template_id from the prompt.
+
+    "texts" is one entry per distinct set of box labels among the
+    candidates, so templates with the same boxes share an entry. The schema
+    does not tie a template to its own boxes; _finalize_result still checks
+    that."""
+    label_sets: list[tuple[str, ...]] = []
+    for tid in template_ids:
+        labels = tuple(box.label for box in get_config(tid).text_boxes)
+        if labels not in label_sets:
+            label_sets.append(labels)
+    return {
+        "type": "object",
+        "properties": {
+            "template_id": {"type": "string", "enum": list(template_ids)},
+            "texts": {
+                "anyOf": [
+                    {
+                        "type": "object",
+                        "properties": {label: {"type": "string"} for label in labels},
+                        "required": list(labels),
+                        "additionalProperties": False,
+                    }
+                    for labels in label_sets
+                ]
+            },
+            "reasoning": {"type": "string"},
+        },
+        "required": ["template_id", "texts", "reasoning"],
+        "additionalProperties": False,
+    }
+
+
 def _normalize_llm_response(data, known_ids: set[str]) -> dict:
     """
     Handle common LLM JSON format deviations:
@@ -642,10 +679,15 @@ async def _parse_intent_inner(
             # Attempt 3 — same strict prompt, a genuinely different Groq
             # model. Reached if attempts 1+2 both gave unusable replies, or
             # were skipped because the primary model is out for the day.
+            # Its reply is held to a schema: left to write JSON freely, this
+            # model had 8 of 48 replies rejected by Groq as malformed
+            # (2026-10-11). The primary model's requests carry no schema.
             if has_fallback_model:
                 fallback_settings = settings.model_copy(update={"groq_model": settings.groq_fallback_model})
                 try:
-                    data = await ask(fallback_settings, retry_messages, temperature=0.2)
+                    data = await ask(
+                        fallback_settings, retry_messages, temperature=0.2, json_schema=_pick_schema(template_ids),
+                    )
                     return _finalize_result(data, known_id_set, prompt="retry", model="second")
                 except unusable_reply:
                     telemetry.record_intent_parse_failure("fallback_model")

@@ -62,6 +62,9 @@ _RATE_LIMIT_MIN_WAIT_SECONDS = 1.0
 # Without a deadline from the caller, a wait is cut to this and tried twice.
 _RATE_LIMIT_CAPPED_WAIT_SECONDS = 8.0
 
+# Groq wants a name on every schema it is sent. Nothing reads it back.
+_SCHEMA_NAME = "meme_pick"
+
 
 class RateLimited(Exception):
     """The per-minute limit, and the wait Groq asked for would run past the
@@ -147,6 +150,7 @@ async def call_groq(
     temperature: float = 0.75,
     max_tokens: int | None = None,
     wait_until: float | None = None,
+    json_schema: dict | None = None,
 ) -> str:
     """Groq cloud inference — free tier, ~400 t/s, no GPU required.
 
@@ -164,7 +168,13 @@ async def call_groq(
     says and the same messages are sent again, until one is answered; a wait
     that would end after the deadline is not started and RateLimited is
     raised instead. Without it, the wait is cut to a few seconds, tried
-    twice, and an empty string comes back."""
+    twice, and an empty string comes back.
+
+    json_schema holds the reply to that schema (structured outputs, strict
+    mode), which only some models take: see the models listed in Groq's
+    structured outputs documentation before passing one. Without it the
+    reply only has to be a JSON object. A schema request Groq answers with a
+    400 is sent once more without the schema."""
     if daily_limit_active(settings.groq_model):
         return ""
     capped_waits = 0
@@ -176,6 +186,11 @@ async def call_groq(
             "max_tokens": max_tokens or _DEFAULT_MAX_TOKENS,
             "response_format": {"type": "json_object"},
         }
+        if json_schema is not None:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": _SCHEMA_NAME, "strict": True, "schema": json_schema},
+            }
         # Qwen 3.x thinking mode emits reasoning tokens before JSON, breaking the parser.
         # Disable it explicitly for any Qwen model on this endpoint.
         if "qwen" in settings.groq_model.lower():
@@ -213,6 +228,9 @@ async def call_groq(
             capped_waits += 1
             if capped_waits == 2:
                 break
+            continue
+        if response.status_code == 400 and json_schema is not None:
+            json_schema = None
             continue
         response.raise_for_status()
         circuit_breaker.reset(f"groq:{settings.groq_model}")
@@ -271,11 +289,13 @@ async def call_llm(
     temperature: float = 0.75,
     max_tokens: int | None = None,
     wait_until: float | None = None,
+    json_schema: dict | None = None,
 ) -> str:
     """Route to Groq (cloud) or Ollama (local) based on LLM_PROVIDER config.
-    wait_until is Groq's (see call_groq); a local model has no rate limit."""
+    wait_until and json_schema are Groq's (see call_groq); a local model has
+    no rate limit and is only asked for a JSON object."""
     if settings.llm_provider == "groq" and settings.groq_api_key:
-        return await call_groq(client, settings, messages, temperature, max_tokens, wait_until)
+        return await call_groq(client, settings, messages, temperature, max_tokens, wait_until, json_schema)
     return await call_ollama(client, settings, messages, temperature, max_tokens)
 
 
