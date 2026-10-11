@@ -378,6 +378,21 @@ def test_a_pick_is_written_to_the_log_as_one_line(caplog):
     assert [r.getMessage() for r in caplog.records] == ["router_pick prompt=retry model=primary template=drake"]
 
 
+def test_the_line_reaches_the_platforms_own_log_whatever_else_is_listening(capfd):
+    """Where logs are exported (Cloud Run sends them to Grafana) the root
+    logger has a handler, and Python then stops printing warnings to stderr
+    by itself. The hosting platform's log would show nothing. These lines
+    are written there directly, once."""
+    exporter = logging.NullHandler()
+    logging.getLogger().addHandler(exporter)
+    try:
+        telemetry.record_router_pick("full", "primary", "drake")
+    finally:
+        logging.getLogger().removeHandler(exporter)
+
+    assert capfd.readouterr().err.splitlines() == ["router_pick prompt=full model=primary template=drake"]
+
+
 def test_a_busy_answer_is_written_to_the_log_as_one_line(caplog):
     with caplog.at_level(logging.WARNING, logger="telemetry"):
         telemetry.record_router_busy(26.4)

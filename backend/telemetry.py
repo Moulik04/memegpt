@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+import sys
 import time
 from collections.abc import Iterable
 
@@ -77,6 +78,27 @@ structlog.configure(
 
 _meter = metrics.get_meter("memegpt-backend")
 logger = logging.getLogger(__name__)
+
+# The count lines below (upload_refused, router_pick, router_busy) are meant
+# to be readable in the hosting platform's own log. Python only prints a
+# warning to stderr by itself while nothing else is attached to the root
+# logger, and where logs are exported something is, so this logger writes
+# to stderr itself. Records still travel on to the root logger's handlers.
+class _CurrentStderr(logging.StreamHandler):
+    """Writes to whatever sys.stderr is when a record is emitted, not to the
+    one that existed when this module was imported."""
+
+    def __init__(self) -> None:
+        logging.Handler.__init__(self)
+
+    @property
+    def stream(self):
+        return sys.stderr
+
+
+_platform_log = _CurrentStderr()
+_platform_log.setFormatter(logging.Formatter("%(message)s"))
+logger.addHandler(_platform_log)
 
 meme_generation_duration_seconds = _meter.create_histogram(
     "meme_generation_duration_seconds",
