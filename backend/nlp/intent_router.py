@@ -290,9 +290,10 @@ def _build_retry_prompt(user_message: str, template_ids: list[str]) -> str:
     taste and recency nudges, and is sent at a low temperature.
 
     It used to list only the first fourteen candidates, all of them core
-    templates, with box labels and no descriptions. A pick made from that
-    was right about one time in five on the eval's golden set, because the
-    fitting template was usually not on the list at all."""
+    templates, with box labels and no descriptions. On the 2026-10-10 eval
+    run the sixteen slow cases, which by their timing had been rate limited
+    and answered from that prompt, were right three times: the fitting
+    template was usually not on the list at all."""
     return _RETRY_TEMPLATE.format(
         user_message=user_message,
         template_catalog=json.dumps(_build_template_catalog(template_ids), indent=2),

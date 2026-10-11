@@ -16,9 +16,11 @@ one that renders with the wrong layout.
 2. **`USE_WHEN` entry** in `backend/nlp/intent_router.py`. House style, no
    exceptions: a CAPS-label summary, exactly ONE short "E.g." example, and
    explicit "NOT for X (use Y)" cross-references naming the specific
-   templates it will be confused with. Two examples per entry measurably
-   made matching worse (75% → 67%) by bloating the prompt — do not add a
-   second example.
+   templates it will be confused with. One example is a token-budget rule:
+   every candidate's entry is sent with every pick, a pick is already close
+   to 3000 tokens, and Groq's free tier allows 8000 a minute. What a second
+   example does to accuracy is unmeasured. An earlier figure (75% → 67%)
+   came from runs that mixed two different prompts and does not stand.
 3. **Layout** in `backend/image_processing/template_configs.py`. Optional for
    static templates (falls back to `DEFAULT_BOXES`), but **mandatory for GIF
    templates** — without an explicit entry, `is_gif` defaults to False and
