@@ -32,16 +32,25 @@ minute and a pick is close to 3000, so at that pace about one case in three
 waits out a rate limit before it is answered (the latency column shows it).
 For a run with no waits at all, pass --pacing 28.
 
-Run: cd backend && python -m scripts.eval_template_matching [--pacing SECONDS]
+--second-model measures the model the router falls back to when the primary
+is out for the day. The primary is marked as out, exactly as production
+marks it, so every case goes straight to the second model with the retry
+prompt. That run spends the second model's own daily budget, not the
+primary's.
+
+Run: cd backend && python -m scripts.eval_template_matching [--pacing SECONDS] [--second-model]
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 
+import nlp.intent_router as intent_router
 from config import get_settings
 from nlp.intent_router import (
     is_busy_fallback,
@@ -49,7 +58,7 @@ from nlp.intent_router import (
     parse_intent,
     resolve_prompt_template_ids,
 )
-from nlp.llm_client import daily_limit_active
+from nlp.llm_client import daily_limit_active, mark_daily_limit, strip_markdown
 from vector_db.chroma_client import list_template_ids
 
 
@@ -137,6 +146,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--pacing", type=float, default=_PACING_SECONDS, metavar="SECONDS",
         help=f"seconds between cases (default and minimum {_PACING_SECONDS}; 28 avoids every rate-limit wait)",
     )
+    parser.add_argument(
+        "--second-model", action="store_true",
+        help="mark the primary model as out for the day so every case is answered by the second model",
+    )
     args = parser.parse_args(argv)
     if args.pacing < _PACING_SECONDS:
         parser.error(f"--pacing cannot go below {_PACING_SECONDS} seconds")
@@ -149,6 +162,43 @@ def outcome_tag(row: dict) -> str:
     if row["is_busy"]:
         return "BUSY"
     return "FALLBACK" if row["is_fallback"] else "WRONG"
+
+
+def reply_kind(raw: str | None) -> str:
+    """What the model's last reply for a case was, before any validation:
+    "clean" (it parses as JSON), "malformed", "empty", or "none" when no
+    reply came back at all. A clean reply can still be unusable: a made-up
+    template id, or captions under labels the template does not have."""
+    if raw is None:
+        return "none"
+    if not raw.strip():
+        return "empty"
+    try:
+        json.loads(strip_markdown(raw))
+    except json.JSONDecodeError:
+        return "malformed"
+    return "clean"
+
+
+def reply_counts(rows: list[dict]) -> dict[str, int]:
+    return dict(Counter(row["reply"] for row in rows))
+
+
+# Every raw reply the router received for the case in hand, oldest first.
+_replies: list[str] = []
+
+
+def _record_replies() -> None:
+    """Wraps the router's model call so the harness sees each raw reply. The
+    router itself only says whether a reply was usable."""
+    real_call = intent_router.call_llm
+
+    async def recording_call(*args, **kwargs) -> str:
+        raw = await real_call(*args, **kwargs)
+        _replies.append(raw)
+        return raw
+
+    intent_router.call_llm = recording_call
 
 
 def accuracy_by_prompt(rows: list[dict]) -> dict[str, tuple[int, int]]:
@@ -168,6 +218,7 @@ async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
     prompt_ids = await resolve_prompt_template_ids(case.message, known_ids)
     rag_hit = any(tid in prompt_ids for tid in case.acceptable_ids)
 
+    _replies.clear()
     t0 = time.monotonic()
     result = await parse_intent(case.message)
     latency = time.monotonic() - t0
@@ -183,25 +234,41 @@ async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
         "is_busy": is_busy_fallback(result),
         "prompt": result.prompt_used,
         "model": result.model_used,
+        "reply": reply_kind(_replies[-1] if _replies else None),
         "picked": result.template_id,
         "latency": latency,
     }
 
 
-async def main(pacing: float = _PACING_SECONDS) -> None:
+# Long enough to outlast any run. The mark lives in this process only.
+_PRIMARY_MARKED_OUT_SECONDS = 6 * 3600.0
+
+
+async def main(pacing: float = _PACING_SECONDS, second_model: bool = False) -> None:
     known_ids = set(list_template_ids())
     if not known_ids:
         print("ChromaDB is empty — run the backend once first to auto-seed templates.")
         return
+
+    settings = get_settings()
+    model_under_test = settings.groq_model
+    if second_model:
+        if settings.llm_provider != "groq" or settings.groq_fallback_model in ("", settings.groq_model):
+            print("--second-model needs LLM_PROVIDER=groq and a second model different from the primary.")
+            return
+        mark_daily_limit(settings.groq_model, _PRIMARY_MARKED_OUT_SECONDS)
+        model_under_test = settings.groq_fallback_model
+        print(f"Primary model marked as out for the day. Every case goes to {model_under_test}.\n")
+    _record_replies()
 
     rows: list[dict] = []
     for i, case in enumerate(GOLDEN_SET):
         if i > 0:
             await asyncio.sleep(pacing)
         r = await run_one(case, known_ids)
-        if daily_limit_active(get_settings().groq_model):
+        if daily_limit_active(model_under_test):
             # The model's daily budget ran out on this case. From here on
-            # the router answers from its second model or not at all, so
+            # the router answers from another model or not at all, so
             # nothing more would measure the model under test, and every
             # further case would only dig into the same empty budget.
             print(
@@ -212,10 +279,12 @@ async def main(pacing: float = _PACING_SECONDS) -> None:
         rows.append(r)
         rag_tag = "RAG-OK" if r["rag_hit"] else "RAG-MISS"
         answered_by = "-" if not r["prompt"] else (r["prompt"] if r["model"] == "primary" else f"{r['prompt']}/2nd")
+        reply_note = "" if r["reply"] == "clean" else f"  [reply: {r['reply']}]"
         print(
             f"  [{rag_tag:8s}][{outcome_tag(r):8s}][{answered_by:9s}] {r['latency']:5.2f}s  "
             f"{r['message'][:55]:55s} -> {r['picked']}"
             + ("" if r["final_hit"] else f"  (expected: {'/'.join(r['acceptable_ids'])})")
+            + reply_note
         )
 
     n = len(rows)
@@ -245,9 +314,17 @@ async def main(pacing: float = _PACING_SECONDS) -> None:
     )
     for prompt, (right, answered) in sorted(accuracy_by_prompt(rows).items()):
         print(f"  answered by the {prompt} prompt:    {right}/{answered} ({100 * right / answered:.0f}%)")
-    second_model = sum(1 for r in scored_rows if r["model"] == "second")
-    if second_model:
-        print(f"  of those, answered by the second model: {second_model}")
+    by_second_model = sum(1 for r in scored_rows if r["model"] == "second")
+    if by_second_model:
+        print(f"  of those, answered by the second model: {by_second_model}")
+    kinds = reply_counts(rows)
+    print(
+        "Last reply per case:         "
+        + ", ".join(f"{kinds.get(kind, 0)} {kind}" for kind in ("clean", "malformed", "empty", "none"))
+    )
+    unusable_clean = sum(1 for r in fallback_rows if r["reply"] == "clean")
+    if unusable_clean:
+        print(f"  clean JSON that still could not be used (unknown template or labels): {unusable_clean}")
 
     rag_misses = [r for r in rows if not r["rag_hit"]]
     if rag_misses:
@@ -271,4 +348,5 @@ async def main(pacing: float = _PACING_SECONDS) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(parse_args().pacing))
+    _args = parse_args()
+    asyncio.run(main(_args.pacing, _args.second_model))

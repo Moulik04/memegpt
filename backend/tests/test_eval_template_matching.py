@@ -8,7 +8,13 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.eval_template_matching import accuracy_by_prompt, outcome_tag, parse_args
+from scripts.eval_template_matching import (
+    accuracy_by_prompt,
+    outcome_tag,
+    parse_args,
+    reply_counts,
+    reply_kind,
+)
 
 
 def _row(prompt, hit, fallback=False, busy=False) -> dict:
@@ -46,3 +52,26 @@ def test_pacing_defaults_to_ten_seconds_and_can_be_raised():
 def test_pacing_cannot_be_lowered():
     with pytest.raises(SystemExit):
         parse_args(["--pacing", "5"])
+
+
+# --- the second model, forced -------------------------------------------------
+
+
+def test_the_second_model_is_only_forced_when_asked():
+    assert parse_args([]).second_model is False
+    assert parse_args(["--second-model", "--pacing", "28"]).second_model is True
+
+
+def test_a_reply_is_sorted_by_whether_it_is_json_at_all():
+    assert reply_kind('{"template_id": "drake", "texts": {}}') == "clean"
+    assert reply_kind('```json\n{"template_id": "drake"}\n```') == "clean"  # fences are stripped, as the router does
+    assert reply_kind('{"template_id": "drake", "texts": {"a": "b"}} {"reasoning": "x"}') == "malformed"
+    assert reply_kind("Sure! Here is the meme:") == "malformed"
+    assert reply_kind("") == "empty"
+    assert reply_kind(None) == "none"  # no reply was received at all (busy)
+
+
+def test_replies_are_counted_by_kind():
+    rows = [{"reply": "clean"}, {"reply": "clean"}, {"reply": "malformed"}, {"reply": "empty"}, {"reply": "none"}]
+
+    assert reply_counts(rows) == {"clean": 2, "malformed": 1, "empty": 1, "none": 1}
