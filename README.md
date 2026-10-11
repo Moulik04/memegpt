@@ -45,7 +45,7 @@ The product has four real surfaces, plus a marketing front door:
 
 Optional accounts (email or Google, through Supabase Auth) unlock a persisted chat-history sidebar and cross-device memory. Everything also works fully anonymously, no signup required, ever.
 
-Two LLM backends, swappable through `LLM_PROVIDER`: Ollama runs locally at zero cost for development, and Groq's free-tier cloud inference handles production, with an automatic secondary-model fallback and a circuit breaker to stay resilient during rate-limit windows.
+Two LLM backends, swappable through `LLM_PROVIDER`: Ollama runs locally at zero cost for development, and Groq's free-tier cloud inference handles production. A per-minute rate limit is waited out and the same request is sent again, and a second model takes over when the first has used its daily budget.
 
 ---
 
@@ -108,7 +108,7 @@ Make (`/generate/`) skips all of the above on purpose. No LLM, no RAG, no segmen
 
 ### Core generation
 
-LLM intent routing picks a template and writes captions through a structured JSON call (Groq in production, Ollama locally), validated against the real template catalog before it ever touches the compositor. It retries on hallucinated ids or malformed JSON, and a secondary-model fallback plus a per-model circuit breaker keep generation working through Groq rate-limit windows.
+LLM intent routing picks a template and writes captions through a structured JSON call (Groq in production, Ollama locally), validated against the real template catalog before it ever touches the compositor. It retries on hallucinated ids or malformed JSON, with the same candidates and descriptions the first attempt had. A per-minute rate limit is waited out and the same prompt is sent again, so a busy minute costs time and not quality. If the wait would not fit in the request's time limit, the visitor is told MemeGPT is busy. A second model takes over when the primary has used its daily budget.
 
 RAG template retrieval runs ChromaDB semantic search over 120+ templates. Embeddings are precomputed and checked into the repo, so a cold start never re-pays the embedding cost.
 

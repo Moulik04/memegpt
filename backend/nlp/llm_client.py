@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 
 import httpx
 
@@ -53,6 +54,22 @@ _DAILY_CIRCUIT_PREFIX = "groq-daily:"
 _DAILY_LIMIT_MIN_RETRY_AFTER_SECONDS = 120.0
 _DAILY_LIMIT_DEFAULT_COOLDOWN_SECONDS = 900.0  # a daily 429 with no usable retry-after
 _DAILY_LIMIT_MAX_COOLDOWN_SECONDS = 6 * 3600.0  # the window is rolling, so some of it is back by then
+
+# The per-minute wait when Groq names none, and the least a named one is
+# taken to be: a "retry-after: 0" answered at once would just be asked again.
+_RATE_LIMIT_DEFAULT_WAIT_SECONDS = 3.0
+_RATE_LIMIT_MIN_WAIT_SECONDS = 1.0
+# Without a deadline from the caller, a wait is cut to this and tried twice.
+_RATE_LIMIT_CAPPED_WAIT_SECONDS = 8.0
+
+
+class RateLimited(Exception):
+    """The per-minute limit, and the wait Groq asked for would run past the
+    caller's deadline. Nothing was generated."""
+
+    def __init__(self, retry_after: float):
+        super().__init__(f"rate limited, retry after {retry_after:.1f}s")
+        self.retry_after = retry_after
 
 
 def retry_after_seconds(response: httpx.Response) -> float | None:
@@ -129,6 +146,7 @@ async def call_groq(
     messages: list[dict],
     temperature: float = 0.75,
     max_tokens: int | None = None,
+    wait_until: float | None = None,
 ) -> str:
     """Groq cloud inference — free tier, ~400 t/s, no GPU required.
 
@@ -139,10 +157,18 @@ async def call_groq(
 
     A model known to be out of its daily budget is not called at all, and a
     429 that turns out to be the daily cap is not waited on or retried: both
-    return empty at once, like the exhausted per-minute case below."""
+    return empty at once, like the exhausted per-minute case below.
+
+    wait_until (a time.monotonic() deadline) changes what the per-minute
+    limit does. With it, every such 429 is waited out for as long as Groq
+    says and the same messages are sent again, until one is answered; a wait
+    that would end after the deadline is not started and RateLimited is
+    raised instead. Without it, the wait is cut to a few seconds, tried
+    twice, and an empty string comes back."""
     if daily_limit_active(settings.groq_model):
         return ""
-    for attempt in range(2):
+    capped_waits = 0
+    while True:
         payload: dict = {
             "model": settings.groq_model,
             "messages": messages,
@@ -174,19 +200,27 @@ async def call_groq(
             if daily_cooldown is not None:
                 mark_daily_limit(settings.groq_model, daily_cooldown)
                 return ""
-            # Rate limited — respect Groq's retry-after (cap at 8s so we don't stall forever)
             retry_after = retry_after_seconds(response)
-            await asyncio.sleep(min(3 if retry_after is None else retry_after, 8))
+            wait = _RATE_LIMIT_DEFAULT_WAIT_SECONDS if retry_after is None else retry_after
+            if wait_until is not None:
+                wait = max(wait, _RATE_LIMIT_MIN_WAIT_SECONDS)
+                if time.monotonic() + wait > wait_until:
+                    raise RateLimited(wait)
+                await asyncio.sleep(wait)
+                continue
+            # No deadline to wait against: cap the wait so the call cannot stall.
+            await asyncio.sleep(min(wait, _RATE_LIMIT_CAPPED_WAIT_SECONDS))
+            capped_waits += 1
+            if capped_waits == 2:
+                break
             continue
         response.raise_for_status()
         circuit_breaker.reset(f"groq:{settings.groq_model}")
         return response.json()["choices"][0]["message"]["content"].strip()
     # Both attempts hit 429 — return empty so the caller falls through to its
-    # own hard fallback rather than raising httpx.HTTPStatusError and
-    # bypassing that fallback entirely. Also trip this model's circuit so
-    # a caller with multiple models to try (intent_router.py's secondary-
-    # model fallback) can skip straight past a model it already knows is
-    # currently rate-limited on a subsequent request.
+    # own fallback rather than raising httpx.HTTPStatusError and bypassing
+    # it entirely. The model's circuit is opened too, which the telemetry
+    # gauge reports.
     circuit_breaker.trip(f"groq:{settings.groq_model}", _GROQ_CIRCUIT_COOLDOWN_SECONDS)
     return ""
 
@@ -236,10 +270,12 @@ async def call_llm(
     messages: list[dict],
     temperature: float = 0.75,
     max_tokens: int | None = None,
+    wait_until: float | None = None,
 ) -> str:
-    """Route to Groq (cloud) or Ollama (local) based on LLM_PROVIDER config."""
+    """Route to Groq (cloud) or Ollama (local) based on LLM_PROVIDER config.
+    wait_until is Groq's (see call_groq); a local model has no rate limit."""
     if settings.llm_provider == "groq" and settings.groq_api_key:
-        return await call_groq(client, settings, messages, temperature, max_tokens)
+        return await call_groq(client, settings, messages, temperature, max_tokens, wait_until)
     return await call_ollama(client, settings, messages, temperature, max_tokens)
 
 

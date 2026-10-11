@@ -204,7 +204,7 @@ async def test_a_decimal_retry_after_does_not_break_the_text_call(no_sleep):
 # --- the router's hard fallback ---------------------------------------------
 
 
-async def _llm_with_nothing_to_say(client, settings, messages, temperature=0.75, max_tokens=None):
+async def _llm_with_nothing_to_say(client, settings, messages, temperature=0.75, max_tokens=None, **kwargs):
     return ""
 
 
@@ -236,7 +236,7 @@ async def test_a_real_pick_from_the_second_model_is_still_a_real_pick(monkeypatc
     mark_daily_limit(_MODEL, 600)
     asked: list[str] = []
 
-    async def second_model_answers(client, settings, messages, temperature=0.75, max_tokens=None):
+    async def second_model_answers(client, settings, messages, temperature=0.75, max_tokens=None, **kwargs):
         asked.append(settings.groq_model)
         return '{"template_id": "drake", "texts": {"rejected_option": "a"}}'
 
@@ -291,7 +291,7 @@ async def test_a_lore_batch_stops_at_the_first_meme_the_budget_could_not_cover(m
             return IntentResponse(template_id="drake", texts={"rejected_option": "a"}, reasoning="a pick")
         return await _out_of_budget_intent(user_message)
 
-    async def three_moments(client, settings, messages, temperature=0.75, max_tokens=None):
+    async def three_moments(client, settings, messages, temperature=0.75, max_tokens=None, **kwargs):
         return json.dumps({"contexts": [
             {"situation": "the landlord raised the rent again"},
             {"situation": "my flight got cancelled at the gate"},

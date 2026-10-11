@@ -6,6 +6,9 @@ Features:
   - avoid_templates: conversation memory prevents template repetition within a session
   - JSON normalization: handles 3 common LLM output format deviations
   - Retry with strict prompt + lower temperature on parse failure
+  - A rate limit is waited out and the same prompt sent again, never answered
+    with the retry prompt. If there is no time to wait, the caller is told
+    the pick could not be made (is_busy_fallback)
   - Hard fallback: always returns a valid IntentResponse — never raises to the caller
 """
 
@@ -13,23 +16,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 
 import httpx
 from pydantic import ValidationError
 
-import circuit_breaker
 import telemetry
 from config import get_settings
 from image_processing.template_configs import DEFAULT_BOX_DESCRIPTIONS, get_config
-from nlp.llm_client import call_llm, daily_limit_active, strip_markdown
+from nlp.llm_client import RateLimited, call_llm, daily_limit_active, strip_markdown
 from schemas import IntentResponse
 from vector_db.chroma_client import list_template_ids, query_similar_memes
 from vector_db.examples_store import get_similar_examples
-
-# Both defined in nlp/llm_client.py's call_groq(), but re-derived here
-# purely for the "should we even try the primary model this request"
-# skip-ahead check — see the resilience block in _parse_intent_inner().
-_GROQ_CIRCUIT_PREFIX = "groq:"
 
 _FALLBACK_TEMPLATES = [
     "drake", "distracted_boyfriend", "this_is_fine", "change_my_mind",
@@ -260,12 +258,11 @@ def _normalize_llm_response(data, known_ids: set[str]) -> dict:
 
 def _normalize_texts_to_box_labels(texts: dict, template_id: str) -> dict[str, str]:
     """Maps caption keys onto the resolved template's real box labels,
-    case-insensitively. Only the rich first-attempt system prompt tells the
-    model each template's exact box labels (via _build_template_catalog's
-    "b" field) — a model that falls through to the retry-path prompt has
-    produced plausible-but-wrong-case keys (e.g. "BUTTON_1" instead of
-    "button_1") often enough to be worth salvaging here rather than
-    discarding a perfectly good caption and re-rolling.
+    case-insensitively. Both prompts list each template's exact box labels
+    (_build_template_catalog's "b" field), and a model has still produced
+    plausible-but-wrong-case keys (e.g. "BUTTON_1" instead of "button_1")
+    often enough to be worth salvaging here rather than discarding a
+    perfectly good caption and re-rolling.
 
     Returns {} when NONE of the keys match any real label even
     case-insensitively (e.g. the literal "BOX_LABEL" placeholder some
@@ -285,26 +282,20 @@ def _normalize_texts_to_box_labels(texts: dict, template_id: str) -> dict[str, s
     return normalized
 
 
-def _format_box_labels(template_ids: list[str]) -> str:
-    lines = []
-    for tid in template_ids:
-        config = get_config(tid)
-        boxes = config.box_descriptions or DEFAULT_BOX_DESCRIPTIONS
-        lines.append(f"  {tid}: {', '.join(boxes.keys())}")
-    return "\n".join(lines)
-
-
 def _build_retry_prompt(user_message: str, template_ids: list[str]) -> str:
-    """The strict fallback prompt used once the rich first-attempt prompt
-    fails to parse. Used to list only template_ids and a generic
-    "BOX_LABEL" placeholder example — the model had no way to know the
-    real box labels for whichever template it picked, and either echoed
-    "BOX_LABEL" back literally or guessed a plausible name in the wrong
-    case. Now includes each candidate's real labels, the same information
-    _build_template_catalog already gives the rich prompt."""
+    """The strict prompt sent when the first attempt's reply could not be
+    used. It carries the same catalog as the first attempt, every candidate
+    with its "when to use" text and its box labels, so the retry is the same
+    task asked more bluntly. It leaves out the few-shot examples and the
+    taste and recency nudges, and is sent at a low temperature.
+
+    It used to list only the first fourteen candidates, all of them core
+    templates, with box labels and no descriptions. A pick made from that
+    was right about one time in five on the eval's golden set, because the
+    fitting template was usually not on the list at all."""
     return _RETRY_TEMPLATE.format(
         user_message=user_message,
-        template_box_labels=_format_box_labels(template_ids[:14]),
+        template_catalog=json.dumps(_build_template_catalog(template_ids), indent=2),
     )
 
 
@@ -342,10 +333,11 @@ Rules: use only template_ids and box labels listed above; captions under 80 char
 _RETRY_TEMPLATE = """\
 You are a JSON API. The user said: "{user_message}"
 
-Pick ONE template_id below and use ITS EXACT box labels (shown after the
-colon) as the keys in "texts" — do not invent your own key names or change
-their case:
-{template_box_labels}
+Pick the ONE template below that best fits what the user said. Each key is a
+template_id. "w" = when to use it. "b" = its box labels: use those exact
+labels as the keys in "texts" — do not invent your own key names or change
+their case.
+{template_catalog}
 
 Return ONLY this exact JSON shape, nothing else:
 {{"template_id": "<id from above>", "texts": {{"<real box label>": "<caption>"}}, "reasoning": "WHY"}}
@@ -354,15 +346,22 @@ Output raw JSON only — no markdown, no explanation.\
 """
 
 
-def _finalize_result(data: dict, known_id_set: set[str]) -> IntentResponse:
+# What the router itself records on a pick. A reply naming them is ignored.
+_ROUTER_OWNED_FIELDS = ("prompt_used", "model_used")
+
+
+def _finalize_result(data: dict, known_id_set: set[str], *, prompt: str, model: str) -> IntentResponse:
     """Shared validation for all three parse attempts: a real, known
     template_id AND at least one caption that actually matches one of that
     template's real box labels. Raises ValueError on either failure so
     every call site's existing except clause treats it exactly like a JSON
     parse failure — retry, then the hard fallback — rather than silently
     returning a response that would render as a blank meme (see
-    _normalize_texts_to_box_labels)."""
-    result = IntentResponse(**data)
+    _normalize_texts_to_box_labels).
+
+    prompt ("full" or "retry") and model ("primary" or "second") say which
+    attempt this was. They are kept on the pick and written to the log."""
+    result = IntentResponse(**{k: v for k, v in data.items() if k not in _ROUTER_OWNED_FIELDS})
     if result.template_id not in known_id_set:
         raise ValueError(f"Hallucinated template_id: {result.template_id}")
     normalized_texts = _normalize_texts_to_box_labels(result.texts, result.template_id)
@@ -370,10 +369,16 @@ def _finalize_result(data: dict, known_id_set: set[str]) -> IntentResponse:
         raise ValueError(
             f"No usable captions for {result.template_id}'s box labels: {result.texts}"
         )
-    return result.model_copy(update={"texts": normalized_texts})
+    telemetry.record_router_pick(prompt, model, result.template_id)
+    return result.model_copy(update={"texts": normalized_texts, "prompt_used": prompt, "model_used": model})
 
 
 _OVERALL_TIMEOUT_SECONDS = 45.0
+
+# A rate-limit wait has to end this long before the ceiling above, so the
+# attempt that follows it still has time to answer. The full prompt took 1.3
+# to 2.3 seconds to answer on the 2026-10-10 eval run.
+_ANSWER_ALLOWANCE_SECONDS = 5.0
 
 # Every hard fallback below tags its reasoning with this prefix, and
 # is_fallback() is how everything downstream (the SSE done event, the deploy
@@ -395,6 +400,27 @@ def is_daily_budget_fallback(intent: IntentResponse) -> bool:
     return intent.reasoning == DAILY_BUDGET_FALLBACK_REASONING
 
 
+# The reasoning when the provider's per-minute limit asked for a wait that
+# would have run past this request's time limit. The caller shows the busy
+# notice for this one instead of rendering anything (routers/chat.py).
+BUSY_FALLBACK_REASONING = f"{FALLBACK_REASONING_PREFIX} rate limited with no time left to wait"
+
+
+def is_busy_fallback(intent: IntentResponse) -> bool:
+    return intent.reasoning == BUSY_FALLBACK_REASONING
+
+
+def _canned(user_message: str, reasoning: str) -> IntentResponse:
+    return IntentResponse(
+        template_id="hide_the_pain_harold",
+        texts={
+            "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
+            "bottom_text": "This is fine.",
+        },
+        reasoning=reasoning,
+    )
+
+
 def _hard_fallback(user_message: str, why: str) -> IntentResponse:
     """The canned meme every failed path ends in. If the primary model is
     out for the day, that is the reason given, whatever the last attempt
@@ -404,14 +430,15 @@ def _hard_fallback(user_message: str, why: str) -> IntentResponse:
     reasoning = f"{FALLBACK_REASONING_PREFIX} {why}"
     if daily_limit_active(get_settings().groq_model):
         reasoning = DAILY_BUDGET_FALLBACK_REASONING
-    return IntentResponse(
-        template_id="hide_the_pain_harold",
-        texts={
-            "top_text": user_message[:60] if len(user_message) <= 60 else user_message[:57] + "...",
-            "bottom_text": "This is fine.",
-        },
-        reasoning=reasoning,
-    )
+    return _canned(user_message, reasoning)
+
+
+def _busy_fallback(user_message: str, retry_after: float) -> IntentResponse:
+    """Not a pick and not meant to be rendered: a per-minute limit could not
+    be waited out in the time this request has. It has the shape of a pick
+    only so parse_intent() keeps its promise never to raise."""
+    telemetry.record_router_busy(retry_after)
+    return _canned(user_message, BUSY_FALLBACK_REASONING)
 
 
 async def parse_intent(
@@ -445,19 +472,26 @@ async def parse_intent(
     humor only if genuinely relevant. Only ever reaches the prompt through
     this instruction channel, never through user_message/situation text.
 
-    Bounded to _OVERALL_TIMEOUT_SECONDS total — the two attempts inside
-    _parse_intent_inner() each carry their own per-call timeout, but a
-    pathological run (429s on both the primary AND retry attempts, each
-    internally retrying once inside call_groq()) can compound past 90s with
-    zero events reaching the caller. A hang with no fallback is strictly
-    worse than the existing hard fallback below arriving a little late, so
-    this outer boundary guarantees SOME response within a fixed ceiling.
+    Bounded to _OVERALL_TIMEOUT_SECONDS total — the attempts inside
+    _parse_intent_inner() each carry their own per-call timeout, but slow
+    replies can add up with zero events reaching the caller. A hang with no
+    fallback is strictly worse than the hard fallback below arriving a
+    little late, so this outer boundary guarantees SOME response within a
+    fixed ceiling.
+
+    The same ceiling is what a rate limit is waited against. A per-minute
+    limit is waited out for as long as the provider says and the same prompt
+    is sent again; the pick never moves to the retry prompt or the second
+    model because of it. If a wait would not leave time to answer before
+    the ceiling, the result is the busy fallback (is_busy_fallback), which
+    the caller reports instead of rendering.
     """
+    wait_until = time.monotonic() + _OVERALL_TIMEOUT_SECONDS - _ANSWER_ALLOWANCE_SECONDS
     try:
         return await asyncio.wait_for(
             _parse_intent_inner(
                 user_message, avoid_templates, loved_templates, hated_templates, lexicon,
-                exclude_templates,
+                exclude_templates, wait_until=wait_until,
             ),
             timeout=_OVERALL_TIMEOUT_SECONDS,
         )
@@ -504,6 +538,7 @@ async def _parse_intent_inner(
     hated_templates: list[str] | None = None,
     lexicon: list[str] | None = None,
     exclude_templates: list[str] | None = None,
+    wait_until: float | None = None,
 ) -> IntentResponse:
     settings = get_settings()
 
@@ -568,59 +603,53 @@ async def _parse_intent_inner(
         and settings.groq_fallback_model
         and settings.groq_fallback_model != settings.groq_model
     )
-    # If we already know (within the last cooldown window) that the
-    # primary model is rate-limited, don't pay its retry-with-wait tax
-    # again this request — skip straight to the fallback-model attempt.
-    skip_primary = has_fallback_model and circuit_breaker.is_open(
-        _GROQ_CIRCUIT_PREFIX + settings.groq_model
+    # A primary model that is out for the day is not asked at all: the
+    # second model has a daily budget of its own. A per-minute limit is not
+    # a reason to skip it, it is waited out below.
+    skip_primary = has_fallback_model and daily_limit_active(settings.groq_model)
+
+    async def ask(model_settings, messages: list[dict], **options) -> dict:
+        raw = await call_llm(client, model_settings, messages, wait_until=wait_until, **options)
+        return _normalize_llm_response(json.loads(strip_markdown(raw)), known_id_set)
+
+    unusable_reply = (
+        json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError,
     )
+    retry_messages = [{"role": "user", "content": retry_prompt}]
 
     async with httpx.AsyncClient() as client:
-        if not skip_primary:
-            # Attempt 1 — rich prompt with few-shot + avoid block
-            try:
-                raw = await call_llm(client, settings, [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ])
-                raw = strip_markdown(raw)
-                data = json.loads(raw)
-                data = _normalize_llm_response(data, known_id_set)
-                return _finalize_result(data, known_id_set)
-            except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
-                telemetry.record_intent_parse_failure("primary")
-                pass
+        try:
+            if not skip_primary:
+                # Attempt 1 — rich prompt with few-shot + avoid block
+                try:
+                    data = await ask(settings, [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ])
+                    return _finalize_result(data, known_id_set, prompt="full", model="primary")
+                except unusable_reply:
+                    telemetry.record_intent_parse_failure("primary")
 
-            # Attempt 2 — minimal strict prompt at low temperature, same model
-            try:
-                raw = await call_llm(client, settings, [
-                    {"role": "user", "content": retry_prompt},
-                ], temperature=0.2)
-                raw = strip_markdown(raw)
-                data = json.loads(raw)
-                data = _normalize_llm_response(data, known_id_set)
-                return _finalize_result(data, known_id_set)
-            except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
-                telemetry.record_intent_parse_failure("retry")
-                pass
+                # Attempt 2 — the strict prompt at low temperature, same
+                # model. Only an unusable reply gets here, never a rate limit.
+                try:
+                    data = await ask(settings, retry_messages, temperature=0.2)
+                    return _finalize_result(data, known_id_set, prompt="retry", model="primary")
+                except unusable_reply:
+                    telemetry.record_intent_parse_failure("retry")
 
-        # Attempt 3 — same strict prompt, a genuinely different Groq model.
-        # Only reached if attempts 1+2 both failed, or were skipped
-        # entirely because we already knew the primary model was
-        # rate-limited this request.
-        if has_fallback_model:
-            fallback_settings = settings.model_copy(update={"groq_model": settings.groq_fallback_model})
-            try:
-                raw = await call_llm(client, fallback_settings, [
-                    {"role": "user", "content": retry_prompt},
-                ], temperature=0.2)
-                raw = strip_markdown(raw)
-                data = json.loads(raw)
-                data = _normalize_llm_response(data, known_id_set)
-                return _finalize_result(data, known_id_set)
-            except (json.JSONDecodeError, ValidationError, ValueError, KeyError, TypeError, AttributeError, httpx.HTTPError):
-                telemetry.record_intent_parse_failure("fallback_model")
-                pass
+            # Attempt 3 — same strict prompt, a genuinely different Groq
+            # model. Reached if attempts 1+2 both gave unusable replies, or
+            # were skipped because the primary model is out for the day.
+            if has_fallback_model:
+                fallback_settings = settings.model_copy(update={"groq_model": settings.groq_fallback_model})
+                try:
+                    data = await ask(fallback_settings, retry_messages, temperature=0.2)
+                    return _finalize_result(data, known_id_set, prompt="retry", model="second")
+                except unusable_reply:
+                    telemetry.record_intent_parse_failure("fallback_model")
+        except RateLimited as limited:
+            return _busy_fallback(user_message, limited.retry_after)
 
     # Hard fallback — always returns something rather than 500-ing
     return _hard_fallback(user_message, "model failed to produce valid JSON on both attempts")

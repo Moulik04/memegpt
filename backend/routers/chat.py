@@ -53,7 +53,7 @@ from config import get_settings
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
-from nlp.intent_router import is_daily_budget_fallback, is_fallback, parse_intent
+from nlp.intent_router import is_busy_fallback, is_daily_budget_fallback, is_fallback, parse_intent
 from nlp.lexicon import schedule_lexicon_extraction
 from nlp.segmentation import resolve_contexts
 from nlp.vision import (
@@ -241,6 +241,12 @@ async def _stream_chat_turn(
     if is_daily_budget_fallback(intent):
         # No canned meme for this one: it would say nothing about why.
         yield notice_event(REASON_SITE_BUDGET, DAILY_BUDGET_MESSAGE, index=index, total=total)
+        return
+
+    if is_busy_fallback(intent):
+        # The provider's per-minute limit could not be waited out in time.
+        # Saying so beats a pick made from less than the full prompt.
+        yield notice_event(REASON_BUSY, BUSY_MESSAGE, index=index, total=total)
         return
 
     if exclude_templates and intent.template_id in exclude_templates:

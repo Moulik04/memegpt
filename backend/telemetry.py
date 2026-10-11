@@ -16,6 +16,7 @@ recording function anywhere needs its own disabled-check as a result.
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 from collections.abc import Iterable
@@ -95,6 +96,14 @@ hard_fallback_hits_total = _meter.create_counter(
     "hard_fallback_hits_total",
     description="Count of times parse_intent returned the hardcoded fallback meme.",
 )
+router_picks_total = _meter.create_counter(
+    "router_picks_total",
+    description="Count of template picks, by the prompt (full or retry) and model (primary or second) that made them.",
+)
+router_busy_total = _meter.create_counter(
+    "router_busy_total",
+    description="Count of picks given up on because a rate limit could not be waited out in time.",
+)
 moderation_rejections_total = _meter.create_counter(
     "moderation_rejections_total",
     description="Count of moderation rejections (image or text), by category.",
@@ -145,6 +154,23 @@ def record_intent_parse_failure(stage: str) -> None:
 
 def record_hard_fallback_hit() -> None:
     hard_fallback_hits_total.add(1)
+
+
+def record_router_pick(prompt: str, model: str, template_id: str) -> None:
+    """One template pick, and what made it: the full prompt or the retry
+    prompt, the primary model or the second one. The two prompts are not the
+    same task, so a count that mixes them says little about either. Logged
+    as one line for the same reason record_upload_refusal's is. A template
+    id is a catalog name, not anything the visitor wrote."""
+    router_picks_total.add(1, attributes={"prompt": prompt, "model": model})
+    logger.warning("router_pick prompt=%s model=%s template=%s", prompt, model, template_id)
+
+
+def record_router_busy(retry_after: float) -> None:
+    """A pick was not made: the provider's per-minute limit asked for a wait
+    that would have run past the request's time limit."""
+    router_busy_total.add(1)
+    logger.warning("router_busy retry_after=%ds", math.ceil(retry_after))
 
 
 def record_moderation_rejection(category: str) -> None:

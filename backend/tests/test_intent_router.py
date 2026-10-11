@@ -12,7 +12,6 @@ import asyncio
 
 import pytest
 
-import circuit_breaker as cb
 import nlp.intent_router as intent_router
 from config import Settings
 from nlp.intent_router import parse_intent
@@ -21,7 +20,7 @@ from nlp.intent_router import parse_intent
 async def test_hanging_llm_call_falls_back_within_the_timeout_ceiling(monkeypatch):
     monkeypatch.setattr(intent_router, "_OVERALL_TIMEOUT_SECONDS", 0.05)
 
-    async def hanging_call_llm(client, settings, messages, temperature=0.75):
+    async def hanging_call_llm(client, settings, messages, temperature=0.75, **kwargs):
         await asyncio.sleep(10)
         return '{"template_id": "drake", "texts": {}}'
 
@@ -43,7 +42,7 @@ async def test_llm_returning_a_single_item_array_is_salvaged(monkeypatch):
     unambiguous enough to unwrap and use directly, rather than discarding
     a perfectly good response just because of the wrapping."""
 
-    async def array_call_llm(client, settings, messages, temperature=0.75):
+    async def array_call_llm(client, settings, messages, temperature=0.75, **kwargs):
         return '[{"template_id": "drake", "texts": {"rejected_option": "a"}}]'
 
     monkeypatch.setattr(intent_router, "call_llm", array_call_llm)
@@ -58,7 +57,7 @@ async def test_llm_returning_a_multi_item_array_falls_back_gracefully(monkeypatc
     unambiguous enough to salvage — must degrade to the hard fallback
     like any other malformed response, not raise an unhandled exception."""
 
-    async def array_call_llm(client, settings, messages, temperature=0.75):
+    async def array_call_llm(client, settings, messages, temperature=0.75, **kwargs):
         return '[{"template_id": "drake"}, {"template_id": "grus_plan"}]'
 
     monkeypatch.setattr(intent_router, "call_llm", array_call_llm)
@@ -99,7 +98,7 @@ def _groq_settings(model="qwen/qwen3.6-27b", fallback="openai/gpt-oss-120b") -> 
 async def test_fallback_model_attempt_fires_when_primary_fails_twice(monkeypatch):
     monkeypatch.setattr(intent_router, "get_settings", lambda: _groq_settings())
 
-    async def call_llm_by_model(client, settings, messages, temperature=0.75):
+    async def call_llm_by_model(client, settings, messages, temperature=0.75, **kwargs):
         if settings.groq_model == "openai/gpt-oss-120b":
             return '{"template_id": "drake", "texts": {"rejected_option": "a"}}'
         return "not valid json at all"  # primary model fails both its attempts
@@ -119,7 +118,7 @@ async def test_no_distinct_fallback_model_behaves_exactly_as_before(monkeypatch)
 
     calls: list[str] = []
 
-    async def call_llm_track(client, settings, messages, temperature=0.75):
+    async def call_llm_track(client, settings, messages, temperature=0.75, **kwargs):
         calls.append(settings.groq_model)
         return "not valid json"
 
@@ -131,22 +130,9 @@ async def test_no_distinct_fallback_model_behaves_exactly_as_before(monkeypatch)
     assert result.template_id == "hide_the_pain_harold"
 
 
-async def test_open_primary_circuit_skips_straight_to_fallback_model(monkeypatch):
-    monkeypatch.setattr(intent_router, "get_settings", lambda: _groq_settings())
-    cb.trip("groq:qwen/qwen3.6-27b", cooldown_seconds=60)
-
-    calls: list[str] = []
-
-    async def call_llm_track(client, settings, messages, temperature=0.75):
-        calls.append(settings.groq_model)
-        return '{"template_id": "drake", "texts": {"rejected_option": "a"}}'
-
-    monkeypatch.setattr(intent_router, "call_llm", call_llm_track)
-
-    result = await parse_intent("anything")
-
-    assert calls == ["openai/gpt-oss-120b"]  # attempts 1+2 (primary model) never ran
-    assert result.template_id == "drake"
+# An open per-minute circuit used to send the pick straight to the second
+# model. It no longer does (test_rate_limit_wait.py); only a primary model
+# that is out for the day is skipped (test_daily_budget.py).
 
 
 async def test_all_three_attempts_failing_still_reaches_hard_fallback(monkeypatch):
@@ -154,7 +140,7 @@ async def test_all_three_attempts_failing_still_reaches_hard_fallback(monkeypatc
 
     calls: list[str] = []
 
-    async def call_llm_always_bad(client, settings, messages, temperature=0.75):
+    async def call_llm_always_bad(client, settings, messages, temperature=0.75, **kwargs):
         calls.append(settings.groq_model)
         return "not valid json"
 
@@ -184,7 +170,7 @@ async def test_texts_matching_no_real_box_label_is_not_accepted(monkeypatch):
     not returned as a successful result that would render blank."""
     monkeypatch.setattr(intent_router, "get_settings", lambda: _groq_settings(fallback=""))
 
-    async def call_llm_placeholder_key(client, settings, messages, temperature=0.75):
+    async def call_llm_placeholder_key(client, settings, messages, temperature=0.75, **kwargs):
         return '{"template_id": "two_buttons", "texts": {"BOX_LABEL": "some caption"}, "reasoning": "x"}'
 
     monkeypatch.setattr(intent_router, "call_llm", call_llm_placeholder_key)
@@ -202,7 +188,7 @@ async def test_case_mismatched_real_labels_are_salvaged_not_discarded(monkeypatc
     perfectly good caption and re-rolling."""
     monkeypatch.setattr(intent_router, "get_settings", lambda: _groq_settings(fallback=""))
 
-    async def call_llm_wrong_case(client, settings, messages, temperature=0.75):
+    async def call_llm_wrong_case(client, settings, messages, temperature=0.75, **kwargs):
         return (
             '{"template_id": "two_buttons", '
             '"texts": {"BUTTON_1": "Add to cart", "BUTTON_2": "Checkout"}, '
@@ -263,7 +249,7 @@ async def test_excluded_template_cannot_be_picked_or_even_offered(monkeypatch):
     fails validation exactly like a hallucinated id would."""
     prompts_seen = []
 
-    async def stubborn_call_llm(client, settings, messages, temperature=0.75):
+    async def stubborn_call_llm(client, settings, messages, temperature=0.75, **kwargs):
         prompts_seen.append(" ".join(m["content"] for m in messages))
         return '{"template_id": "drake", "texts": {"rejected_option": "a", "preferred_option": "b"}}'
 

@@ -105,6 +105,11 @@ class IntentResponse(BaseModel):
     template_id: str
     texts: dict[str, str]   # text_box_label → caption, e.g. {"rejected_option": "..."}
     reasoning: str | None = None
+    # Which prompt and which model produced this pick, set by the router for
+    # its log line and the eval harness. Both None on a canned fallback.
+    # Never part of anything this model is dumped into.
+    prompt_used: Literal["full", "retry"] | None = Field(default=None, exclude=True)
+    model_used: Literal["primary", "second"] | None = Field(default=None, exclude=True)
 
 
 # ---------------------------------------------------------------------------

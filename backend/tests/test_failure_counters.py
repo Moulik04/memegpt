@@ -32,7 +32,7 @@ def _groq_settings(model="qwen/qwen3.6-27b", fallback="openai/gpt-oss-120b") -> 
 async def test_all_three_attempts_failing_records_each_stage_and_one_hard_fallback(monkeypatch):
     monkeypatch.setattr(intent_router, "get_settings", lambda: _groq_settings())
 
-    async def call_llm_always_bad(client, settings, messages, temperature=0.75):
+    async def call_llm_always_bad(client, settings, messages, temperature=0.75, **kwargs):
         return "not valid json"
 
     monkeypatch.setattr(intent_router, "call_llm", call_llm_always_bad)
@@ -52,7 +52,7 @@ async def test_all_three_attempts_failing_records_each_stage_and_one_hard_fallba
 async def test_timeout_records_exactly_one_hard_fallback(monkeypatch):
     monkeypatch.setattr(intent_router, "_OVERALL_TIMEOUT_SECONDS", 0.05)
 
-    async def hanging_call_llm(client, settings, messages, temperature=0.75):
+    async def hanging_call_llm(client, settings, messages, temperature=0.75, **kwargs):
         import asyncio
 
         await asyncio.sleep(10)
