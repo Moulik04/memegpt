@@ -75,4 +75,7 @@ and RAG parameter tuning was investigated and ruled out on evidence.
 `--second-model` marks the primary as out for the day, the way production
 does, so every case is answered by the second model with the retry prompt.
 It spends that model's own daily budget, which is separate from the
-primary's.
+primary's. Second-model baseline, 2026-10-11, `--pacing 28`: 40 of 48 right,
+every one of the 40 a clean JSON reply, and 8 replies rejected by Groq as
+malformed JSON (`json_validate_failed`). The malformed ones are not tied to
+particular cases: two of three answered correctly when asked again.
