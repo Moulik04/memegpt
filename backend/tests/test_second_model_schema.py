@@ -32,7 +32,7 @@ _SECOND = "openai/gpt-oss-120b"
 _MESSAGES = [{"role": "user", "content": "the retry prompt"}]
 _DRAKE = (
     '{"template_id": "drake", "texts": [{"box": "rejected_option", "caption": "a"}, '
-    '{"box": "approved_option", "caption": "b"}], "reasoning": "c"}'
+    '{"box": "approved_option", "caption": "b"}]}'
 )
 _SCHEMA = {
     "type": "object",
@@ -155,12 +155,20 @@ def test_the_schema_keeps_to_strict_modes_rules():
     nothing else is allowed in."""
     schema = intent_router._pick_schema(_CANDIDATES)
 
-    assert list(schema["properties"]) == ["template_id", "texts", "reasoning"]
     objects = _objects(schema)
     assert len(objects) == 2
     for obj in objects:
         assert obj["additionalProperties"] is False
         assert obj["required"] == list(obj["properties"])
+
+
+def test_the_schema_holds_the_candidates_and_the_caption_fields_and_nothing_else():
+    """Groq counts the schema as input on every request, so it carries only
+    what it has to."""
+    schema = intent_router._pick_schema(_CANDIDATES)
+
+    assert list(schema["properties"]) == ["template_id", "texts"]
+    assert list(schema["properties"]["texts"]["items"]["properties"]) == ["box", "caption"]
 
 
 def test_the_schema_has_no_alternatives_for_groq_to_refuse():
@@ -175,7 +183,8 @@ def test_the_schema_has_no_alternatives_for_groq_to_refuse():
 def test_the_second_models_prompt_asks_for_the_shape_its_schema_allows():
     prompt = _build_retry_prompt("anything", ["drake", "two_buttons"], captions_as_list=True)
 
-    assert '"texts": [{"box": "<real box label>", "caption": "<caption>"}]' in prompt
+    assert '{"template_id": "<id from above>", "texts": [{"box": "<real box label>", "caption": "<caption>"}]}' in prompt
+    assert "reasoning" not in prompt
     for template_id in ("drake", "two_buttons"):
         assert json.dumps(intent_router.USE_WHEN[template_id]) in prompt
         for box in get_config(template_id).text_boxes:
@@ -228,10 +237,19 @@ async def test_captions_written_as_a_list_end_up_keyed_by_box(monkeypatch):
     assert (result.prompt_used, result.model_used) == ("retry", "second")
 
 
+async def test_a_pick_that_comes_without_a_reason_is_still_a_real_pick(monkeypatch):
+    _second_model_replies(monkeypatch, _DRAKE)
+
+    result = await parse_intent("anything")
+
+    assert result.reasoning is None
+    assert not is_fallback(result)
+
+
 async def test_a_caption_for_a_box_the_picked_template_lacks_is_left_out(monkeypatch):
     _second_model_replies(monkeypatch, (
         '{"template_id": "drake", "texts": [{"box": "rejected_option", "caption": "a"}, '
-        '{"box": "button_1", "caption": "x"}], "reasoning": "c"}'
+        '{"box": "button_1", "caption": "x"}]}'
     ))
 
     result = await parse_intent("anything")
@@ -241,7 +259,7 @@ async def test_a_caption_for_a_box_the_picked_template_lacks_is_left_out(monkeyp
 
 @pytest.mark.parametrize("texts", ["[]", '[{"box": "button_1", "caption": "x"}]', '[{"caption": "a"}]', '["a", "b"]'])
 async def test_a_list_with_no_caption_for_the_picked_template_is_not_accepted(monkeypatch, texts):
-    _second_model_replies(monkeypatch, '{"template_id": "drake", "texts": %s, "reasoning": "c"}' % texts)
+    _second_model_replies(monkeypatch, '{"template_id": "drake", "texts": %s}' % texts)
 
     result = await parse_intent("anything")
 

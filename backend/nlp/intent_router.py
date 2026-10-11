@@ -221,7 +221,10 @@ def _pick_schema(template_ids: list[str]) -> dict:
     the same list and _finalize_result turns it back into the usual object.
 
     The schema does not tie a template to its own boxes; _finalize_result
-    still checks that."""
+    still checks that. It asks for no reasoning either: Groq counts the
+    schema as input on every request (443 more prompt tokens than the
+    prompt alone, 2026-10-11), and nothing downstream reads a pick's
+    reasoning."""
     boxes = list(dict.fromkeys(box.label for tid in template_ids for box in get_config(tid).text_boxes))
     return {
         "type": "object",
@@ -239,9 +242,8 @@ def _pick_schema(template_ids: list[str]) -> dict:
                     "additionalProperties": False,
                 },
             },
-            "reasoning": {"type": "string"},
         },
-        "required": ["template_id", "texts", "reasoning"],
+        "required": ["template_id", "texts"],
         "additionalProperties": False,
     }
 
@@ -402,7 +404,8 @@ Return ONLY this exact JSON shape, nothing else:
 Output raw JSON only — no markdown, no explanation.\
 """
 
-# _RETRY_TEMPLATE with the captions as a list, the shape _pick_schema allows.
+# _RETRY_TEMPLATE with the captions as a list and no reasoning, the shape
+# _pick_schema allows.
 _SECOND_MODEL_TEMPLATE = """\
 You are a JSON API. The user said: "{user_message}"
 
@@ -413,7 +416,7 @@ own names or change their case.
 {template_catalog}
 
 Return ONLY this exact JSON shape, nothing else:
-{{"template_id": "<id from above>", "texts": [{{"box": "<real box label>", "caption": "<caption>"}}], "reasoning": "WHY"}}
+{{"template_id": "<id from above>", "texts": [{{"box": "<real box label>", "caption": "<caption>"}}]}}
 
 Output raw JSON only — no markdown, no explanation.\
 """
