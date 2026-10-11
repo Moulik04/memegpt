@@ -50,6 +50,8 @@ import time
 from collections import Counter
 from dataclasses import dataclass, field
 
+import httpx
+
 import nlp.intent_router as intent_router
 from config import get_settings
 from nlp.intent_router import (
@@ -157,20 +159,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def outcome_tag(row: dict) -> str:
-    if row["final_hit"]:
-        return "OK"
+    # No pick comes first: the canned meme is itself a template one golden
+    # case expects, and a fallback there is still not a right answer.
     if row["is_busy"]:
         return "BUSY"
-    return "FALLBACK" if row["is_fallback"] else "WRONG"
+    if row["is_fallback"]:
+        return "FALLBACK"
+    return "OK" if row["final_hit"] else "WRONG"
 
 
-def reply_kind(raw: str | None) -> str:
+@dataclass(frozen=True)
+class ProviderError:
+    """The provider answered with an HTTP error instead of a reply."""
+
+    status: int
+    code: str | None
+
+
+def reply_kind(raw: str | ProviderError | None) -> str:
     """What the model's last reply for a case was, before any validation:
-    "clean" (it parses as JSON), "malformed", "empty", or "none" when no
-    reply came back at all. A clean reply can still be unusable: a made-up
-    template id, or captions under labels the template does not have."""
+    "clean" (it parses as JSON), "malformed", "empty", "error" for a
+    provider error, or "none" when nothing came back at all. A clean reply
+    can still be unusable: a made-up template id, or captions under labels
+    the template does not have.
+
+    Groq checks JSON itself when asked for a JSON object, and answers 400
+    json_validate_failed in place of output that does not parse. That is the
+    model's malformed JSON, so it is counted as such."""
     if raw is None:
         return "none"
+    if isinstance(raw, ProviderError):
+        return "malformed" if raw.code == "json_validate_failed" else "error"
     if not raw.strip():
         return "empty"
     try:
@@ -184,8 +203,16 @@ def reply_counts(rows: list[dict]) -> dict[str, int]:
     return dict(Counter(row["reply"] for row in rows))
 
 
-# Every raw reply the router received for the case in hand, oldest first.
-_replies: list[str] = []
+# Every raw reply (or provider error) for the case in hand, oldest first.
+_replies: list[str | ProviderError] = []
+
+
+def _provider_error(exc: httpx.HTTPStatusError) -> ProviderError:
+    try:
+        code = (exc.response.json().get("error") or {}).get("code")
+    except ValueError:
+        code = None
+    return ProviderError(exc.response.status_code, code)
 
 
 def _record_replies() -> None:
@@ -194,7 +221,11 @@ def _record_replies() -> None:
     real_call = intent_router.call_llm
 
     async def recording_call(*args, **kwargs) -> str:
-        raw = await real_call(*args, **kwargs)
+        try:
+            raw = await real_call(*args, **kwargs)
+        except httpx.HTTPStatusError as exc:
+            _replies.append(_provider_error(exc))
+            raise
         _replies.append(raw)
         return raw
 
@@ -223,7 +254,7 @@ async def run_one(case: GoldenCase, known_ids: set[str]) -> dict:
     result = await parse_intent(case.message)
     latency = time.monotonic() - t0
     fallback_hit = is_fallback(result)
-    final_hit = result.template_id in case.acceptable_ids
+    final_hit = not fallback_hit and result.template_id in case.acceptable_ids
 
     return {
         "message": case.message,
@@ -320,7 +351,7 @@ async def main(pacing: float = _PACING_SECONDS, second_model: bool = False) -> N
     kinds = reply_counts(rows)
     print(
         "Last reply per case:         "
-        + ", ".join(f"{kinds.get(kind, 0)} {kind}" for kind in ("clean", "malformed", "empty", "none"))
+        + ", ".join(f"{kinds.get(kind, 0)} {kind}" for kind in ("clean", "malformed", "empty", "error", "none"))
     )
     unusable_clean = sum(1 for r in fallback_rows if r["reply"] == "clean")
     if unusable_clean:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.eval_template_matching import (
+    ProviderError,
     accuracy_by_prompt,
     outcome_tag,
     parse_args,
@@ -75,3 +76,22 @@ def test_replies_are_counted_by_kind():
     rows = [{"reply": "clean"}, {"reply": "clean"}, {"reply": "malformed"}, {"reply": "empty"}, {"reply": "none"}]
 
     assert reply_counts(rows) == {"clean": 2, "malformed": 1, "empty": 1, "none": 1}
+
+
+def test_a_canned_fallback_is_never_shown_as_a_right_answer():
+    """The canned meme is hide_the_pain_harold, which one golden case
+    expects. A fallback on that case is still not a pick."""
+    assert outcome_tag(_row(None, True, fallback=True)) == "FALLBACK"
+    assert outcome_tag(_row(None, True, fallback=True, busy=True)) == "BUSY"
+
+
+def test_output_the_provider_rejected_as_invalid_json_counts_as_malformed():
+    """With response_format json_object Groq answers 400 json_validate_failed
+    instead of handing back what the model wrote. No reply reaches the
+    router, but it was the model's JSON that was wrong."""
+    assert reply_kind(ProviderError(400, "json_validate_failed")) == "malformed"
+
+
+def test_any_other_provider_error_is_its_own_kind():
+    assert reply_kind(ProviderError(503, None)) == "error"
+    assert reply_kind(ProviderError(400, "model_decommissioned")) == "error"
