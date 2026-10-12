@@ -187,6 +187,12 @@ USE_WHEN: dict[str, str] = {
     "grim_reaper_knocking_door": "CASUAL MENACE, NEXT VICTIM: A bloody trail out of the last door, then a calm, polite knock on the next one — moving on to repeat something bad with total composure, like nothing just happened. E.g. calmly opening a new incident channel right after the last outage's retro. NOT for sitting inside ongoing chaos and denying it (this_is_fine) or a plan backfiring on its own author (grus_plan).",
     "c_mon_do_something": "SILENT ACCUSATORY POINTING: A crude, masked, deadpan figure stands off to the side pointing wordlessly at a specific action or event just offscreen — no argument, no dialogue, just damning silence. E.g. calling out a coworker who reopened the same bug three sprints in a row. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
 
+    # --- Trend pipeline additions ---
+    "bernie_sanders_once_again_asking": "PROGRESSIVE BLUR ESCALATION: The same person or scene shown in three panels where the focus/quality degrades from clear to blurry to completely unreadable, representing a situation or idea getting progressively worse or more confusing. NOT for a single static image with a caption (this is a 3-panel format) and NOT for a two-step rephrase (tuxedo_winnie_the_pooh).",
+    "bad_luck_brian": "IDENTICAL IMAGE COMPARISON: Two panels showing the exact same photo (or near-identical crops) to prove that two things people claim are different are actually the same — the humor comes from the visual redundancy. NOT for genuinely different but similar images (is_this_a_pigeon) or a 4-step escalation (expanding_brain).",
+    "look_at_me": "SNEAKY DOUBLE-TALK: A two-panel exchange where the top person makes a bold, confident, or aggressive statement, and the bottom person replies with a completely unrelated, absurdly literal, or nonsensical counter-statement that deflates the tension. NOT for a direct argument (woman_yelling_at_cat) or a simple preference (drake).",
+    "wolverine_remember": "DELUSIONAL SELF-REFLECTION: A character calmly looking at their own reflection in a mirror, where the reflection is a completely different, often more monstrous or absurd version of themselves, representing a gap between self-image and reality. NOT for a simple two-person argument (woman_yelling_at_cat) or a comparison of two external things (buff_doge_vs_cheems).",
+
 }
 
 
