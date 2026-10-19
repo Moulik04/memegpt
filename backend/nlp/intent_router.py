@@ -187,6 +187,12 @@ USE_WHEN: dict[str, str] = {
     "grim_reaper_knocking_door": "CASUAL MENACE, NEXT VICTIM: A bloody trail out of the last door, then a calm, polite knock on the next one — moving on to repeat something bad with total composure, like nothing just happened. E.g. calmly opening a new incident channel right after the last outage's retro. NOT for sitting inside ongoing chaos and denying it (this_is_fine) or a plan backfiring on its own author (grus_plan).",
     "c_mon_do_something": "SILENT ACCUSATORY POINTING: A crude, masked, deadpan figure stands off to the side pointing wordlessly at a specific action or event just offscreen — no argument, no dialogue, just damning silence. E.g. calling out a coworker who reopened the same bug three sprints in a row. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
 
+    # --- Trend pipeline additions ---
+    "bernie_sanders_once_again_asking": "DECLINING COGNITIVE FUNCTION: A three-panel visual degradation of the SAME person's face and focus, moving from a clear, articulate statement to a blurry, garbled, or completely incoherent version of it as the situation worsens or they get tired. NOT for a comparison of two different people (buff_doge_vs_cheems) or a multi-step plan that backfires (grus_plan).",
+    "bad_luck_brian": "SUSPICIOUSLY IDENTICAL: Two photos that are supposed to be different people or moments, but are actually the exact same image (or nearly so), used to mock a fake comparison, a copy-paste error, or a 'different' version that is clearly a duplicate. NOT for genuinely distinct but similar things (bell_curve, midwit_bell_curve) and NOT for a single person's changing expression (panik_kalm_panik).",
+    "look_at_me": "SNEAKY SIDE-EYE: A character is caught in the act of doing something shady or checking out something they shouldn't, looking directly at the viewer with a 'you didn't see that' expression. NOT for a committed love triangle (distracted_boyfriend) or a simple shocked reaction (surprised_pikachu).",
+    "wolverine_remember": "SPOILER REVEAL / THE PLOT HOLE: A two-panel sequence where the top panel shows a character calmly reading or observing something, and the bottom panel is a close-up of their hands holding a frame or window that reveals a glaring, absurd contradiction or missing element in the scene. NOT for general shock at consequences (surprised_pikachu) or a slow technical correction (batman_slapping_robin).",
+
 }
 
 
