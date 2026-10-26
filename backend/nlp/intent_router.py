@@ -187,6 +187,11 @@ USE_WHEN: dict[str, str] = {
     "grim_reaper_knocking_door": "CASUAL MENACE, NEXT VICTIM: A bloody trail out of the last door, then a calm, polite knock on the next one — moving on to repeat something bad with total composure, like nothing just happened. E.g. calmly opening a new incident channel right after the last outage's retro. NOT for sitting inside ongoing chaos and denying it (this_is_fine) or a plan backfiring on its own author (grus_plan).",
     "c_mon_do_something": "SILENT ACCUSATORY POINTING: A crude, masked, deadpan figure stands off to the side pointing wordlessly at a specific action or event just offscreen — no argument, no dialogue, just damning silence. E.g. calling out a coworker who reopened the same bug three sprints in a row. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
 
+    # --- Trend pipeline additions ---
+    "bernie_sanders_once_again_asking": "FOCUS PULL: A single person's face is in sharp, clear focus in the top panel while the bottom panel is a blurry, out-of-focus crop of the same scene, used to represent a sudden shift in attention, a moment of realization, or a 'wait, what?' reaction where the details become unclear. NOT for a simple top/bottom caption comparison (drake) or a multi-panel emotional sequence (panik_kalm_panik).",
+    "bad_luck_brian": "UNCOMFORTABLE SMILE: A forced, awkward grin in a formal or posed setting (like a school photo) where the person is clearly uncomfortable or trying too hard to look happy. NOT for genuine, relaxed happiness (chill_guy) or a calm, dismissive deadpan (woman_yelling_at_cat).",
+    "look_at_me": "SNEAKY SIDE-EYE: A sly, conspiratorial glance while pointing at an off-screen target, used to call out a specific person or thing with a knowing, mischievous 'look at this one' energy. NOT for a direct, angry accusation (woman_yelling_at_cat) or a general, non-targeted callout (change_my_mind).",
+
 }
 
 
