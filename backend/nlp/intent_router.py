@@ -187,6 +187,11 @@ USE_WHEN: dict[str, str] = {
     "grim_reaper_knocking_door": "CASUAL MENACE, NEXT VICTIM: A bloody trail out of the last door, then a calm, polite knock on the next one — moving on to repeat something bad with total composure, like nothing just happened. E.g. calmly opening a new incident channel right after the last outage's retro. NOT for sitting inside ongoing chaos and denying it (this_is_fine) or a plan backfiring on its own author (grus_plan).",
     "c_mon_do_something": "SILENT ACCUSATORY POINTING: A crude, masked, deadpan figure stands off to the side pointing wordlessly at a specific action or event just offscreen — no argument, no dialogue, just damning silence. E.g. calling out a coworker who reopened the same bug three sprints in a row. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
 
+    # --- Trend pipeline additions ---
+    "bernie_sanders_once_again_asking": "GRANDPA ZOOM: A sudden, jarring shift from a wide establishing shot to an uncomfortably close, blurry face-cam, used to mock a speaker who is rambling on, losing the plot, or accidentally revealing a messy reality. NOT for a smooth narrative progression (panik_kalm_panik) or a deliberate multi-step plan (grus_plan).",
+    "bad_luck_brian": "GROWTH SPURT REVEAL: A before-and-after comparison of the same person, where the top panel shows them small, young, or in a previous state, and the bottom panel shows them significantly larger, older, or more developed. NOT for two different people (is_this_a_pigeon) or a side-by-side of two unrelated versions (buff_doge_vs_cheems).",
+    "look_at_me": "SNEAKY SNEAKY: One character is caught in the act of doing something devious or underhanded, pointing at themselves with a knowing, 'yeah, me, I know, I'm doing it anyway' expression. NOT for someone who is genuinely shocked by their own actions (surprised_pikachu) or a two-person argument (woman_yelling_at_cat).",
+
 }
 
 
