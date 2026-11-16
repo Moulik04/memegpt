@@ -187,6 +187,11 @@ USE_WHEN: dict[str, str] = {
     "grim_reaper_knocking_door": "CASUAL MENACE, NEXT VICTIM: A bloody trail out of the last door, then a calm, polite knock on the next one — moving on to repeat something bad with total composure, like nothing just happened. E.g. calmly opening a new incident channel right after the last outage's retro. NOT for sitting inside ongoing chaos and denying it (this_is_fine) or a plan backfiring on its own author (grus_plan).",
     "c_mon_do_something": "SILENT ACCUSATORY POINTING: A crude, masked, deadpan figure stands off to the side pointing wordlessly at a specific action or event just offscreen — no argument, no dialogue, just damning silence. E.g. calling out a coworker who reopened the same bug three sprints in a row. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
 
+    # --- Trend pipeline additions ---
+    "bernie_sanders_once_again_asking": "GRANDPA'S TECHNICAL CORRECTION: An elderly man with a stern, pedantic expression delivering a precise, authoritative, or slightly condescending factual correction or warning about something mundane. NOT for a sharp mid-sentence interrupt (batman_slapping_robin) or a calm dismissive one-liner in an argument (woman_yelling_at_cat).",
+    "bad_luck_brian": "SAME-PERSON ZOOM COMPARISON: A single individual shown in a wide shot and then a tight close-up to highlight a specific facial feature, detail, or awkward angle that only becomes apparent on inspection. NOT for comparing two different people (buff_doge_vs_cheems) or a progression of states (expanding_brain).",
+    "look_at_me": "SNEAKY REVEAL: A character with an intense, knowing expression and a pointing gesture, used to highlight a specific detail, person, or fact that the viewer is supposed to notice. NOT for general pointing at things (spiderman_pointing_at_spiderman) or for confused reactions (is_this_a_pigeon).",
+
 }
 
 
