@@ -11,8 +11,12 @@ BACKEND_URL = "https://memegpt-backend.onrender.com"
 # Triggers run on UTC, so these are the UTC hours that fall inside that
 # window in summer (12:00 to 03:59) or in winter (13:00 to 04:59), and the
 # Worker skips a run that lands outside it on the day (src/wakingHours.ts).
+# The second entry asks for /health/db at 13:00, 17:00 and 21:00 UTC, so
+# the database sees a query (src/index.ts). scheduled() tells the two apart by
+# this exact text, so an edit here needs the same edit to the constants
+# there.
 [triggers]
-crons = ["*/5 0-4,12-23 * * *"]
+crons = ["*/5 0-4,12-23 * * *", "0 13,17,21 * * *"]
 
 # Secrets are NOT set here — never commit them. Set both with:
 #   wrangler secret put DISCORD_PUBLIC_KEY

@@ -23,10 +23,17 @@
  * for /health every 5 minutes between 8 AM and midnight Eastern. It stays
  * quiet overnight: almost nobody visits then, and Render's free tier is
  * not meant to be kept running around the clock.
+ *
+ * A second Cron Trigger asks for /health/db three times a day. Supabase's
+ * free tier pauses a project after a week without database activity, and
+ * /health never queries the database, so the 5-minute ping alone does not
+ * count. It runs at 13:00, 17:00 and 21:00 UTC (morning, midday and
+ * afternoon Eastern), all inside waking hours, so the 5-minute ping has
+ * the backend awake already.
  */
 
 import { InteractionResponseType, InteractionType, verifyKey } from "discord-interactions";
-import { isWakingHour } from "./wakingHours";
+import { isWakingHour } from "./wakingHours.ts";
 
 export interface Env {
   BACKEND_URL: string;
@@ -120,26 +127,39 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (controller.cron === DATABASE_CRON) {
+      ctx.waitUntil(pingBackend(env, "/health/db", "Database ping"));
+      return;
+    }
+    if (controller.cron !== KEEP_AWAKE_CRON) {
+      console.log("Unknown cron, nothing run", { cron: controller.cron });
+      return;
+    }
     if (!isWakingHour(new Date(controller.scheduledTime))) {
       return;
     }
-    ctx.waitUntil(pingBackend(env));
+    ctx.waitUntil(pingBackend(env, "/health", "Keep-awake ping"));
   },
 };
+
+// Must match wrangler.toml's crons exactly: controller.cron is the string
+// from there. test/scheduled.test.mjs checks that they agree.
+export const KEEP_AWAKE_CRON = "*/5 0-4,12-23 * * *";
+export const DATABASE_CRON = "0 13,17,21 * * *";
 
 // A sleeping backend takes about a minute to answer, so this waits longer
 // than that. The request wakes it whether or not the answer is read.
 const PING_TIMEOUT_MS = 90_000;
 
-async function pingBackend(env: Env): Promise<void> {
+async function pingBackend(env: Env, path: string, label: string): Promise<void> {
   const started = Date.now();
   try {
-    const resp = await fetch(`${env.BACKEND_URL.replace(/\/$/, "")}/health`, {
+    const resp = await fetch(`${env.BACKEND_URL.replace(/\/$/, "")}${path}`, {
       signal: AbortSignal.timeout(PING_TIMEOUT_MS),
     });
-    console.log("Keep-awake ping", { status: resp.status, ms: Date.now() - started });
+    console.log(label, { status: resp.status, ms: Date.now() - started });
   } catch (err) {
-    console.log("Keep-awake ping failed", {
+    console.log(`${label} failed`, {
       error: err instanceof Error ? err.message : String(err),
       ms: Date.now() - started,
     });

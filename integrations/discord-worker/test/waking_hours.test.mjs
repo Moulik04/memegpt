@@ -32,7 +32,9 @@ test("the night the clocks go back (2026-11-01) and forward (2027-03-14)", () =>
 
 test("the cron schedule fires in every waking hour of the year", () => {
   const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
-  const [, minutes, hours] = toml.match(/crons = \["(\S+) (\S+) \* \* \*"\]/);
+  const crons = [...toml.match(/crons = \[(.*)\]/)[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  const keepAwake = crons.find((cron) => cron.startsWith("*/5 "));
+  const [minutes, hours] = keepAwake.split(" ");
   assert.equal(minutes, "*/5");
   const scheduled = new Set(
     hours.split(",").flatMap((part) => {

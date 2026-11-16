@@ -9,12 +9,14 @@ import structlog
 import uvicorn
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from slowapi.errors import RateLimitExceeded
 
 import telemetry  # noqa: F401 — side-effecting import: configures OTel + structlog
 from config import get_settings
+from db import pool as db_pool
 from nlp.intent_router import USE_WHEN
 from nlp.llm_client import log_llm_provider
 from rate_limit import limiter, rate_limit_exceeded_handler
@@ -266,6 +268,35 @@ async def health() -> dict[str, str]:
     # ci-deploy.yml) both hit this endpoint before a candidate revision
     # is ever trusted with real traffic.
     return {"status": "ok", "service": "memegpt-backend"}
+
+
+# A paused database answers nothing, and one that is merely slow to connect
+# should not hold the caller (or a pool connection) for long either.
+_DB_HEALTH_TIMEOUT_S = 10
+
+
+@app.get("/health/db", tags=["meta"])
+@limiter.limit("6/minute")
+async def health_db(request: Request) -> Response:
+    # Supabase's free tier pauses a project after a week with no database
+    # activity, and /health never touches the database. The Discord Worker
+    # calls this three times a day (integrations/discord-worker) so the
+    # database sees a query. It reads a row from a real table rather than
+    # running a bare SELECT 1, which might not count as activity;
+    # few_shot_examples is small and holds no visitor data. An empty table
+    # is still ok: the query reached it. Kept separate from /health so the
+    # healthcheck and the deploy smoke test never depend on the database.
+    try:
+        async with asyncio.timeout(_DB_HEALTH_TIMEOUT_S):
+            pool = await db_pool.get_pool()
+            if pool is None:
+                raise RuntimeError("DATABASE_URL is not set")
+            await pool.fetchval("SELECT id FROM few_shot_examples LIMIT 1")
+    except Exception as exc:
+        # The type only: a connection error's text can carry the host.
+        print(f"  [error] /health/db failed: {type(exc).__name__}", flush=True)
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+    return JSONResponse({"status": "ok"})
 
 
 if __name__ == "__main__":
