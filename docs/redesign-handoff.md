@@ -5,7 +5,7 @@
 
 **Review pass, November 17, 2026:** checked against the live code and corrected where the two disagreed: Lore's source-line data, the full token layer, theme and status-bar colors, Chat's photo limit, Make's notices, missing copy, and the tabloid red. Mockup stand-ins and sample data are marked as such; the product shows real MemeGPT renders.
 
-**Keeping today's site:** the redesign has to be easy to abandon. Today's main is tagged pre-redesign, and all visible work happens on a redesign branch that is merged only at launch. Backend changes the redesign needs go to main first, and today's frontend must not notice them: new response fields are optional additions it ignores, the new Arc card is a second style used only when the request asks for it, and thinking-stage wording changes in the frontend, not the backend. The redesign needs no database changes. The watermark fix is a bug fix that ships on its own and stays either way.
+**Keeping today's site:** the redesign has to be easy to abandon. Today's main is tagged pre-redesign, and all visible work happens on a redesign branch that is merged only at launch. Backend changes the redesign needs go to main first, and today's frontend must not notice them: new response fields are optional additions it ignores, the new Arc card is a second style used only when the request asks for it, and thinking-stage wording changes in the frontend, not the backend. The redesign needs no database changes. The watermark fix is a bug fix that ships on its own and stays either way. Dropping the redesign after launch means reverting its merge into main, not resetting main to pre-redesign: backend fixes like the watermark one land on main after the tag, and a reset would throw them away.
 
 ## 1. Art direction
 
