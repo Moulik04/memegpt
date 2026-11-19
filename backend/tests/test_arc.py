@@ -83,6 +83,7 @@ def test_build_arc_stats_none_raw_is_empty_state():
     stats = build_arc_stats(None)
     assert stats.has_enough is False
     assert stats.total_memes == 0
+    assert stats.distinct_templates == 0
 
 
 def test_build_arc_stats_below_minimum_is_empty_state():
@@ -107,6 +108,7 @@ def test_build_arc_stats_enough_data_populates_everything():
     stats = build_arc_stats(raw, tz="UTC")
     assert stats.has_enough is True
     assert stats.total_memes == 47
+    assert stats.distinct_templates == 6
     assert stats.aura > 0
     assert stats.tier is not None
     assert len(stats.top_templates) == 2
@@ -136,6 +138,7 @@ async def test_get_arc_with_no_anon_header_is_empty_state():
     resp = await _get("/arc")
     assert resp.status_code == 200
     assert resp.json()["has_enough"] is False
+    assert resp.json()["distinct_templates"] == 0
 
 
 async def test_get_arc_with_anon_header_but_no_database_url_is_empty_state():

@@ -344,6 +344,7 @@ class ArcStats(BaseModel):
 
     has_enough: bool = False
     total_memes: int = 0
+    distinct_templates: int = 0  # different catalog templates across those memes
     date_span_start: str | None = None  # ISO date, e.g. "2026-06-04"
     date_span_end: str | None = None
     period_label: str | None = None  # e.g. "Summer Arc" or "Your Arc"

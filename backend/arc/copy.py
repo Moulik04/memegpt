@@ -261,6 +261,7 @@ def build_arc_stats(raw: RawArcStats | None, tz: str = "UTC") -> ArcStats:
     return ArcStats(
         has_enough=True,
         total_memes=raw.total_memes,
+        distinct_templates=raw.distinct_templates,
         date_span_start=raw.first_date.isoformat() if raw.first_date else None,
         date_span_end=raw.last_date.isoformat() if raw.last_date else None,
         period_label=period_label,
