@@ -28,6 +28,8 @@ backend/static/generated/*.jpg
 # Fonts (add your own — not committed)
 backend/fonts/*.ttf
 backend/fonts/*.otf
+# A negation only works after the pattern it overrides.
+!backend/fonts/Archivo-Variable.ttf
 
 # Next.js
 frontend/.next/

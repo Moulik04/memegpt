@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import os
 import textwrap
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -166,6 +167,34 @@ def _flatten_onto_white(img: Image.Image) -> Image.Image:
     return canvas
 
 
+def _watermark_layout(size: tuple[int, int], text: str) -> tuple[ImageFont.FreeTypeFont, int, int, int]:
+    """Font, outline width and top-left position of the bottom-right
+    watermark for an image of `size`. Shared by _draw_watermark and by
+    layouts that must keep the watermark's corner clear."""
+    img_w, img_h = size
+    font_size = max(12, int(img_h * 0.035))
+    font = _resolve_font(font_size)
+    stroke_width = max(1, font_size // 14)
+    padding = max(6, int(img_h * 0.02))
+    x = img_w - int(font.getlength(text)) - padding
+    y = img_h - font_size - padding
+    return font, stroke_width, x, y
+
+
+def _watermark_box(size: tuple[int, int]) -> tuple[int, int, int, int]:
+    """(x0, y0, x1, y1) covering every pixel the watermark can touch,
+    outline included."""
+    text = get_settings().watermark_text
+    font, stroke_width, x, y = _watermark_layout(size, text)
+    left, top, right, bottom = font.getbbox(text)
+    return (
+        x + left - stroke_width - 1,
+        y + top - stroke_width - 1,
+        x + right + stroke_width + 1,
+        y + bottom + stroke_width + 1,
+    )
+
+
 def _draw_watermark(img: Image.Image) -> None:
     """Small brand mark, bottom-right, drawn AFTER captions and independent
     of the TextBoxConfig layout system — it must never reposition or shrink
@@ -177,18 +206,9 @@ def _draw_watermark(img: Image.Image) -> None:
     if not settings.watermark_enabled:
         return
 
-    img_w, img_h = img.size
     draw = ImageDraw.Draw(img)
-
-    font_size = max(12, int(img_h * 0.035))
-    font = _resolve_font(font_size)
-    stroke_width = max(1, font_size // 14)
     text = settings.watermark_text
-
-    text_w = font.getlength(text)
-    padding = max(6, int(img_h * 0.02))
-    x = img_w - int(text_w) - padding
-    y = img_h - font_size - padding
+    font, stroke_width, x, y = _watermark_layout(img.size, text)
 
     for dx in range(-stroke_width, stroke_width + 1):
         for dy in range(-stroke_width, stroke_width + 1):
@@ -480,7 +500,18 @@ def _draw_centered_wrapped(
         y += int(font.size * 1.25)
 
 
-async def compose_arc_card(stats: ArcStats) -> SavedMeme:
+async def compose_arc_card(stats: ArcStats, style: str = "glow") -> SavedMeme:
+    """Renders one Arc share card in the requested style. "glow" is the
+    original dark card and stays the default. "frontpage" is the white
+    tabloid card, rendered only when a request asks for it."""
+    if style == "frontpage":
+        return await _compose_arc_card_frontpage(stats)
+    if style != "glow":
+        raise ValueError(f"unknown Arc card style: {style}")
+    return await _compose_arc_card_glow(stats)
+
+
+async def _compose_arc_card_glow(stats: ArcStats) -> SavedMeme:
     """Renders one Arc share card from an already-computed ArcStats (see
     arc/copy.py's build_arc_stats) and hands off to the same
     _finalize_and_save every other meme uses — watermark, provenance tag,
@@ -580,5 +611,169 @@ async def compose_arc_card(stats: ArcStats) -> SavedMeme:
     handle = "memegpt.app/arc"
     handle_w = int(foot_font.getlength(handle))
     draw.text((w - int(w * 0.08) - handle_w, foot_y), handle, font=foot_font, fill=_ARC_MUTED_DIM)
+
+    return await _finalize_and_save(img)
+
+
+# --- Arc share card, Front Page style ---
+#
+# White page, near-black type, tabloid red rules and blocks, and the user's
+# most-used template shown bare at its true ratio on the shared meme mat.
+# Fonts are strict: Anton for display type, Archivo for everything else,
+# and no fallback, so a missing font file fails the render instead of
+# producing a card in the wrong face.
+
+_FP_WHITE = (255, 255, 255)
+_FP_INK = (17, 17, 17)
+_FP_RED = (205, 31, 53)
+_FP_MAT = (231, 232, 234)
+_FP_EDGE = (191, 193, 196)
+_FP_MARGIN = 72
+_FP_FOOTER_H = 75
+
+_ARCHIVO_PATH = FONTS_DIR / "Archivo-Variable.ttf"
+_ANTON_PATHS = (FONTS_DIR / "Anton-Regular.ttf", Path("/usr/share/fonts/truetype/Anton-Regular.ttf"))
+
+
+@lru_cache(maxsize=32)
+def _archivo(size: int, weight: int) -> ImageFont.FreeTypeFont:
+    font = ImageFont.truetype(str(_ARCHIVO_PATH), size)
+    font.set_variation_by_axes([weight, 100])  # axes: weight, width
+    return font
+
+
+@lru_cache(maxsize=32)
+def _anton(size: int) -> ImageFont.FreeTypeFont:
+    for path in _ANTON_PATHS:
+        if path.exists():
+            return ImageFont.truetype(str(path), size)
+    raise FileNotFoundError("Anton-Regular.ttf is missing from backend/fonts and /usr/share/fonts/truetype")
+
+
+def _fp_text(draw: ImageDraw.ImageDraw, x: int, top: int, text: str, font, fill) -> int:
+    """Draws `text` with its visible top edge at `top` and returns its
+    visible bottom edge, so layout spacing is measured between glyphs
+    rather than between font bounding boxes."""
+    left, t, _, b = font.getbbox(text)
+    draw.text((x - left, top - t), text, font=font, fill=fill)
+    return top + (b - t)
+
+
+def _wrap_to_width(text: str, font, max_width: int) -> list[str]:
+    lines: list[str] = []
+    current = ""
+    for word in text.split():
+        trial = f"{current} {word}".strip()
+        if not current or font.getlength(trial) <= max_width:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _arc_season_line(stats: ArcStats) -> str:
+    """"AUTUMN ARC • SEP 3 TO NOV 17" when the records fit one season,
+    otherwise "Your Arc". arc/copy.py decides which via period_label."""
+    label = stats.period_label
+    if not label or label == "Your Arc" or not stats.date_span_start or not stats.date_span_end:
+        return "Your Arc"
+    start, end = date.fromisoformat(stats.date_span_start), date.fromisoformat(stats.date_span_end)
+
+    def fmt(d: date) -> str:
+        return f"{d.strftime('%b').upper()} {d.day}"
+
+    span = fmt(start) if start == end else f"{fmt(start)} TO {fmt(end)}"
+    return f"{label.upper()} • {span}"
+
+
+def _arc_template_image(template_id: str) -> Image.Image | None:
+    """The bare catalog template, flattened onto white. An animated
+    template contributes its first frame."""
+    path = resolve_template_image_path(template_id)
+    if path is None:
+        return None
+    with Image.open(path) as src:
+        src.seek(0)
+        return _flatten_onto_white(src)
+
+
+async def _compose_arc_card_frontpage(stats: ArcStats) -> SavedMeme:
+    w, h = _ARC_CARD_SIZE
+    img = Image.new("RGBA", (w, h), _FP_WHITE + (255,))
+    draw = ImageDraw.Draw(img)
+    left, right = _FP_MARGIN, w - _FP_MARGIN
+    content_w = right - left
+
+    # Masthead and its red rule
+    y = _fp_text(draw, left, 64, "MemeGPT Arc", _anton(84), _FP_INK)
+    y += 24
+    draw.rectangle([left, y, right, y + 7], fill=_FP_RED)
+    y += 7 + 30
+
+    # Season line
+    y = _fp_text(draw, left, y, _arc_season_line(stats), _archivo(30, 700), _FP_INK) + 46
+
+    # Score
+    y = _fp_text(draw, left, y, f"+{stats.aura:,}", _anton(196), _FP_INK) + 20
+    y = _fp_text(draw, left, y, "AURA FARMED", _archivo(34, 800), _FP_RED) + 34
+
+    # Tier, as a solid red block
+    if stats.tier:
+        tier_font = _archivo(34, 800)
+        tier_text = stats.tier.upper()
+        tl, tt, tr, tb = tier_font.getbbox(tier_text)
+        pad_x, pad_y = 20, 14
+        block_bottom = y + (tb - tt) + pad_y * 2
+        draw.rectangle([left, y, left + (tr - tl) + pad_x * 2, block_bottom], fill=_FP_RED)
+        _fp_text(draw, left + pad_x, y + pad_y, tier_text, tier_font, _FP_WHITE)
+        y = block_bottom + 40
+
+    # Verdict
+    if stats.verdict:
+        verdict_font = _archivo(52, 800)
+        line_gap = 14
+        for line in _wrap_to_width(stats.verdict, verdict_font, content_w):
+            y = _fp_text(draw, left, y, line, verdict_font, _FP_INK) + line_gap
+        y += 30 - line_gap
+
+    # Counts
+    templates_word = "template" if stats.distinct_templates == 1 else "different templates"
+    memes_word = "meme" if stats.total_memes == 1 else "memes"
+    facts = f"{stats.total_memes} {memes_word} • {stats.distinct_templates} {templates_word}"
+    y = _fp_text(draw, left, y, facts, _archivo(32, 600), _FP_INK) + 36
+
+    # Footer: red bar with the URL, ending before the watermark's corner
+    wm_x0, _, _, _ = _watermark_box((w, h))
+    footer_top = h - _FP_FOOTER_H
+    bar_right = wm_x0 - 28
+    draw.rectangle([0, footer_top, bar_right, h], fill=_FP_RED)
+    foot_font = _archivo(30, 700)
+    _, ft, _, fb = foot_font.getbbox("memegpt.app/arc")
+    _fp_text(draw, left, footer_top + (_FP_FOOTER_H - (fb - ft)) // 2, "memegpt.app/arc", foot_font, _FP_WHITE)
+
+    # Most-used template, bare, at its true ratio on the meme mat, with its
+    # label directly under it. It takes whatever height is left.
+    top = stats.top_templates[0] if stats.top_templates else None
+    template = _arc_template_image(top.template_id) if top else None
+    if top and template is not None:
+        label_font = _archivo(30, 700)
+        times = "time" if top.count == 1 else "times"
+        label = f"{top.display_name} • {top.count} {times}"
+        _, lt, _, lb = label_font.getbbox(label)
+        label_h = lb - lt
+        mat_pad = 14
+        avail_h = footer_top - 40 - label_h - 16 - y
+        avail_w = content_w
+        scale = min((avail_w - mat_pad * 2) / template.width, (avail_h - mat_pad * 2) / template.height)
+        tw, th = max(1, int(template.width * scale)), max(1, int(template.height * scale))
+        template = template.resize((tw, th), Image.LANCZOS)
+        mat = [left, y, left + tw + mat_pad * 2, y + th + mat_pad * 2]
+        draw.rectangle(mat, fill=_FP_MAT, outline=_FP_EDGE, width=1)
+        img.paste(template, (left + mat_pad, y + mat_pad))
+        draw.rectangle([left + mat_pad - 1, y + mat_pad - 1, left + mat_pad + tw, y + mat_pad + th], outline=_FP_EDGE, width=1)
+        _fp_text(draw, left, mat[3] + 16, label, label_font, _FP_INK)
 
     return await _finalize_and_save(img)
