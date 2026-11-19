@@ -277,7 +277,7 @@ Every phone frame contains all five progress segments and the bottom navigation 
 
 | Frame | Display and supporting copy |
 | --- | --- |
-| 01 Volume | If dates from the actual records fit in one season, headline **AUTUMN ARC** with the derived date range. Otherwise **Your Arc**. Count **47**. Roast: **memes generated this arc. no thoughts, just memes.** |
+| 01 Volume | If dates from the actual records fit in one season, headline **AUTUMN ARC** with the derived date range, as in **AUTUMN ARC • SEP 3–NOV 17, 2026**. Otherwise **YOUR ARC** with the same record dates, as in **YOUR ARC • JUN 2–NOV 17, 2026**. Count **47**. Roast: **memes generated this arc. no thoughts, just memes.** |
 | 02 Signature | Template name **Empty Meeting Room**, count **9 times**. Roast: **your most-summoned template. (still waiting on the agenda)**. Show the template image at its true ratio (in the sample, the wide line drawing). |
 | 03 Witching hour | **2 AM**. Roast: **we're not asking questions.** Do not repeat the headline as a label. |
 | 04 The split | Scoreboard values **26 / 15 / 6**, labels Chat / Lore / Make, all three bars the same width so the labels remain readable. Roast: **chat / lore / make. yappacino.** |
@@ -583,7 +583,7 @@ The budget meme is not personalized. It is one of ten fixed memes, unrelated to 
 These are the sample outputs; the live strings come from backend/arc/copy.py.
 
 - Frame 01 label: **01 Volume**
-- Frame 01 title: **AUTUMN ARC** with the actual data-derived date range if it fits one season; otherwise **Your Arc**
+- Frame 01 title: **AUTUMN ARC** with the actual data-derived date range if it fits one season; otherwise **YOUR ARC** with the same record dates, e.g. **YOUR ARC • JUN 2–NOV 17, 2026**
 - Frame 01 value: **47**
 - Frame 01 roast: **memes generated this arc. no thoughts, just memes.**
 - Frame 02 label: **02 Signature**
