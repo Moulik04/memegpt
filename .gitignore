@@ -30,6 +30,7 @@ backend/fonts/*.ttf
 backend/fonts/*.otf
 # A negation only works after the pattern it overrides.
 !backend/fonts/Archivo-Variable.ttf
+!backend/fonts/Anton-Regular.ttf
 
 # Next.js
 frontend/.next/
