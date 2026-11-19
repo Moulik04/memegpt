@@ -24,7 +24,13 @@ import pytest
 from config import Settings
 from image_processing.template_configs import get_config
 from nlp import intent_router
-from nlp.intent_router import _CORE_TEMPLATE_IDS, _FALLBACK_TEMPLATES, _build_retry_prompt, is_fallback, parse_intent
+from nlp.intent_router import (
+    _CORE_TEMPLATE_IDS,
+    _FALLBACK_TEMPLATES,
+    _build_retry_prompt,
+    is_fallback,
+    parse_intent,
+)
 from nlp.llm_client import call_groq
 
 _PRIMARY = "qwen/qwen3.6-27b"
@@ -259,7 +265,7 @@ async def test_a_caption_for_a_box_the_picked_template_lacks_is_left_out(monkeyp
 
 @pytest.mark.parametrize("texts", ["[]", '[{"box": "button_1", "caption": "x"}]', '[{"caption": "a"}]', '["a", "b"]'])
 async def test_a_list_with_no_caption_for_the_picked_template_is_not_accepted(monkeypatch, texts):
-    _second_model_replies(monkeypatch, '{"template_id": "drake", "texts": %s}' % texts)
+    _second_model_replies(monkeypatch, f'{{"template_id": "drake", "texts": {texts}}}')
 
     result = await parse_intent("anything")
 

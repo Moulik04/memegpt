@@ -26,7 +26,12 @@ from PIL import Image
 
 import telemetry
 from main import app
-from uploads.safe_ingest import CleanImage, ModerationBusy, ModerationOutOfBudget, ModerationRejected
+from uploads.safe_ingest import (
+    CleanImage,
+    ModerationBusy,
+    ModerationOutOfBudget,
+    ModerationRejected,
+)
 
 _REFUSED = "MemeGPT can't use this image. Try describing it in words instead."
 
