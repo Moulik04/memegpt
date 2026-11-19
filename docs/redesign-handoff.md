@@ -295,7 +295,18 @@ Every phone frame contains all five progress segments and the bottom navigation 
 
 #### Share card
 
-Render a 1080×1350 card image on the server. Do not share a screenshot of the interactive finale. Show the **MemeGPT Arc** masthead, the season line (**AUTUMN ARC** with its derived date range, or **Your Arc** when the records don't fit one season, exactly as frame 01 decides), the tier (**certified menace**), the score, verdict, **47 memes • 14 different templates**, and the bare Empty Meeting Room drawing with **Empty Meeting Room • 9 times** directly labeling that image. Do not put a captioned meme or group-chat text on the card. Reserve the bottom-right 75px for the backend watermark. The footer **memegpt.app/arc** and any red footer bar must end before that clear corner. The card is drawn in Python by compose_arc_card in backend/image_processing/compositor.py, which still uses today's glow style, so the new design is backend work: add it as a second style next to today's card, used only when the request asks for it, so today's site keeps getting today's card. It needs Archivo on the server too: commit the Archivo font file and its OFL license to backend/fonts. The card has no fallback font, so a missing Archivo fails loudly rather than shipping a card in the wrong face.
+Render a 1080×1350 card image on the server. Do not share a screenshot of the interactive finale. Do not put a captioned meme or group-chat text on the card. Top to bottom, the left column holds:
+
+- the **MemeGPT Arc** masthead with a red rule under it
+- the season line in uppercase with the record span: **AUTUMN ARC • SEP 3–NOV 17, 2026** when the records fit one season, otherwise **YOUR ARC • JUN 2–NOV 17, 2026**, with the label chosen by arc/copy.py exactly as frame 01 does. Dates use an en dash and the year. A span across years reads **DEC 20, 2026–FEB 10, 2027**, and a single day reads **NOV 17, 2026**. Without any dates the line is just **YOUR ARC**.
+- **+12,480** and **AURA FARMED** in white inside one solid red block, as on the approved R2-10 card
+- the tier (**certified menace**) in white on a solid #111 block
+- the verdict in large bold type
+- **47 memes • 14 different templates**
+
+The bare signature template sits on the meme mat with its hairline, labelled directly under the mat with **Empty Meeting Room • 9 times**. It is laid out one of two ways. Below the text, as wide templates are, using the full content width. Or in a right-hand column whose top lines up with the top of the red score block, whose left edge sits 48px past the left column's widest element (the red score block, the tier block or the counts line, and at least 520px), and whose bottom is the same limit as below. The column is used only when it shows the template at least 1.5× bigger by area. In the column layout the verdict wraps to the left column's width, and the label wraps to the mat's width without ever splitting **• 9 times** across lines. A very tall template like American Chopper takes the column. A GIF's first frame and wide templates stay below.
+
+Reserve the bottom-right 75px for the backend watermark. The footer **memegpt.app/arc** and its red footer bar must end before that clear corner. The card is drawn in Python by compose_arc_card in backend/image_processing/compositor.py, which still uses today's glow style, so the new design is backend work: add it as a second style next to today's card, used only when the request asks for it, so today's site keeps getting today's card. It needs Archivo on the server too: commit the Archivo font file and its OFL license to backend/fonts. The card has no fallback font, so a missing Archivo fails loudly rather than shipping a card in the wrong face.
 
 #### Empty state
 
