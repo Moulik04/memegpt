@@ -156,18 +156,29 @@ def _draw_text_in_box(
         draw.text((line_x, line_y), line, font=font, fill=box_cfg.font_color)
 
 
+def _flatten_onto_white(img: Image.Image) -> Image.Image:
+    """Returns an RGBA copy with every pixel fully opaque: transparent and
+    semi-transparent areas are composited onto white. Every render path
+    starts from this, so drawing on top of it never has to care what alpha
+    the source had."""
+    canvas = Image.new("RGBA", img.size, (255, 255, 255, 255))
+    canvas.alpha_composite(img.convert("RGBA"))
+    return canvas
+
+
 def _draw_watermark(img: Image.Image) -> None:
     """Small brand mark, bottom-right, drawn AFTER captions and independent
     of the TextBoxConfig layout system — it must never reposition or shrink
-    a caption box. Uses its own RGBA-mode ImageDraw regardless of how the
-    caller's own draw object was constructed, so semi-transparent alpha
-    actually blends instead of being drawn opaque."""
+    a caption box. Solid white fill with a solid black outline, the same
+    treatment as the captions. On an RGBA image Pillow writes an ink's
+    alpha straight into the pixels rather than blending it, so the ink is
+    kept fully opaque to keep the output opaque."""
     settings = get_settings()
     if not settings.watermark_enabled:
         return
 
     img_w, img_h = img.size
-    draw = ImageDraw.Draw(img, "RGBA")
+    draw = ImageDraw.Draw(img)
 
     font_size = max(12, int(img_h * 0.035))
     font = _resolve_font(font_size)
@@ -182,8 +193,8 @@ def _draw_watermark(img: Image.Image) -> None:
     for dx in range(-stroke_width, stroke_width + 1):
         for dy in range(-stroke_width, stroke_width + 1):
             if dx != 0 or dy != 0:
-                draw.text((x + dx, y + dy), text, font=font, fill=(0, 0, 0, 130))
-    draw.text((x, y), text, font=font, fill=(255, 255, 255, 170))
+                draw.text((x + dx, y + dy), text, font=font, fill=(0, 0, 0, 255))
+    draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
 
 
 async def _finalize_and_save(img: Image.Image) -> SavedMeme:
@@ -225,7 +236,7 @@ def _compose_gif_frames(
         if i >= _GIF_MAX_FRAMES:
             break
         duration = frame.info.get("duration", 100) or 100
-        rgba = frame.convert("RGBA")
+        rgba = _flatten_onto_white(frame)
 
         img_w, img_h = rgba.size
         if max(img_w, img_h) > _GIF_MAX_DIMENSION_PX:
@@ -307,7 +318,7 @@ async def compose_meme(
         frames, durations = _compose_gif_frames(template_path, texts, config)
         return await _finalize_and_save_gif(frames, durations)
 
-    img = Image.open(template_path).convert("RGBA")
+    img = _flatten_onto_white(Image.open(template_path))
     img_w, img_h = img.size
     draw = ImageDraw.Draw(img)
 
@@ -340,17 +351,27 @@ async def compose_meme_on_image(
     _resolve_font/_draw_text_in_box unchanged — both are already generic
     over arbitrary image dimensions.
     """
-    img = image.convert("RGBA")
+    img = _flatten_onto_white(image)
     img_w, img_h = img.size
-    draw = ImageDraw.Draw(img, "RGBA")
 
+    # The scrims go on their own layer and are composited, so they darken
+    # the photo. Drawn straight onto the RGBA image they would replace it
+    # with see-through black.
+    boxes = []
+    scrim = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    scrim_draw = ImageDraw.Draw(scrim)
     for box_cfg in DEFAULT_BOXES:
         text = texts.get(box_cfg.label, "")
         if not text.strip():
             continue
         pixel_box = box_cfg.to_pixels(img_w, img_h)
         x, y, w, h = pixel_box["x"], pixel_box["y"], pixel_box["width"], pixel_box["height"]
-        draw.rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 120))
+        scrim_draw.rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 120))
+        boxes.append((box_cfg, pixel_box, text))
+    img.alpha_composite(scrim)
+
+    draw = ImageDraw.Draw(img)
+    for box_cfg, pixel_box, text in boxes:
         _draw_text_in_box(draw, text, box_cfg, pixel_box, img_h)
 
     return await _finalize_and_save(img)
@@ -479,12 +500,14 @@ async def compose_arc_card(stats: ArcStats) -> SavedMeme:
     glow2 = glow2.filter(ImageFilter.GaussianBlur(glow2.width // 12))
     img.alpha_composite(glow2, (center_x - glow2.width // 2, center_y - glow2.height // 2))
 
-    draw = ImageDraw.Draw(img, "RGBA")
-    draw.rounded_rectangle([0, 0, w - 1, h - 1], radius=64, outline=_ARC_VIOLET + (90,), width=3)
-
-    # Wordmark + tier badge
-    word_font = _resolve_font(int(h * 0.028))
-    draw.text((int(w * 0.08), int(h * 0.05)), "MEMEGPT ARC.", font=word_font, fill=_ARC_TEXT)
+    # Translucent shapes (frame, tier badge, divider) go on their own layer
+    # and are composited, so they blend with the card. Drawn straight onto
+    # the RGBA card they would leave see-through pixels instead.
+    divider_y = int(h * 0.56)
+    shapes = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    shapes_draw = ImageDraw.Draw(shapes)
+    shapes_draw.rounded_rectangle([0, 0, w - 1, h - 1], radius=64, outline=_ARC_VIOLET + (90,), width=3)
+    shapes_draw.line([(int(w * 0.08), divider_y), (int(w * 0.92), divider_y)], fill=_ARC_VIOLET + (60,), width=2)
 
     if stats.tier:
         tier_text = stats.tier.upper()
@@ -493,10 +516,19 @@ async def compose_arc_card(stats: ArcStats) -> SavedMeme:
         pad_x, pad_y = 22, 14
         badge_x1 = w - int(w * 0.08) - tier_w - pad_x * 2
         badge_y0 = int(h * 0.045)
-        draw.rounded_rectangle(
+        shapes_draw.rounded_rectangle(
             [badge_x1, badge_y0, badge_x1 + tier_w + pad_x * 2, badge_y0 + tier_font.size + pad_y],
             radius=999, fill=_ARC_VIOLET + (60,), outline=_ARC_MAGENTA + (140,), width=2,
         )
+    img.alpha_composite(shapes)
+
+    draw = ImageDraw.Draw(img)
+
+    # Wordmark + tier badge text
+    word_font = _resolve_font(int(h * 0.028))
+    draw.text((int(w * 0.08), int(h * 0.05)), "MEMEGPT ARC.", font=word_font, fill=_ARC_TEXT)
+
+    if stats.tier:
         draw.text((badge_x1 + pad_x, badge_y0 + pad_y // 2), tier_text, font=tier_font, fill=_ARC_TEXT)
 
     # Season / date-span line
@@ -514,7 +546,7 @@ async def compose_arc_card(stats: ArcStats) -> SavedMeme:
     label_font = _resolve_font(int(h * 0.015))
     label_text = "A U R A   F A R M E D"
     label_w = int(label_font.getlength(label_text))
-    draw = ImageDraw.Draw(img, "RGBA")
+    draw = ImageDraw.Draw(img)
     draw.text((center_x - label_w // 2, hero_top + text_h + 14), label_text, font=label_font, fill=_ARC_CYAN)
 
     # Readout lines
@@ -531,9 +563,7 @@ async def compose_arc_card(stats: ArcStats) -> SavedMeme:
     )
     lines.append(f"longest streak: {stats.longest_streak_days} days")
 
-    y = int(h * 0.56)
-    draw.line([(int(w * 0.08), y), (int(w * 0.92), y)], fill=_ARC_VIOLET + (60,), width=2)
-    y += 20
+    y = divider_y + 20
     for line in lines:
         draw.text((int(w * 0.08), y), f"› {line}", font=readout_font, fill=_ARC_MUTED)
         y += int(readout_font.size * 1.7)
