@@ -20,6 +20,8 @@ at "" instead matches what actually arrives. /arc/card is unaffected —
 it's not a bare path, so Next's normalizer never touches it.
 """
 
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request
 
 import db
@@ -59,17 +61,22 @@ async def get_arc(request: Request, tz: str = "UTC") -> ArcStats:
 
 @router.post("/card", response_model=ArcCardResponse)
 @limiter.limit("5/minute")
-async def create_arc_card(request: Request, tz: str = "UTC") -> ArcCardResponse:
+async def create_arc_card(
+    request: Request, tz: str = "UTC", style: Literal["glow", "frontpage"] = "glow"
+) -> ArcCardResponse:
     """On-demand only — nothing is rendered for a user who never taps
     share. Rejects rather than rendering a hollow card for someone below
     the 5-meme minimum; the real UI only ever reaches this call from the
-    reveal's final share step, which is itself gated on has_enough."""
+    reveal's final share step, which is itself gated on has_enough.
+
+    style picks the card design. It defaults to the original glow card, so
+    a client that doesn't ask keeps getting exactly that."""
     anon_user_id, user_id = await _identity_for(request)
     stats = await _stats_for_identity(anon_user_id, user_id, tz)
     if not stats.has_enough:
         raise HTTPException(status_code=400, detail="Not enough data yet for an Arc card")
 
-    saved = await compose_arc_card(stats)
+    saved = await compose_arc_card(stats, style=style)
     await db.insert_meme(
         meme_id=saved.meme_id,
         url=saved.url,
