@@ -13,6 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from PIL import Image
 
 import image_processing.compositor as compositor
+from arc.copy import _display_name
 from config import Settings
 from image_processing.compositor import _arc_season_line, _watermark_box, compose_arc_card
 from main import app
@@ -140,17 +141,80 @@ def test_archivo_ships_in_the_repo():
 
 
 def test_season_line_with_its_date_range():
-    assert _arc_season_line(_stats()) == "AUTUMN ARC • SEP 3 TO NOV 17"
+    assert _arc_season_line(_stats()) == "AUTUMN ARC • SEP 3\u2013NOV 17, 2026"
 
 
 def test_season_line_for_a_single_day():
     stats = _stats(date_span_start="2026-11-17", date_span_end="2026-11-17")
-    assert _arc_season_line(stats) == "AUTUMN ARC • NOV 17"
+    assert _arc_season_line(stats) == "AUTUMN ARC • NOV 17, 2026"
 
 
-@pytest.mark.parametrize("label", ["Your Arc", None])
-def test_season_line_falls_back_to_your_arc(label):
-    assert _arc_season_line(_stats(period_label=label)) == "Your Arc"
+def test_season_line_across_a_new_year():
+    stats = _stats(period_label="Winter Arc", date_span_start="2026-12-20", date_span_end="2027-02-10")
+    assert _arc_season_line(stats) == "WINTER ARC • DEC 20, 2026\u2013FEB 10, 2027"
+
+
+def test_your_arc_keeps_its_date_range():
+    stats = _stats(period_label="Your Arc", date_span_start="2026-06-02", date_span_end="2026-11-17")
+    assert _arc_season_line(stats) == "YOUR ARC • JUN 2\u2013NOV 17, 2026"
+
+
+def test_season_line_without_dates_is_your_arc():
+    stats = _stats(period_label=None, date_span_start=None, date_span_end=None)
+    assert _arc_season_line(stats) == "YOUR ARC"
+
+
+def test_archivo_has_the_en_dash():
+    font = compositor._archivo(30, 700)
+    # A missing glyph renders as the same .notdef box as any other unmapped
+    # character; the en dash must not match it.
+    assert font.getmask("\u2013").getbbox() != font.getmask("\uffff").getbbox()
+
+
+# --- Template layout: below the text, or in a right-hand column ---
+
+
+def _plan_for(template_id: str, **overrides):
+    stats = _stats(
+        top_templates=[ArcTemplate(template_id=template_id, display_name=_display_name(template_id), count=9, roast="")],
+        **overrides,
+    )
+    template = compositor._arc_template_image(template_id)
+    return compositor._frontpage_plan(stats, template.size)
+
+
+def test_tall_template_moves_to_the_column_and_at_least_doubles_its_area():
+    plan = _plan_for("american_chopper_argument")
+    assert plan.layout == "column"
+    assert plan.area_column >= 2 * plan.area_below
+    # The column starts level with the top of the red score block.
+    assert plan.mat[1] == plan.score_block[1]
+
+
+def test_gif_template_stays_below_the_text():
+    assert _plan_for("spinning_dancer").layout == "below"
+
+
+def test_wide_template_stays_below_the_text():
+    assert _plan_for("midwit_bell_curve").layout == "below"
+
+
+def test_six_digit_score_leaves_the_column_clear_of_the_left_column():
+    plan = _plan_for("american_chopper_argument", aura=123456, tier="aura farming god")
+    assert plan.layout == "column"
+    gap = compositor._FP_COLUMN_GAP
+    assert plan.mat[0] >= plan.score_block[2] + gap
+    assert plan.mat[0] >= plan.tier_block[2] + gap
+    verdict_font = compositor._archivo(52, 800)
+    for line in plan.verdict_lines:
+        assert compositor._FP_MARGIN + verdict_font.getlength(line) <= plan.mat[0] - gap
+
+
+def test_column_label_never_splits_the_count():
+    plan = _plan_for("american_chopper_argument")
+    assert plan.label_lines[-1].endswith("• 9 times")
+    assert sum(line.count("•") for line in plan.label_lines) == 1
+    assert all(line.strip() != "•" for line in plan.label_lines)
 
 
 # --- POST /arc/card ---

@@ -14,6 +14,7 @@ from __future__ import annotations
 import io
 import os
 import textwrap
+from dataclasses import dataclass
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -626,6 +627,7 @@ async def _compose_arc_card_glow(stats: ArcStats) -> SavedMeme:
 _FP_WHITE = (255, 255, 255)
 _FP_INK = (17, 17, 17)
 _FP_RED = (205, 31, 53)
+_FP_BLACK = (17, 17, 17)
 _FP_MAT = (231, 232, 234)
 _FP_EDGE = (191, 193, 196)
 _FP_MARGIN = 72
@@ -659,34 +661,49 @@ def _fp_text(draw: ImageDraw.ImageDraw, x: int, top: int, text: str, font, fill)
     return top + (b - t)
 
 
-def _wrap_to_width(text: str, font, max_width: int) -> list[str]:
+def _wrap_tokens(tokens: list[str], font, max_width: int) -> list[str]:
+    """Greedy line wrap over pre-split tokens. A token is never broken, so
+    a phrase that must stay together goes in as one token."""
     lines: list[str] = []
     current = ""
-    for word in text.split():
-        trial = f"{current} {word}".strip()
+    for token in tokens:
+        trial = f"{current} {token}".strip()
         if not current or font.getlength(trial) <= max_width:
             current = trial
         else:
             lines.append(current)
-            current = word
+            current = token
     if current:
         lines.append(current)
     return lines
 
 
-def _arc_season_line(stats: ArcStats) -> str:
-    """"AUTUMN ARC • SEP 3 TO NOV 17" when the records fit one season,
-    otherwise "Your Arc". arc/copy.py decides which via period_label."""
-    label = stats.period_label
-    if not label or label == "Your Arc" or not stats.date_span_start or not stats.date_span_end:
-        return "Your Arc"
-    start, end = date.fromisoformat(stats.date_span_start), date.fromisoformat(stats.date_span_end)
+def _wrap_to_width(text: str, font, max_width: int) -> list[str]:
+    return _wrap_tokens(text.split(), font, max_width)
 
-    def fmt(d: date) -> str:
+
+def _arc_date_span(start: date, end: date) -> str:
+    """"SEP 3–NOV 17, 2026", "DEC 20, 2026–FEB 10, 2027" or "NOV 17, 2026"."""
+
+    def month_day(d: date) -> str:
         return f"{d.strftime('%b').upper()} {d.day}"
 
-    span = fmt(start) if start == end else f"{fmt(start)} TO {fmt(end)}"
-    return f"{label.upper()} • {span}"
+    if start == end:
+        return f"{month_day(end)}, {end.year}"
+    if start.year == end.year:
+        return f"{month_day(start)}–{month_day(end)}, {end.year}"
+    return f"{month_day(start)}, {start.year}–{month_day(end)}, {end.year}"
+
+
+def _arc_season_line(stats: ArcStats) -> str:
+    """"AUTUMN ARC • SEP 3–NOV 17, 2026" when the records fit one season,
+    "YOUR ARC • JUN 2–NOV 17, 2026" when they don't. arc/copy.py picks the
+    label; the dates are the same span the Arc finale shows."""
+    label = (stats.period_label or "Your Arc").upper()
+    if not stats.date_span_start or not stats.date_span_end:
+        return label
+    span = _arc_date_span(date.fromisoformat(stats.date_span_start), date.fromisoformat(stats.date_span_end))
+    return f"{label} • {span}"
 
 
 def _arc_template_image(template_id: str) -> Image.Image | None:
@@ -700,80 +717,251 @@ def _arc_template_image(template_id: str) -> Image.Image | None:
         return _flatten_onto_white(src)
 
 
-async def _compose_arc_card_frontpage(stats: ArcStats) -> SavedMeme:
+Box = tuple[int, int, int, int]
+
+_FP_LEFT_MIN = 520
+_FP_COLUMN_GAP = 48
+_FP_COLUMN_MIN_GAIN = 1.5
+_FP_MAT_PAD = 14
+
+
+def _fp_fonts() -> dict[str, ImageFont.FreeTypeFont]:
+    return {
+        "masthead": _anton(84),
+        "season": _archivo(30, 700),
+        "score": _anton(196),
+        "score_label": _archivo(34, 800),
+        "tier": _archivo(34, 800),
+        "verdict": _archivo(52, 800),
+        "counts": _archivo(32, 600),
+        "label": _archivo(30, 700),
+        "footer": _archivo(30, 700),
+    }
+
+
+def _ink_size(font, text: str) -> tuple[int, int]:
+    left, top, right, bottom = font.getbbox(text)
+    return right - left, bottom - top
+
+
+@dataclass
+class _FrontpagePlan:
+    """Every position on the Front Page card, worked out before anything is
+    drawn. layout is "below" (template under the text), "column" (template
+    in a right-hand column level with the score block) or "none"."""
+
+    season_line: str
+    season_top: int
+    rule_top: int
+    score_text: str
+    score_block: Box
+    score_top: int
+    score_label_top: int
+    tier_text: str | None
+    tier_block: Box | None
+    left_width: int
+    verdict_lines: list[str]
+    verdict_top: int
+    counts_text: str
+    counts_top: int
+    footer_top: int
+    footer_bar_right: int
+    layout: str
+    mat: Box | None
+    image_box: Box | None
+    label_lines: list[str]
+    label_top: int
+    area_below: int
+    area_column: int
+
+
+def _counts_line(stats: ArcStats) -> str:
+    memes_word = "meme" if stats.total_memes == 1 else "memes"
+    templates_word = "template" if stats.distinct_templates == 1 else "different templates"
+    return f"{stats.total_memes} {memes_word} • {stats.distinct_templates} {templates_word}"
+
+
+def _template_label_tokens(display_name: str, count: int) -> list[str]:
+    # "• 9 times" is one token so it never splits across lines.
+    times = "time" if count == 1 else "times"
+    return display_name.split() + [f"• {count} {times}"]
+
+
+def _fit(template_size: tuple[int, int], avail_w: int, avail_h: int) -> tuple[int, int]:
+    tw, th = template_size
+    scale = min((avail_w - _FP_MAT_PAD * 2) / tw, (avail_h - _FP_MAT_PAD * 2) / th)
+    if scale <= 0:
+        return 0, 0
+    return max(1, int(tw * scale)), max(1, int(th * scale))
+
+
+def _frontpage_plan(stats: ArcStats, template_size: tuple[int, int] | None) -> _FrontpagePlan:
+    fonts = _fp_fonts()
     w, h = _ARC_CARD_SIZE
-    img = Image.new("RGBA", (w, h), _FP_WHITE + (255,))
-    draw = ImageDraw.Draw(img)
     left, right = _FP_MARGIN, w - _FP_MARGIN
     content_w = right - left
 
-    # Masthead and its red rule
-    y = _fp_text(draw, left, 64, "MemeGPT Arc", _anton(84), _FP_INK)
-    y += 24
-    draw.rectangle([left, y, right, y + 7], fill=_FP_RED)
-    y += 7 + 30
+    # Masthead, red rule, season line
+    _, mast_h = _ink_size(fonts["masthead"], "MemeGPT Arc")
+    rule_top = 64 + mast_h + 24
+    season_top = rule_top + 7 + 30
+    season_line = _arc_season_line(stats)
+    _, season_h = _ink_size(fonts["season"], season_line)
 
-    # Season line
-    y = _fp_text(draw, left, y, _arc_season_line(stats), _archivo(30, 700), _FP_INK) + 46
+    # Score and its label, white inside one solid red block
+    score_top = season_top + season_h + 40
+    score_text = f"+{stats.aura:,}"
+    score_w, score_h = _ink_size(fonts["score"], score_text)
+    label_w, label_h = _ink_size(fonts["score_label"], "AURA FARMED")
+    pad_x, pad_y, inner_gap = 28, 28, 20
+    score_block = (
+        left,
+        score_top,
+        left + max(score_w, label_w) + pad_x * 2,
+        score_top + pad_y + score_h + inner_gap + label_h + pad_y,
+    )
+    y = score_block[3] + 20
 
-    # Score
-    y = _fp_text(draw, left, y, f"+{stats.aura:,}", _anton(196), _FP_INK) + 20
-    y = _fp_text(draw, left, y, "AURA FARMED", _archivo(34, 800), _FP_RED) + 34
+    # Tier, white on a solid black block
+    tier_text = stats.tier.upper() if stats.tier else None
+    tier_block = None
+    if tier_text:
+        tier_w, tier_h = _ink_size(fonts["tier"], tier_text)
+        tier_block = (left, y, left + tier_w + 40, y + tier_h + 28)
+        y = tier_block[3] + 40
+    text_top = y
 
-    # Tier, as a solid red block
-    if stats.tier:
-        tier_font = _archivo(34, 800)
-        tier_text = stats.tier.upper()
-        tl, tt, tr, tb = tier_font.getbbox(tier_text)
-        pad_x, pad_y = 20, 14
-        block_bottom = y + (tb - tt) + pad_y * 2
-        draw.rectangle([left, y, left + (tr - tl) + pad_x * 2, block_bottom], fill=_FP_RED)
-        _fp_text(draw, left + pad_x, y + pad_y, tier_text, tier_font, _FP_WHITE)
-        y = block_bottom + 40
+    counts_text = _counts_line(stats)
+    counts_w, counts_h = _ink_size(fonts["counts"], counts_text)
+    left_width = max(
+        score_block[2] - left,
+        (tier_block[2] - left) if tier_block else 0,
+        counts_w,
+        _FP_LEFT_MIN,
+    )
 
-    # Verdict
-    if stats.verdict:
-        verdict_font = _archivo(52, 800)
-        line_gap = 14
-        for line in _wrap_to_width(stats.verdict, verdict_font, content_w):
-            y = _fp_text(draw, left, y, line, verdict_font, _FP_INK) + line_gap
-        y += 30 - line_gap
+    def text_column(wrap_width: int) -> tuple[list[str], int, int]:
+        """Verdict lines, counts top, and the bottom of the counts line."""
+        lines = _wrap_to_width(stats.verdict, fonts["verdict"], wrap_width) if stats.verdict else []
+        yy = text_top
+        for line in lines:
+            yy += _ink_size(fonts["verdict"], line)[1] + 14
+        if lines:
+            yy += 30 - 14
+        return lines, yy, yy + counts_h
 
-    # Counts
-    templates_word = "template" if stats.distinct_templates == 1 else "different templates"
-    memes_word = "meme" if stats.total_memes == 1 else "memes"
-    facts = f"{stats.total_memes} {memes_word} • {stats.distinct_templates} {templates_word}"
-    y = _fp_text(draw, left, y, facts, _archivo(32, 600), _FP_INK) + 36
-
-    # Footer: red bar with the URL, ending before the watermark's corner
-    wm_x0, _, _, _ = _watermark_box((w, h))
+    # Footer bar ends before the watermark's corner
     footer_top = h - _FP_FOOTER_H
-    bar_right = wm_x0 - 28
-    draw.rectangle([0, footer_top, bar_right, h], fill=_FP_RED)
-    foot_font = _archivo(30, 700)
-    _, ft, _, fb = foot_font.getbbox("memegpt.app/arc")
-    _fp_text(draw, left, footer_top + (_FP_FOOTER_H - (fb - ft)) // 2, "memegpt.app/arc", foot_font, _FP_WHITE)
+    footer_bar_right = _watermark_box((w, h))[0] - 28
 
-    # Most-used template, bare, at its true ratio on the meme mat, with its
-    # label directly under it. It takes whatever height is left.
+    _, line_h = _ink_size(fonts["label"], "Ag•")
+
+    def label_block_h(n_lines: int) -> int:
+        return n_lines * line_h + (n_lines - 1) * 8
+
+    below_lines, below_counts_top, below_text_bottom = text_column(content_w)
+    column_lines, column_counts_top, _ = text_column(left_width)
+    top = stats.top_templates[0] if stats.top_templates else None
+
+    plan = _FrontpagePlan(
+        season_line=season_line, season_top=season_top, rule_top=rule_top,
+        score_text=score_text, score_block=score_block,
+        score_top=score_top + pad_y, score_label_top=score_top + pad_y + score_h + inner_gap,
+        tier_text=tier_text, tier_block=tier_block, left_width=left_width,
+        verdict_lines=below_lines, verdict_top=text_top,
+        counts_text=counts_text, counts_top=below_counts_top,
+        footer_top=footer_top, footer_bar_right=footer_bar_right,
+        layout="none", mat=None, image_box=None, label_lines=[], label_top=0,
+        area_below=0, area_column=0,
+    )
+    if top is None or template_size is None:
+        return plan
+
+    tokens = _template_label_tokens(top.display_name, top.count)
+
+    # Below the text, the label on one line under the mat
+    below_top = below_text_bottom + 36
+    below_label = _wrap_tokens(tokens, fonts["label"], content_w)
+    below_size = _fit(
+        template_size, content_w, footer_top - 40 - label_block_h(len(below_label)) - 16 - below_top
+    )
+
+    # Right-hand column, level with the top of the score block, the label
+    # wrapped to the mat's width
+    column_x = left + left_width + _FP_COLUMN_GAP
+    column_w = right - column_x
+    column_label = [""]
+    column_size = (0, 0)
+    for _ in range(4):
+        avail_h = footer_top - 40 - label_block_h(len(column_label)) - 16 - score_block[1]
+        column_size = _fit(template_size, column_w, avail_h)
+        wrapped = _wrap_tokens(tokens, fonts["label"], column_size[0] + _FP_MAT_PAD * 2)
+        if len(wrapped) <= len(column_label):
+            column_label = wrapped
+            break
+        column_label = wrapped
+
+    plan.area_below = below_size[0] * below_size[1]
+    plan.area_column = column_size[0] * column_size[1]
+
+    if plan.area_column >= _FP_COLUMN_MIN_GAIN * plan.area_below and plan.area_column > 0:
+        plan.layout = "column"
+        plan.verdict_lines, plan.counts_top = column_lines, column_counts_top
+        mat_x, mat_y, (iw, ih), plan.label_lines = column_x, score_block[1], column_size, column_label
+    elif plan.area_below > 0:
+        plan.layout = "below"
+        mat_x, mat_y, (iw, ih), plan.label_lines = left, below_top, below_size, below_label
+    else:
+        return plan
+
+    plan.mat = (mat_x, mat_y, mat_x + iw + _FP_MAT_PAD * 2, mat_y + ih + _FP_MAT_PAD * 2)
+    plan.image_box = (mat_x + _FP_MAT_PAD, mat_y + _FP_MAT_PAD, mat_x + _FP_MAT_PAD + iw, mat_y + _FP_MAT_PAD + ih)
+    plan.label_top = plan.mat[3] + 16
+    return plan
+
+
+async def _compose_arc_card_frontpage(stats: ArcStats) -> SavedMeme:
+    w, h = _ARC_CARD_SIZE
+    left, right = _FP_MARGIN, w - _FP_MARGIN
+    fonts = _fp_fonts()
+
     top = stats.top_templates[0] if stats.top_templates else None
     template = _arc_template_image(top.template_id) if top else None
-    if top and template is not None:
-        label_font = _archivo(30, 700)
-        times = "time" if top.count == 1 else "times"
-        label = f"{top.display_name} • {top.count} {times}"
-        _, lt, _, lb = label_font.getbbox(label)
-        label_h = lb - lt
-        mat_pad = 14
-        avail_h = footer_top - 40 - label_h - 16 - y
-        avail_w = content_w
-        scale = min((avail_w - mat_pad * 2) / template.width, (avail_h - mat_pad * 2) / template.height)
-        tw, th = max(1, int(template.width * scale)), max(1, int(template.height * scale))
-        template = template.resize((tw, th), Image.LANCZOS)
-        mat = [left, y, left + tw + mat_pad * 2, y + th + mat_pad * 2]
-        draw.rectangle(mat, fill=_FP_MAT, outline=_FP_EDGE, width=1)
-        img.paste(template, (left + mat_pad, y + mat_pad))
-        draw.rectangle([left + mat_pad - 1, y + mat_pad - 1, left + mat_pad + tw, y + mat_pad + th], outline=_FP_EDGE, width=1)
-        _fp_text(draw, left, mat[3] + 16, label, label_font, _FP_INK)
+    plan = _frontpage_plan(stats, template.size if template is not None else None)
+
+    img = Image.new("RGBA", (w, h), _FP_WHITE + (255,))
+    draw = ImageDraw.Draw(img)
+
+    _fp_text(draw, left, 64, "MemeGPT Arc", fonts["masthead"], _FP_INK)
+    draw.rectangle([left, plan.rule_top, right, plan.rule_top + 7], fill=_FP_RED)
+    _fp_text(draw, left, plan.season_top, plan.season_line, fonts["season"], _FP_INK)
+
+    draw.rectangle(plan.score_block, fill=_FP_RED)
+    _fp_text(draw, left + 28, plan.score_top, plan.score_text, fonts["score"], _FP_WHITE)
+    _fp_text(draw, left + 28, plan.score_label_top, "AURA FARMED", fonts["score_label"], _FP_WHITE)
+
+    if plan.tier_block and plan.tier_text:
+        draw.rectangle(plan.tier_block, fill=_FP_BLACK)
+        _fp_text(draw, left + 20, plan.tier_block[1] + 14, plan.tier_text, fonts["tier"], _FP_WHITE)
+
+    y = plan.verdict_top
+    for line in plan.verdict_lines:
+        y = _fp_text(draw, left, y, line, fonts["verdict"], _FP_INK) + 14
+    _fp_text(draw, left, plan.counts_top, plan.counts_text, fonts["counts"], _FP_INK)
+
+    draw.rectangle([0, plan.footer_top, plan.footer_bar_right, h], fill=_FP_RED)
+    _, foot_h = _ink_size(fonts["footer"], "memegpt.app/arc")
+    _fp_text(draw, left, plan.footer_top + (_FP_FOOTER_H - foot_h) // 2, "memegpt.app/arc", fonts["footer"], _FP_WHITE)
+
+    if template is not None and plan.mat and plan.image_box:
+        x0, y0, x1, y1 = plan.image_box
+        draw.rectangle(plan.mat, fill=_FP_MAT, outline=_FP_EDGE, width=1)
+        img.paste(template.resize((x1 - x0, y1 - y0), Image.LANCZOS), (x0, y0))
+        draw.rectangle([x0 - 1, y0 - 1, x1, y1], outline=_FP_EDGE, width=1)
+        _, line_h = _ink_size(fonts["label"], "Ag•")
+        ly = plan.label_top
+        for line in plan.label_lines:
+            _fp_text(draw, plan.mat[0], ly, line, fonts["label"], _FP_INK)
+            ly += line_h + 8
 
     return await _finalize_and_save(img)
