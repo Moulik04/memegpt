@@ -34,6 +34,7 @@ async def lore(request: Request, body: LoreRequest):
         request, body.message, body.conversation_id,
         meme_count=body.meme_count, remember_lore=body.remember_lore, surface="lore",
         conversation_row_id_in=body.conversation_row_id,
+        include_source_lines=body.include_source_lines,
     )
 
 
@@ -48,6 +49,7 @@ async def lore_with_image(
     mode: str | None = Form(None),
     remember_lore: bool = Form(False),
     conversation_row_id: str | None = Form(None),
+    include_source_lines: bool = Form(False),
 ):
     """Lore surface multimodal — same as /chat/image/ plus meme_count and
     remember_lore, stamped surface="lore"."""
@@ -55,4 +57,5 @@ async def lore_with_image(
         request, images, message, conversation_id,
         meme_count=meme_count, mode=mode, remember_lore=remember_lore, surface="lore",
         conversation_row_id_in=conversation_row_id,
+        include_source_lines=include_source_lines,
     )

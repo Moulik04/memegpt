@@ -86,6 +86,9 @@ class LoreRequest(BaseModel):
                                        # settings.max_memes_per_request; None = auto-detect
     remember_lore: bool = False  # Growth Phase C — strictly opt-in Lore lexicon; see nlp/lexicon.py
     conversation_row_id: str | None = None  # Growth Phase H, Stage 3 — see ChatRequest's field
+    # Opt-in: the plan event carries each moment's source_lines (see
+    # SegmentedContext), and is sent even for a single moment.
+    include_source_lines: bool = False
 
 
 class ChatResponse(BaseModel):
@@ -143,6 +146,10 @@ class SegmentedContext(BaseModel):
 
     situation: str
     take_of: int | None = None
+    # Opt-in (Lore's include_source_lines): the 1-based numbers of the pasted
+    # lines this moment draws on, in text.split("\n") of the text as the
+    # backend received it. None means quote nothing and show the summary.
+    source_lines: list[int] | None = None
 
 
 # ---------------------------------------------------------------------------
