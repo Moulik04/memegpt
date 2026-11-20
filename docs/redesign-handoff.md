@@ -229,6 +229,10 @@ Source-line attribution needs data the backend doesn't send yet. Lore's segmenta
 - Saved history keeps storing summaries only, as the privacy page says, so a reopened Lore chat shows summaries, not quotes.
 - Line numbers are opt-in: only a request that asks for them (the redesign's Lore) gets the numbered prompt, so today's Chat and Lore keep today's prompt exactly.
 - Lines are numbered on the text as the backend received it, after the max_dump_chars cut (20,000 characters) and before any strip. The browser quotes from the same cut text.
+- The browser numbers and quotes the exact string it sent, not what is in the textarea. LoreView already trims the paste before sending (frontend/src/components/LoreView.tsx, line 236), so blank lines at the start or end of the textarea never count.
+- The cut counts code points, as Python slicing does, not UTF-16 units. In the browser that is `Array.from(sent).slice(0, 20000).join("")`, so an emoji near the limit lands on the same side of the cut in both places.
+- Split the cut text on "\n" only. Line 1 is the first piece. Blank lines keep their number but are never cited, so numbers can skip. Leading spaces stay part of the line.
+- The plan event carries `source_lines`: one entry per situation, in the same order as `situations`. Each entry is a sorted list of line numbers, or null. Null, or an empty list, means show the moment's summary instead of quotes.
 - source_lines is sent even when Lore finds only one moment, although the plan event otherwise goes out only for more than one.
 - A take reuses the lines of the moment it retakes (take_of names it), so its row keeps the quote.
 
@@ -269,7 +273,7 @@ Arc is a Wrapped-style tap-through story staged as a tabloid sports back page. S
 
 #### Sample data for the handoff only
 
-47 memes; 14 different templates; busiest hour 2 AM; 6-day streak; +12,480 Aura; tier certified menace; most-used template Empty Meeting Room, 9 times; split 26 Chat / 15 Lore / 6 Make. These are mockup values only, never marketing claims. Do not invent the season date range; derive it from actual records or use **Your Arc**. Every roast, the verdict, the tier and the period label come from backend/arc/copy.py; the strings in this section are what it returns for the sample. Empty Meeting Room is a mockup stand-in, so its roast is sample-only; real templates get the roast arc/copy.py assigns them. **14 different templates** needs the Arc API to send distinct_templates, which the backend already counts for the aura score but doesn't return.
+47 memes; 14 different templates; busiest hour 2 AM; 6-day streak; +12,480 Aura; tier certified menace; most-used template Empty Meeting Room, 9 times; split 26 Chat / 15 Lore / 6 Make. These are mockup values only, never marketing claims. Do not invent the season date range; derive it from actual records; when they don't fit one season, the label is **YOUR ARC**, still with the record dates. Every roast, the verdict, the tier and the period label come from backend/arc/copy.py; the strings in this section are what it returns for the sample. Empty Meeting Room is a mockup stand-in, so its roast is sample-only; real templates get the roast arc/copy.py assigns them. **14 different templates** needs the Arc API to send distinct_templates, which the backend already counts for the aura score but doesn't return.
 
 #### Story frames
 
