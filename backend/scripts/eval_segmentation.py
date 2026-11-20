@@ -24,16 +24,27 @@ limit is not a segmentation result.
 
 Paced at 10s per case — Groq's free tier is ~8000 tokens/min.
 
-Run: cd backend && python -m scripts.eval_segmentation [passes]
+Run: cd backend && python -m scripts.eval_segmentation [passes] [--source-lines] [--token-cap N]
+
+--source-lines runs Lore's opt-in numbered path and adds three metrics:
+moments with at least one valid source line, line numbers the backend
+dropped (invalid or repeated), and pairs of distinct moments that claim the
+same line (takes share their moment's lines by design and are skipped).
+
+--token-cap stops before a run that could take the total past N tokens,
+counted from Groq's own usage figures.
 """
 
 from __future__ import annotations
 
 import asyncio
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import combinations
 
+import httpx
+
+import nlp.segmentation as segmentation
 from nlp.segmentation import _combine_raw, _is_near_duplicate, segment_contexts
 
 _PACE_SECONDS = 10
@@ -133,6 +144,18 @@ class Run:
     moments: list[str] | None = None
     takes: int = 0
     repeats: int = 0
+    moment_lines: list[list[int] | None] = field(default_factory=list)
+    numbers_given: int = 0
+    numbers_kept: int = 0
+    tokens: int = 0
+
+    @property
+    def moments_with_lines(self) -> int:
+        return sum(1 for lines in self.moment_lines if lines)
+
+    @property
+    def shared_line_pairs(self) -> int:
+        return sum(1 for a, b in combinations(self.moment_lines, 2) if a and b and set(a) & set(b))
 
     @property
     def most_expected(self) -> int:
@@ -165,10 +188,45 @@ class Run:
         return len(self.moments or [])
 
 
-async def run_case(case: Case) -> Run:
-    contexts = await segment_contexts(case.text, None, case.requested)
+class _Usage:
+    """Total tokens Groq reports for every completed call in this process."""
+
+    tokens = 0
+    numbers_given = 0
+    numbers_kept = 0
+
+
+def _count_tokens() -> None:
+    real_post = httpx.AsyncClient.post
+
+    async def post(self, url, *args, **kwargs):
+        response = await real_post(self, url, *args, **kwargs)
+        if "groq.com" in str(url) and response.status_code == 200:
+            _Usage.tokens += response.json().get("usage", {}).get("total_tokens", 0)
+        return response
+
+    httpx.AsyncClient.post = post
+
+
+def _count_line_numbers() -> None:
+    real_valid_lines = segmentation._valid_lines
+
+    def valid_lines(raw, valid):
+        kept = real_valid_lines(raw, valid)
+        _Usage.numbers_given += len(raw) if isinstance(raw, list) else 0
+        _Usage.numbers_kept += len(kept or [])
+        return kept
+
+    segmentation._valid_lines = valid_lines
+
+
+async def run_case(case: Case, source_lines: bool = False) -> Run:
+    tokens_before = _Usage.tokens
+    given_before, kept_before = _Usage.numbers_given, _Usage.numbers_kept
+    contexts = await segment_contexts(case.text, None, case.requested, number_lines=source_lines)
+    tokens = _Usage.tokens - tokens_before
     if len(contexts) == 1 and contexts[0].situation == _combine_raw(case.text, []):
-        return Run(case, failed=True)
+        return Run(case, failed=True, tokens=tokens)
     moments = [c.situation for c in contexts if c.take_of is None]
     repeats = sum(1 for a, b in combinations(moments, 2) if _is_near_duplicate(a, b))
     return Run(
@@ -178,20 +236,50 @@ async def run_case(case: Case) -> Run:
         moments=moments,
         takes=sum(1 for c in contexts if c.take_of is not None),
         repeats=repeats,
+        moment_lines=[c.source_lines for c in contexts if c.take_of is None],
+        numbers_given=_Usage.numbers_given - given_before,
+        numbers_kept=_Usage.numbers_kept - kept_before,
+        tokens=tokens,
     )
 
 
+def _parse_args(argv: list[str]) -> tuple[int, bool, int | None]:
+    passes, source_lines, token_cap = _DEFAULT_PASSES, False, None
+    args = iter(argv)
+    for arg in args:
+        if arg == "--source-lines":
+            source_lines = True
+        elif arg == "--token-cap":
+            token_cap = int(next(args))
+        else:
+            passes = int(arg)
+    return passes, source_lines, token_cap
+
+
 async def main() -> None:
-    passes = int(sys.argv[1]) if len(sys.argv) > 1 else _DEFAULT_PASSES
+    passes, source_lines, token_cap = _parse_args(sys.argv[1:])
+    _count_tokens()
+    if source_lines:
+        _count_line_numbers()
+    print(f"source lines: {'on' if source_lines else 'off'}, token cap: {token_cap or 'none'}")
     runs: list[Run] = []
     first = True
+    largest_run = 0
+    stopped = False
     for p in range(passes):
+        if stopped:
+            break
         print(f"\n=== pass {p + 1}/{passes} ===")
         for case in CASES:
+            if token_cap is not None and _Usage.tokens + largest_run > token_cap:
+                print(f"  Stopping: {_Usage.tokens} tokens used, the next run could pass the cap of {token_cap}.")
+                stopped = True
+                break
             if not first:
                 await asyncio.sleep(_PACE_SECONDS)
             first = False
-            run = await run_case(case)
+            run = await run_case(case, source_lines)
+            largest_run = max(largest_run, run.tokens)
             runs.append(run)
             if run.failed:
                 print(f"  [FAILED ] {case.name}: model call failed, excluded")
@@ -203,7 +291,8 @@ async def main() -> None:
                 f"repeats {run.repeats}"
             )
             for i, moment in enumerate(run.moments or []):
-                print(f"              {i + 1}. {moment}")
+                lines = f"  lines {run.moment_lines[i]}" if source_lines else ""
+                print(f"              {i + 1}. {moment}{lines}")
 
     scored = [r for r in runs if not r.failed]
     excluded = len(runs) - len(scored)
@@ -223,6 +312,17 @@ async def main() -> None:
     print(f"Count honoured:       {honoured}/{n} ({100 * honoured / n:.0f}%)")
     print(f"Nothing repeats:      {clean}/{n} ({100 * clean / n:.0f}%)")
     print(f"Moments as expected:  {in_range}/{n} ({100 * in_range / n:.0f}%)  — missed a real one: {under}, split one: {over}")
+    if source_lines:
+        moments_total = sum(r.moments_found for r in scored)
+        with_lines = sum(r.moments_with_lines for r in scored)
+        given = sum(r.numbers_given for r in scored)
+        kept = sum(r.numbers_kept for r in scored)
+        shared_runs = sum(1 for r in scored if r.shared_line_pairs)
+        shared_pairs = sum(r.shared_line_pairs for r in scored)
+        print(f"Moments with lines:   {with_lines}/{moments_total}")
+        print(f"Line numbers dropped: {given - kept}/{given} (invalid or repeated)")
+        print(f"Shared lines:         {shared_pairs} pairs of distinct moments, in {shared_runs}/{n} runs")
+    print(f"Tokens used:          {_Usage.tokens}")
     print("\nPer case (moments found across passes, expected):")
     for case in CASES:
         case_runs = [r for r in scored if r.case is case]
