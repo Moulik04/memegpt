@@ -538,6 +538,8 @@ Collapsed preview shows two or three real lines plus **more messages**. Credit e
 - Rating actions: **Thumbs up**, **Thumbs down**
 - Share: **Share**
 - Download: **Download**
+- Meme that fails to load, in any meme frame: **MemeGPT couldn't load this meme.** Action: **Try again**
+- Full-size view of a meme: open control label **Open full size**, dismiss with **Close**
 - Make search placeholder: **Search templates by name, vibe or tag**
 - Template action: **Choose template**
 - Caption control labels: **Caption 1**, **Caption 2**, **Caption 3**, **Caption 4**, **Caption 5**. An empty field may show only its matching number.
