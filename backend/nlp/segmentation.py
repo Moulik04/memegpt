@@ -130,11 +130,24 @@ _RESPOND_LINE = "Respond with ONLY valid JSON"
 _OUTPUT_TOKENS_PER_MOMENT_WITH_LINES = 150
 
 
-def _with_source_lines(prompt: str) -> str:
-    """The same prompt, asking for each moment's line numbers too."""
-    assert prompt.count(_PLAIN_FORMAT) == 1 and prompt.count(_RESPOND_LINE) == 1
-    prompt = prompt.replace(_RESPOND_LINE, f"{_SOURCE_LINES_INSTRUCTION}\n{_RESPOND_LINE}")
-    return prompt.replace(_PLAIN_FORMAT, _NUMBERED_FORMAT)
+def _format_escaped(text: str) -> str:
+    return text.replace("{", "{{").replace("}", "}}")
+
+
+def _with_source_lines(template: str) -> str:
+    """The same prompt template, asking for each moment's line numbers too.
+
+    Applied to the template before .format(), so the user's lexicon is never
+    part of what gets searched and replaced here.
+    """
+    plain, numbered = _format_escaped(_PLAIN_FORMAT), _format_escaped(_NUMBERED_FORMAT)
+    assert template.count(plain) == 1 and template.count(_RESPOND_LINE) == 1
+    template = template.replace(_RESPOND_LINE, f"{_SOURCE_LINES_INSTRUCTION}\n{_RESPOND_LINE}")
+    return template.replace(plain, numbered)
+
+
+_NUMBERED_SEGMENTATION_SYSTEM_PROMPT = _with_source_lines(_SEGMENTATION_SYSTEM_PROMPT)
+_NUMBERED_MORE_SYSTEM_PROMPT = _with_source_lines(_MORE_SYSTEM_PROMPT)
 
 
 def _numbered_lines(text: str) -> list[tuple[int, str]]:
@@ -358,15 +371,13 @@ async def segment_contexts(
     if lexicon:
         lexicon_instruction = _LEXICON_INSTRUCTION_TEMPLATE.format(lexicon=", ".join(lexicon))
 
-    system_prompt = _SEGMENTATION_SYSTEM_PROMPT.format(
+    system_template = _NUMBERED_SEGMENTATION_SYSTEM_PROMPT if numbered else _SEGMENTATION_SYSTEM_PROMPT
+    system_prompt = system_template.format(
         max_count=max_count,
         count_instruction=count_instruction,
         lexicon_instruction=lexicon_instruction,
     )
-    per_moment = _OUTPUT_TOKENS_PER_MOMENT
-    if numbered:
-        system_prompt = _with_source_lines(system_prompt)
-        per_moment = _OUTPUT_TOKENS_PER_MOMENT_WITH_LINES
+    per_moment = _OUTPUT_TOKENS_PER_MOMENT_WITH_LINES if numbered else _OUTPUT_TOKENS_PER_MOMENT
     max_tokens = _OUTPUT_TOKENS_BASE + per_moment * max_count
     deadline = time.monotonic() + _OVERALL_TIMEOUT_SECONDS
 
@@ -379,12 +390,11 @@ async def segment_contexts(
         return fallback
 
     if clamped_count is not None and len(moments) < clamped_count:
-        more_prompt = _MORE_SYSTEM_PROMPT.format(
+        more_template = _NUMBERED_MORE_SYSTEM_PROMPT if numbered else _MORE_SYSTEM_PROMPT
+        more_prompt = more_template.format(
             n=clamped_count - len(moments),
             lexicon_instruction=lexicon_instruction,
         )
-        if numbered:
-            more_prompt = _with_source_lines(more_prompt)
         more = await _ask_for_moments(
             more_prompt, _build_more_material(material, [s for s, _ in moments], numbered=numbered),
             max_tokens, deadline, temperature=_MORE_TEMPERATURE, valid_lines=valid_lines,

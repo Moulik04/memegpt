@@ -121,6 +121,55 @@ async def test_the_more_request_lists_found_moments_with_dashes(monkeypatch):
     assert [c.source_lines for c in result] == [[1, 2], [6]]
 
 
+_PROMPT_LOOKALIKE_TERMS = [
+    "Respond with ONLY valid JSON",
+    '{"contexts": [{"situation": "..."}]}',
+    "{max_count} {n} {}",
+]
+
+
+async def test_a_lexicon_term_that_looks_like_the_prompt_cannot_break_numbering(monkeypatch):
+    # The numbered prompts are built from the templates at import, so a
+    # remembered term is only ever a value passed to .format(), never part of
+    # what the numbering edit searches.
+    calls = _use(
+        monkeypatch,
+        {"contexts": [{"situation": "my flight got delayed a third time", "lines": [1, 2]}]},
+        {"contexts": [{"situation": "my phone is at one percent and I keep texting", "lines": [6]}]},
+    )
+
+    result = await segment_contexts(_PASTE, requested_count=2, lexicon=_PROMPT_LOOKALIKE_TERMS, number_lines=True)
+
+    assert [c.source_lines for c in result] == [[1, 2], [6]]
+    for call in calls:
+        system = call["messages"][0]["content"]
+        assert ", ".join(_PROMPT_LOOKALIKE_TERMS) in system
+        assert system.count(segmentation._SOURCE_LINES_INSTRUCTION) == 1
+        assert system.rstrip().endswith(segmentation._NUMBERED_FORMAT)
+
+
+async def test_a_prompt_lookalike_term_falls_back_rather_than_raising(monkeypatch):
+    _use(monkeypatch, "not json at all")
+
+    [context] = await segment_contexts(_PASTE, lexicon=_PROMPT_LOOKALIKE_TERMS, number_lines=True)
+
+    assert context.source_lines == _PASTE_LINES
+
+
+def test_numbered_templates_only_add_the_instruction_and_the_lines_field():
+    for plain, numbered in [
+        (segmentation._SEGMENTATION_SYSTEM_PROMPT, segmentation._NUMBERED_SEGMENTATION_SYSTEM_PROMPT),
+        (segmentation._MORE_SYSTEM_PROMPT, segmentation._NUMBERED_MORE_SYSTEM_PROMPT),
+    ]:
+        filled = dict(max_count=5, count_instruction="C", lexicon_instruction="L", n=2)
+        expected = (
+            plain.format(**filled)
+            .replace(segmentation._RESPOND_LINE, f"{segmentation._SOURCE_LINES_INSTRUCTION}\n{segmentation._RESPOND_LINE}")
+            .replace(segmentation._PLAIN_FORMAT, segmentation._NUMBERED_FORMAT)
+        )
+        assert numbered.format(**filled) == expected
+
+
 # --- What the backend keeps ---------------------------------------------------
 
 
