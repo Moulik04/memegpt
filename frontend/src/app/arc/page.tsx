@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { BackendWake } from "@/components/BackendWake";
 import { ArcView } from "@/components/ArcView";
-import { ModeTabs } from "@/components/ModeTabs";
+import { Masthead } from "@/components/Masthead";
 import { MobileNav } from "@/components/MobileNav";
 
 export const metadata: Metadata = {
@@ -13,7 +13,7 @@ export default function ArcPage() {
   return (
     <div className="flex flex-col h-dvh">
       <BackendWake />
-      <ModeTabs active="arc" />
+      <Masthead variant="app" active="arc" />
       <ArcView />
       <MobileNav active="arc" />
     </div>

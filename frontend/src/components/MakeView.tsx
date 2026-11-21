@@ -105,9 +105,8 @@ export function MakeView() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search templates — name, vibe, tags…"
-                className="w-full bg-card border border-border rounded-xl px-4 py-3
-                           text-sm placeholder:text-muted-foreground focus:outline-none
-                           focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all"
+                className="w-full bg-card border border-input rounded-xl px-4 py-3
+                           text-sm placeholder:text-muted-foreground transition-all"
               />
             </div>
 
@@ -200,9 +199,8 @@ export function MakeView() {
                       value={captions[box.label] ?? ""}
                       onChange={(e) => setCaptions((prev) => ({ ...prev, [box.label]: e.target.value }))}
                       placeholder={box.description || undefined}
-                      className="w-full bg-ink-2 border border-border rounded-lg px-3 py-2
-                                 text-sm placeholder:text-muted-foreground focus:outline-none
-                                 focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all"
+                      className="w-full bg-card border border-input rounded-lg px-3 py-2
+                                 text-sm placeholder:text-muted-foreground transition-all"
                     />
                   </div>
                 ))}

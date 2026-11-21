@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { Masthead } from "@/components/Masthead";
 import { useEffect } from "react";
 
 export default function GlobalError({
@@ -16,45 +17,45 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-12 gap-8 text-center">
-      <Link href="/" className="caption caption-mark text-xl">
-        MemeGPT
-      </Link>
+    <div className="min-h-dvh flex flex-col">
+      <Masthead variant="system" />
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 gap-8 text-center">
 
-      <div className="w-full max-w-lg rounded-2xl bg-card border border-border p-3">
-        <Image
-          src="/landing/500_example.png"
-          alt="This Is Fine meme: a dog sitting in a burning room, captioned 'the server, right now'"
-          width={1200}
-          height={600}
-          className="w-full h-auto rounded-xl"
-          priority
-        />
-      </div>
+        <div className="w-full max-w-lg rounded-2xl bg-card border border-border p-3">
+          <Image
+            src="/landing/500_example.png"
+            alt="This Is Fine meme: a dog sitting in a burning room, captioned 'the server, right now'"
+            width={1200}
+            height={600}
+            className="w-full h-auto rounded-xl"
+            priority
+          />
+        </div>
 
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Something broke.</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Not you — us. Try again in a moment.
-        </p>
-      </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Something broke.</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Not you — us. Try again in a moment.
+          </p>
+        </div>
 
-      <div className="flex flex-col sm:flex-row items-center gap-3">
-        <button
-          type="button"
-          onClick={reset}
-          className="bg-primary hover:bg-primary/85 transition-colors text-primary-foreground font-semibold
-                     rounded-full px-8 py-3.5 text-base"
-        >
-          Try again
-        </button>
-        <Link
-          href="/"
-          className="bg-muted hover:bg-ink-2 border border-border hover:border-input
-                     transition-colors text-foreground font-semibold rounded-full px-8 py-3.5 text-base"
-        >
-          Back home
-        </Link>
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <button
+            type="button"
+            onClick={reset}
+            className="bg-primary hover:bg-primary/85 transition-colors text-primary-foreground font-semibold
+                       rounded-full px-8 py-3.5 text-base"
+          >
+            Try again
+          </button>
+          <Link
+            href="/"
+            className="bg-muted hover:bg-ink-2 border border-border hover:border-input
+                       transition-colors text-foreground font-semibold rounded-full px-8 py-3.5 text-base"
+          >
+            Back home
+          </Link>
+        </div>
       </div>
     </div>
   );

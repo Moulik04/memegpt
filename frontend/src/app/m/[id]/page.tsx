@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Masthead } from "@/components/Masthead";
 import { notFound } from "next/navigation";
 import { MemeCard } from "@/components/MemeCard";
 
@@ -72,24 +73,24 @@ export default async function SharedMemePage({ params }: Props) {
   const imageUrl = publicMemeUrl(meme.url);
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-12 gap-8">
-      <Link href="/" className="caption caption-mark text-xl">
-        MemeGPT
-      </Link>
+    <div className="min-h-dvh flex flex-col">
+      <Masthead variant="system" />
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 gap-8">
 
-      <div className="max-w-md w-full">
-        <MemeCard url={imageUrl} alt={meme.template_name ?? "A meme made with MemeGPT"} large />
-      </div>
+        <div className="max-w-md w-full">
+          <MemeCard url={imageUrl} alt={meme.template_name ?? "A meme made with MemeGPT"} large />
+        </div>
 
-      <div className="text-center">
-        <p className="text-sm text-muted-foreground mb-4">Made with MemeGPT. It only replies in memes.</p>
-        <Link
-          href="/chat"
-          className="inline-block bg-primary hover:bg-primary/85 transition-colors text-primary-foreground
-                     font-semibold rounded-full px-8 py-3.5 text-base"
-        >
-          Make your own
-        </Link>
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground mb-4">Made with MemeGPT. It only replies in memes.</p>
+          <Link
+            href="/chat"
+            className="inline-block bg-primary hover:bg-primary/85 transition-colors text-primary-foreground
+                       font-semibold rounded-full px-8 py-3.5 text-base"
+          >
+            Make your own
+          </Link>
+        </div>
       </div>
     </div>
   );

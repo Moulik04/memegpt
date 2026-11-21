@@ -26,8 +26,8 @@ function truncateEmail(email: string): string {
 /**
  * Renders null when Supabase Auth isn't configured (empty env vars) —
  * signed-out visitors and every existing test/screenshot of the app are
- * completely unaffected. Slots into ModeTabs.tsx's right-hand chrome
- * alongside "Forget me", and into LandingPage.tsx.
+ * completely unaffected. Slots into Masthead.tsx's account actions,
+ * beside "Forget me".
  */
 export function AuthControl() {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
@@ -39,13 +39,13 @@ export function AuthControl() {
     return (
       <div className="flex items-center gap-2">
         <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
-        <span className="text-[11px] text-muted-foreground" title={user.email ?? undefined}>
+        <span className="hidden md:inline text-sm text-muted-foreground" title={user.email ?? undefined}>
           {user.email ? truncateEmail(user.email) : "Signed in"}
         </span>
         <button
           type="button"
           onClick={() => signOut()}
-          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground transition-colors"
         >
           Sign out
         </button>
@@ -58,7 +58,7 @@ export function AuthControl() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          className="min-h-11 px-2 text-base font-medium text-foreground hover:text-muted-foreground transition-colors"
         >
           Sign in
         </button>

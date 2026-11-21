@@ -288,7 +288,9 @@ export function LoreView() {
           }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
-          className={`relative rounded-2xl border-2 p-4 flex flex-col gap-3 transition-all ${
+          className={`relative rounded-2xl border-2 p-4 flex flex-col gap-3 transition-all
+                      has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2
+                      has-[textarea:focus-visible]:outline-focus-ring ${
             dragActive
               ? "border-input border-solid bg-muted"
               : "border-border border-dashed bg-card focus-within:border-input"
@@ -401,8 +403,8 @@ export function LoreView() {
               onChange={(e) => setMemeCount(e.target.value ? Number(e.target.value) : undefined)}
               disabled={loading}
               title="Number of memes"
-              className="shrink-0 bg-ink-2 border border-border rounded-xl px-2 py-2.5
-                         text-xs text-muted-foreground focus:outline-none focus:border-accent
+              className="shrink-0 bg-card border border-input rounded-xl px-2 py-2.5
+                         text-xs text-muted-foreground
                          disabled:opacity-40 transition-colors"
             >
               <option value="">Auto</option>

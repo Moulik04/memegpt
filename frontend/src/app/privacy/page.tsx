@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Masthead } from "@/components/Masthead";
 
 export const metadata: Metadata = {
   title: "Privacy",
@@ -17,13 +17,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function PrivacyPage() {
   return (
-    <div className="min-h-dvh px-6 py-12">
-      <div className="max-w-2xl mx-auto">
-        <Link href="/" className="caption caption-mark text-xl">
-          MemeGPT
-        </Link>
-
-        <h1 className="mt-8 text-3xl font-bold tracking-tight">Privacy</h1>
+    <div className="min-h-dvh">
+      <Masthead variant="system" />
+      <div className="max-w-2xl mx-auto px-6 py-12">
+        <h1 className="text-3xl font-bold tracking-tight">Privacy</h1>
         <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
           MemeGPT is a small, self-funded side project, not a company with a
           data team. This page says exactly what happens to what you send,

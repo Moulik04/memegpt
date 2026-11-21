@@ -6,7 +6,7 @@ export function prefersReducedMotion(): boolean {
 }
 
 /**
- * Shared by ModeTabs' pill nav and MobileNav's bottom tab bar — wraps a
+ * Shared by Masthead's top tabs and MobileNav's bottom tab bar — wraps a
  * same-origin navigation in document.startViewTransition() when the
  * browser supports it and prefers-reduced-motion isn't set. Modified
  * clicks (cmd/ctrl/shift/middle-click) are left alone so "open in new

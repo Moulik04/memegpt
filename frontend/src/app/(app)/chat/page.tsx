@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ChatWindow } from "@/components/ChatWindow";
-import { ModeTabs } from "@/components/ModeTabs";
+import { Masthead } from "@/components/Masthead";
 import { MobileNav } from "@/components/MobileNav";
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function ChatPage() {
   return (
     <div className="flex flex-col h-full">
-      <ModeTabs active="chat" />
+      <Masthead variant="app" active="chat" />
 
       {/* Chat fills remaining height */}
       <div className="flex-1 min-h-0 flex flex-col max-w-2xl w-full mx-auto">

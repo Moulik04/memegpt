@@ -154,7 +154,13 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+  }
+  /* One focus style everywhere: black, offset so it shows around black
+     buttons and red Arc blocks as well as on white. */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
   body {
     @apply bg-background text-foreground;
@@ -162,6 +168,12 @@
   html {
     @apply font-sans;
   }
+}
+
+/* The landing page scrolls the whole document under a fixed bottom tab bar
+   on phones, so keyboard focus must stop short of it. */
+html:has([data-fixed-tabs]) {
+  scroll-padding-bottom: calc(3rem + 1px + env(safe-area-inset-bottom) + 1rem);
 }
 
 /* Thin scrollbar */

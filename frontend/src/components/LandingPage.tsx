@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { motion } from "motion/react";
-import { AuthControl } from "@/components/AuthControl";
+import { Masthead } from "@/components/Masthead";
+import { MobileNav } from "@/components/MobileNav";
 import { HeroLoop } from "@/components/HeroLoop";
 import { templateLabel } from "@/lib/utils";
 
@@ -133,26 +134,8 @@ export function LandingPage() {
   }, []);
 
   return (
-    <div className="relative min-h-dvh overflow-x-hidden bg-background">
-      {/* Nav */}
-      <motion.header
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="relative z-20 flex items-center justify-between px-6 py-5 sm:px-10"
-      >
-        <span className="caption caption-mark text-xl">MemeGPT</span>
-        <div className="flex items-center gap-4">
-          <AuthControl />
-          <Link
-            href="/chat"
-            className="rounded-full bg-muted border border-border px-4 py-2 text-sm text-foreground
-                       hover:border-input hover:text-foreground transition-colors"
-          >
-            Open the app
-          </Link>
-        </div>
-      </motion.header>
+    <div className="relative min-h-dvh overflow-x-hidden bg-background pb-[calc(3rem+1px+env(safe-area-inset-bottom))] md:pb-0">
+      <Masthead variant="landing" />
 
       {/* Hero */}
       <section className="relative z-10 px-6 pt-16 pb-28 sm:pt-24 sm:pb-36">
@@ -395,7 +378,7 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 px-6 py-10 pb-24 sm:pb-10 border-t border-border">
+      <footer className="relative z-10 px-6 py-10 border-t border-border">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-5 text-xs text-muted-foreground">
           <nav className="flex items-center gap-4">
             <Link href="/chat" className="hover:text-foreground transition-colors">Chat</Link>
@@ -416,19 +399,7 @@ export function LandingPage() {
         </div>
       </footer>
 
-      {/* Sticky mobile CTA */}
-      <div
-        className="sm:hidden fixed bottom-0 inset-x-0 z-30 border-t border-border
-                   bg-background/95 backdrop-blur-sm px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
-      >
-        <Link
-          href="/chat"
-          className="block w-full text-center bg-primary hover:bg-primary/85 transition-colors
-                     text-primary-foreground font-semibold rounded-full px-8 py-3 text-base"
-        >
-          Start chatting
-        </Link>
-      </div>
+      <MobileNav fixed />
     </div>
   );
 }
