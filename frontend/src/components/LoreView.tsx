@@ -288,10 +288,10 @@ export function LoreView() {
           }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
-          className={`relative rounded-2xl border-2 p-4 flex flex-col gap-3 shadow-lg transition-all ${
+          className={`relative rounded-2xl border-2 p-4 flex flex-col gap-3 transition-all ${
             dragActive
-              ? "border-accent border-solid bg-accent/5"
-              : "border-border border-dashed bg-card focus-within:border-accent/60"
+              ? "border-input border-solid bg-muted"
+              : "border-border border-dashed bg-card focus-within:border-input"
           }`}
         >
           <AnimatePresence>
@@ -305,7 +305,7 @@ export function LoreView() {
                            rounded-2xl bg-card/95 pointer-events-none"
               >
                 <span className="text-2xl">📥</span>
-                <p className="text-sm font-semibold text-accent">Drop to add screenshots</p>
+                <p className="text-sm font-semibold text-foreground">Drop to add screenshots</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -317,7 +317,7 @@ export function LoreView() {
             placeholder="Paste a whole conversation, a group chat thread, anything with a bunch of moments in it…"
             disabled={loading}
             rows={4}
-            className="w-full bg-transparent resize-none text-sm placeholder-gray-600
+            className="w-full bg-transparent resize-none text-sm placeholder:text-muted-foreground
                        focus:outline-none disabled:opacity-50"
           />
 
@@ -328,7 +328,7 @@ export function LoreView() {
           )}
 
           {text.length > SEGMENTATION_TEXT_THRESHOLD_CHARS && !memeCount && (
-            <p className="text-[10px] text-gray-600">
+            <p className="text-[10px] text-muted-foreground">
               Looks like ~{estimateMomentCount(text)} moment
               {estimateMomentCount(text) === 1 ? "" : "s"} worth memeing — rough
               estimate, MemeGPT will decide for real.
@@ -352,13 +352,13 @@ export function LoreView() {
                     <img
                       src={p.previewUrl}
                       alt="Attached preview"
-                      className="w-14 h-14 rounded-lg object-cover border border-gray-700"
+                      className="w-14 h-14 rounded-lg object-cover border border-border"
                     />
                     <button
                       type="button"
                       onClick={() => removePendingImage(i)}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-900
-                                 border border-gray-700 text-gray-400 hover:text-gray-200
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-paper
+                                 border border-paper text-primary-foreground hover:bg-paper/85
                                  text-[10px] flex items-center justify-center leading-none"
                       title="Remove"
                       aria-label="Remove image"
@@ -391,8 +391,8 @@ export function LoreView() {
               title="Attach or drop screenshots"
               aria-label="Attach or drop screenshots"
               className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl
-                         border border-gray-800 text-gray-400 hover:text-gray-200
-                         hover:border-gray-600 disabled:opacity-40 transition-colors"
+                         border border-border text-muted-foreground hover:text-foreground
+                         hover:border-input disabled:opacity-40 transition-colors"
             >
               <Paperclip size={16} strokeWidth={2} aria-hidden="true" />
             </button>
@@ -402,7 +402,7 @@ export function LoreView() {
               disabled={loading}
               title="Number of memes"
               className="shrink-0 bg-ink-2 border border-border rounded-xl px-2 py-2.5
-                         text-xs text-gray-400 focus:outline-none focus:border-accent
+                         text-xs text-muted-foreground focus:outline-none focus:border-accent
                          disabled:opacity-40 transition-colors"
             >
               <option value="">Auto</option>
@@ -420,8 +420,8 @@ export function LoreView() {
               aria-pressed={rememberLore}
               className={`shrink-0 text-xs font-medium rounded-full px-3 py-2.5 transition-colors ${
                 rememberLore
-                  ? "bg-accent text-white"
-                  : "bg-ink-2 border border-border text-gray-500 hover:text-gray-300"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-ink-2 border border-border text-muted-foreground hover:text-foreground"
               } disabled:opacity-40`}
             >
               🧠 Remember lore
@@ -429,21 +429,21 @@ export function LoreView() {
             <button
               type="submit"
               disabled={loading || (!text.trim() && pendingImages.length === 0)}
-              className="w-full sm:w-auto sm:ml-auto bg-accent hover:bg-accent/90 disabled:opacity-40
-                         transition-colors text-white text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
+              className="w-full sm:w-auto sm:ml-auto bg-primary hover:bg-primary/85 disabled:opacity-40
+                         transition-colors text-primary-foreground text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
             >
               Drop the lore
             </button>
           </div>
 
-          <p className="text-[10px] text-gray-600">
+          <p className="text-[10px] text-muted-foreground">
             {user
               ? "You're signed in, so this is saved to your history, usually as a short summary of each moment. Original photos aren't kept."
               : "Your text and original photos aren't saved. Only the memes MemeGPT makes are."}
             {rememberLore
               ? " Remember lore is on. Short recurring names and jokes are kept for future memes until you use Forget me."
               : " Remember lore is off. Turn it on to carry recurring names and jokes into future memes."}{" "}
-            <Link href="/privacy" className="underline hover:text-gray-400 transition-colors">
+            <Link href="/privacy" className="underline hover:text-foreground transition-colors">
               Privacy details
             </Link>
           </p>
@@ -459,7 +459,7 @@ export function LoreView() {
 
         {plan && plan.total > 1 && (
           <div className="rounded-2xl bg-card border border-border px-4 py-3">
-            <p className="text-[10px] text-gray-500 mb-2 uppercase tracking-wide">
+            <p className="text-[10px] text-muted-foreground mb-2 uppercase tracking-wide">
               {planHeading(plan)}
             </p>
             <ul className="flex flex-col gap-1.5">
@@ -469,11 +469,11 @@ export function LoreView() {
                 return (
                   <li key={i} className="flex items-start gap-2 text-xs">
                     <span
-                      className={done ? "text-accent" : missed ? "text-destructive" : "text-gray-600"}
+                      className={done ? "text-foreground" : missed ? "text-destructive" : "text-muted-foreground"}
                     >
                       {done ? "✓" : missed ? "✕" : "○"}
                     </span>
-                    <span className={done ? "text-gray-400" : "text-gray-600"}>
+                    <span className={done ? "text-muted-foreground" : "text-muted-foreground"}>
                       {situation}
                       {missed && " (not made)"}
                     </span>
@@ -518,7 +518,7 @@ export function LoreView() {
                 {...hoverProps}
               >
                 {entry.meme.takeOf !== undefined && (
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-1.5 px-1">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5 px-1">
                     Another take
                   </p>
                 )}
@@ -532,7 +532,7 @@ export function LoreView() {
             ) : (
               <p
                 key={entry.key}
-                className={`arrive-settle text-sm text-gray-300 bg-card border border-border
+                className={`arrive-settle text-sm text-foreground bg-card border border-border
                            rounded-2xl px-4 py-3 transition-[opacity,transform] duration-200 ${
                              dimmed ? "opacity-50 scale-[0.98]" : "opacity-100 scale-100"
                            }`}

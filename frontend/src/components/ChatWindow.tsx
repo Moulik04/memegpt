@@ -301,7 +301,7 @@ export function ChatWindow() {
         )}
         {displayError && !showBudgetMeme && (
           <div className="flex justify-start mb-3">
-            <p className="text-destructive text-xs bg-destructive/10 border border-destructive/30
+            <p className="text-destructive text-xs border-l-2 border-brand
                           rounded-xl px-3 py-2 max-w-[80%]">
               {displayError}
             </p>
@@ -311,7 +311,7 @@ export function ChatWindow() {
       </div>
 
       {/* Input bar */}
-      <div className="shrink-0 border-t border-gray-800/60 px-3 py-3">
+      <div className="shrink-0 border-t border-border px-3 py-3">
         {pendingImages.length > 0 && (
           <div className="flex items-center gap-2 mb-2 px-1 overflow-x-auto">
             <AnimatePresence mode="popLayout" initial={false}>
@@ -329,13 +329,13 @@ export function ChatWindow() {
                   <img
                     src={p.previewUrl}
                     alt="Attached preview"
-                    className="w-10 h-10 rounded-lg object-cover border border-gray-700"
+                    className="w-10 h-10 rounded-lg object-cover border border-border"
                   />
                   <button
                     type="button"
                     onClick={() => removePendingImage(i)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-gray-900
-                               border border-gray-700 text-gray-400 hover:text-gray-200
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-paper
+                               border border-paper text-primary-foreground hover:bg-paper/85
                                text-[10px] flex items-center justify-center leading-none"
                     title="Remove"
                     aria-label="Remove image"
@@ -364,8 +364,8 @@ export function ChatWindow() {
             title="Attach photos"
             aria-label="Attach photos"
             className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl
-                       border border-gray-800 text-gray-400 hover:text-gray-200
-                       hover:border-gray-600 disabled:opacity-40 transition-colors"
+                       border border-border text-muted-foreground hover:text-foreground
+                       hover:border-input disabled:opacity-40 transition-colors"
           >
             <Paperclip size={16} strokeWidth={2} aria-hidden="true" />
           </button>
@@ -379,15 +379,15 @@ export function ChatWindow() {
             }
             disabled={loading}
             className="flex-1 bg-card border border-border rounded-xl px-4 py-2.5
-                       text-sm placeholder-gray-600 focus:outline-none
+                       text-sm placeholder:text-muted-foreground focus:outline-none
                        focus:ring-2 focus:ring-accent/50 focus:border-accent
                        disabled:opacity-50 transition-all"
           />
           <button
             type="submit"
             disabled={loading || (!input.trim() && pendingImages.length === 0)}
-            className="bg-accent hover:bg-accent/90 disabled:opacity-40 transition-colors
-                       text-white text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
+            className="bg-primary hover:bg-primary/85 disabled:opacity-40 transition-colors
+                       text-primary-foreground text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
           >
             Send
           </button>

@@ -27,7 +27,7 @@ export default function AuthCallbackPage() {
   }, [router]);
 
   return (
-    <div className="flex h-dvh items-center justify-center bg-gray-950 text-gray-400 text-sm">
+    <div className="flex h-dvh items-center justify-center bg-background text-muted-foreground text-sm">
       Signing you in…
     </div>
   );

@@ -212,13 +212,13 @@ export function HeroLoop() {
   return (
     <div
       ref={containerRef}
-      className="w-full max-w-xs sm:max-w-sm rounded-2xl bg-card border border-border p-4 shadow-2xl shadow-black/50"
+      className="w-full max-w-xs sm:max-w-sm rounded-2xl bg-card border border-border p-4"
     >
       <div className="h-14 flex items-start overflow-hidden">
-        <p className="text-sm text-gray-300 leading-snug">
+        <p className="text-sm text-foreground leading-snug">
           {typed}
           {!reduced && phase === "typing" && (
-            <span className="inline-block w-[2px] h-[1em] bg-gray-500 ml-0.5 align-middle animate-pulse" />
+            <span className="inline-block w-[2px] h-[1em] bg-muted-foreground ml-0.5 align-middle animate-pulse" />
           )}
         </p>
       </div>

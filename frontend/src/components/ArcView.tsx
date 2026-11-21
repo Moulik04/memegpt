@@ -95,13 +95,13 @@ function buildSteps(stats: ArcStats): Step[] {
       kicker: "01 / VOLUME",
       big: String(stats.total_memes),
       numeric: stats.total_memes,
-      cap: <>memes generated this arc. <span className="text-accent">no thoughts, just memes.</span></>,
+      cap: <>memes generated this arc. <span className="text-brand">no thoughts, just memes.</span></>,
     },
   ];
 
   const top = stats.top_templates[0];
   if (top) {
-    const cap = <>your most-summoned template. <span className="text-accent">{top.roast}</span></>;
+    const cap = <>your most-summoned template. <span className="text-brand">{top.roast}</span></>;
     steps.push(
       top.image_url
         ? { kind: "image", kicker: "02 / SIGNATURE", imageUrl: top.image_url, name: top.display_name, cap }
@@ -118,7 +118,7 @@ function buildSteps(stats: ArcStats): Step[] {
       cap: (
         <>
           busiest moment{stats.busiest_date ? `, ${formatShortDate(stats.busiest_date)}` : ""}.{" "}
-          {stats.hour_roast && <span className="text-accent">{stats.hour_roast}</span>}
+          {stats.hour_roast && <span className="text-brand">{stats.hour_roast}</span>}
         </>
       ),
     });
@@ -129,7 +129,7 @@ function buildSteps(stats: ArcStats): Step[] {
     kicker: "04 / THE SPLIT",
     big: `${stats.chat_count} / ${stats.lore_count} / ${stats.make_count}`,
     small: true,
-    cap: <>chat / lore / make. {stats.split_roast && <span className="text-accent">{stats.split_roast}</span>}</>,
+    cap: <>chat / lore / make. {stats.split_roast && <span className="text-brand">{stats.split_roast}</span>}</>,
   });
 
   steps.push({
@@ -140,7 +140,7 @@ function buildSteps(stats: ArcStats): Step[] {
     cap: (
       <>
         consecutive days.{" "}
-        <span className="text-accent">{stats.longest_streak_days >= 7 ? "no days off." : "still an arc."}</span>
+        <span className="text-brand">{stats.longest_streak_days >= 7 ? "no days off." : "still an arc."}</span>
       </>
     ),
   });
@@ -152,7 +152,7 @@ function buildSteps(stats: ArcStats): Step[] {
 function ArcStatSlide({ step }: { step: Extract<Step, { kind: "stat" }> }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
-      <span className="font-mono text-[10px] tracking-widest uppercase text-gray-500 mb-3">{step.kicker}</span>
+      <span className="font-mono text-[10px] tracking-widest uppercase text-muted-foreground mb-3">{step.kicker}</span>
       <span
         className={`font-black tracking-tight leading-none text-paper ${
           step.small ? "text-4xl" : "text-6xl"
@@ -160,7 +160,7 @@ function ArcStatSlide({ step }: { step: Extract<Step, { kind: "stat" }> }) {
       >
         {step.numeric !== undefined ? <OdometerNumber value={step.numeric} /> : step.big}
       </span>
-      <p className="mt-4 font-mono text-sm text-gray-400 leading-relaxed max-w-[26ch]">{step.cap}</p>
+      <p className="mt-4 font-mono text-sm text-muted-foreground leading-relaxed max-w-[26ch]">{step.cap}</p>
     </div>
   );
 }
@@ -168,7 +168,7 @@ function ArcStatSlide({ step }: { step: Extract<Step, { kind: "stat" }> }) {
 function ArcImageSlide({ step }: { step: Extract<Step, { kind: "image" }> }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
-      <span className="font-mono text-[10px] tracking-widest uppercase text-gray-500 mb-3">{step.kicker}</span>
+      <span className="font-mono text-[10px] tracking-widest uppercase text-muted-foreground mb-3">{step.kicker}</span>
       <Image
         src={memeImageUrl(step.imageUrl)}
         alt={step.name}
@@ -178,7 +178,7 @@ function ArcImageSlide({ step }: { step: Extract<Step, { kind: "image" }> }) {
         className="w-[150px] h-[150px] object-cover rounded-2xl border-2 border-border"
       />
       <p className="mt-3 font-extrabold text-lg tracking-tight">{step.name}</p>
-      <p className="mt-2 font-mono text-sm text-gray-400 leading-relaxed max-w-[26ch]">{step.cap}</p>
+      <p className="mt-2 font-mono text-sm text-muted-foreground leading-relaxed max-w-[26ch]">{step.cap}</p>
     </div>
   );
 }
@@ -194,7 +194,7 @@ function ArcFinaleSlide({ stats }: { stats: ArcStats }) {
         </div>
       )}
       {stats.period_label && (
-        <div className="absolute top-12 left-6 right-6 text-[9.5px] tracking-widest uppercase text-gray-400 text-left">
+        <div className="absolute top-12 left-6 right-6 text-[9.5px] tracking-widest uppercase text-muted-foreground text-left">
           {stats.period_label.toUpperCase()}
           {stats.date_span_start && stats.date_span_end && ` · ${formatSpan(stats.date_span_start, stats.date_span_end).toUpperCase()}`}
         </div>
@@ -215,24 +215,24 @@ function ArcFinaleSlide({ stats }: { stats: ArcStats }) {
         />
       </div>
 
-      <div className="mt-auto w-full font-mono text-[9.5px] text-gray-400 leading-relaxed border-t border-border pt-2.5 text-left space-y-0.5">
+      <div className="mt-auto w-full font-mono text-[9.5px] text-muted-foreground leading-relaxed border-t border-border pt-2.5 text-left space-y-0.5">
         <div>&rsaquo; {stats.total_memes} memes generated</div>
         {top && (
           <div>
-            &rsaquo; top: {top.display_name} <span className="text-accent">{top.roast}</span>
+            &rsaquo; top: {top.display_name} <span className="text-brand">{top.roast}</span>
           </div>
         )}
         {stats.busiest_time_label && (
           <div>
             &rsaquo; busiest: {stats.busiest_time_label}{" "}
-            {stats.hour_roast && <span className="text-accent">{stats.hour_roast}</span>}
+            {stats.hour_roast && <span className="text-brand">{stats.hour_roast}</span>}
           </div>
         )}
         <div>&rsaquo; streak: {stats.longest_streak_days} days</div>
       </div>
 
       {stats.verdict && (
-        <p className="mt-3 text-[10px] font-extrabold uppercase text-white leading-snug">{stats.verdict}</p>
+        <p className="mt-3 text-[10px] font-extrabold uppercase text-foreground leading-snug">{stats.verdict}</p>
       )}
     </div>
   );
@@ -245,18 +245,18 @@ function ArcEmptyState({ totalMemes }: { totalMemes: number }) {
       <div className="arrive-settle relative max-w-sm w-full rounded-[26px] border border-border bg-card px-8 py-14 text-center overflow-hidden">
         <div className="relative text-4xl mb-4">🔮</div>
         <h2 className="relative text-xl font-black tracking-tight mb-2">Your arc hasn&apos;t started yet.</h2>
-        <p className="relative text-sm text-gray-400 leading-relaxed mb-6 max-w-[40ch] mx-auto">
+        <p className="relative text-sm text-muted-foreground leading-relaxed mb-6 max-w-[40ch] mx-auto">
           Go be unwell somewhere. Five memes minimum before MemeGPT has anything to judge you for.
         </p>
         <div className="relative max-w-[220px] mx-auto mb-6">
-          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-            <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+          <div className="h-1.5 rounded-full bg-ink-2 overflow-hidden">
+            <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
           </div>
-          <p className="mt-2 font-mono text-[11px] text-gray-600">{totalMemes} / 5 memes toward your first Arc</p>
+          <p className="mt-2 font-mono text-[11px] text-muted-foreground">{totalMemes} / 5 memes toward your first Arc</p>
         </div>
         <Link
           href="/make"
-          className="relative inline-block bg-accent hover:bg-accent/90 transition-colors text-white
+          className="relative inline-block bg-primary hover:bg-primary/85 transition-colors text-primary-foreground
                      font-semibold text-sm px-6 py-3 rounded-full"
         >
           Go make some memes
@@ -272,7 +272,7 @@ function ArcShareScreen({ url }: { url: string }) {
       <div className="arrive-settle max-w-sm w-full">
         <MemeCard url={url} alt="My MemeGPT Arc" large />
       </div>
-      <Link href="/make" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+      <Link href="/make" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
         Make another meme
       </Link>
     </div>
@@ -348,7 +348,7 @@ export function ArcView() {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <p className="text-sm text-gray-500">Calculating your arc…</p>
+        <p className="text-sm text-muted-foreground">Calculating your arc…</p>
       </div>
     );
   }
@@ -373,12 +373,12 @@ export function ArcView() {
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll flex flex-col items-center">
-      <div className="arrive-settle relative w-full max-w-[380px] aspect-[3.6/5] rounded-[28px] overflow-hidden border border-border bg-card shadow-2xl shadow-black/60 select-none">
+      <div className="arrive-settle relative w-full max-w-[380px] aspect-[3.6/5] rounded-[28px] overflow-hidden border border-border bg-card select-none">
         <div className="absolute top-3 left-3 right-3 z-20 flex gap-1">
           {steps.map((_, i) => (
-            <div key={i} className="flex-1 h-[3px] rounded-full bg-white/15 overflow-hidden">
+            <div key={i} className="flex-1 h-[3px] rounded-full bg-ink-2 overflow-hidden">
               <div
-                className="h-full bg-white rounded-full"
+                className="h-full bg-paper rounded-full"
                 style={{ width: i < stepIndex ? "100%" : i === stepIndex ? `${progress * 100}%` : "0%" }}
               />
             </div>
@@ -386,8 +386,8 @@ export function ArcView() {
         </div>
 
         <div className="absolute top-6 left-4 right-4 z-20 flex items-center justify-between">
-          <span className="text-[10px] font-mono text-gray-500 tracking-wide">YOUR ARC</span>
-          <Link href="/chat" className="text-gray-500 text-base leading-none" title="Exit" aria-label="Exit to Chat">
+          <span className="text-[10px] font-mono text-muted-foreground tracking-wide">YOUR ARC</span>
+          <Link href="/chat" className="text-muted-foreground text-base leading-none" title="Exit" aria-label="Exit to Chat">
             ✕
           </Link>
         </div>
@@ -418,14 +418,14 @@ export function ArcView() {
           <button
             onClick={handleShare}
             disabled={creatingCard}
-            className="w-full py-3 rounded-xl bg-accent hover:bg-accent/90 disabled:opacity-50
-                       text-white font-semibold text-sm transition-colors"
+            className="w-full py-3 rounded-xl bg-primary hover:bg-primary/85 disabled:opacity-50
+                       text-primary-foreground font-semibold text-sm transition-colors"
           >
             {creatingCard ? "Rendering your Arc…" : "Share your Arc"}
           </button>
         </div>
       ) : (
-        <p className="mt-4 text-[11px] text-gray-600">tap right to advance &middot; tap left to go back</p>
+        <p className="mt-4 text-[11px] text-muted-foreground">tap right to advance &middot; tap left to go back</p>
       )}
     </div>
   );

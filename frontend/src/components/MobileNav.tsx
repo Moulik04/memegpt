@@ -40,7 +40,7 @@ export function MobileNav({ active }: Props) {
             onClick={(e) => navigateWithTransition(router, e, href)}
             className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px]
                        font-medium transition-colors ${
-                         isActive ? "text-accent" : "text-gray-500"
+                         isActive ? "text-brand" : "text-muted-foreground"
                        }`}
           >
             <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />

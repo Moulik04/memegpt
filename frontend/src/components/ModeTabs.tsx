@@ -69,7 +69,7 @@ export function ModeTabs({ active }: Props) {
         <h1 className="caption caption-mark text-xl leading-none">
           MemeGPT
         </h1>
-        <p className="text-[11px] text-gray-600 mt-0.5">
+        <p className="text-[11px] text-muted-foreground mt-0.5">
           {active === "chat"
             ? "Talk to it like any chatbot. It only speaks meme."
             : active === "lore"
@@ -86,8 +86,8 @@ export function ModeTabs({ active }: Props) {
             onClick={(e) => navigate(e, "/chat")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "chat"
-                ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             Chat
@@ -97,8 +97,8 @@ export function ModeTabs({ active }: Props) {
             onClick={(e) => navigate(e, "/lore")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "lore"
-                ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             Lore
@@ -108,8 +108,8 @@ export function ModeTabs({ active }: Props) {
             onClick={(e) => navigate(e, "/make")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "make"
-                ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             Make
@@ -119,8 +119,8 @@ export function ModeTabs({ active }: Props) {
             onClick={(e) => navigate(e, "/arc")}
             className={`text-xs font-medium rounded-full px-3 py-1.5 transition-colors ${
               active === "arc"
-                ? "bg-accent text-white"
-                : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             Arc
@@ -131,7 +131,7 @@ export function ModeTabs({ active }: Props) {
           type="button"
           onClick={handleForgetMe}
           title="Erase your MemeGPT identity, memory, and history from this device"
-          className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           Forget me
         </button>

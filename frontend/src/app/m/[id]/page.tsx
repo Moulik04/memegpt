@@ -82,11 +82,11 @@ export default async function SharedMemePage({ params }: Props) {
       </div>
 
       <div className="text-center">
-        <p className="text-sm text-gray-500 mb-4">Made with MemeGPT. It only replies in memes.</p>
+        <p className="text-sm text-muted-foreground mb-4">Made with MemeGPT. It only replies in memes.</p>
         <Link
           href="/chat"
-          className="inline-block bg-accent hover:bg-accent/90 transition-colors text-white
-                     font-semibold rounded-full px-8 py-3.5 text-base shadow-lg"
+          className="inline-block bg-primary hover:bg-primary/85 transition-colors text-primary-foreground
+                     font-semibold rounded-full px-8 py-3.5 text-base"
         >
           Make your own
         </Link>

@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-10">
-      <h2 className="text-lg font-bold text-gray-100">{title}</h2>
-      <div className="mt-3 text-sm text-gray-400 leading-relaxed space-y-3">{children}</div>
+      <h2 className="text-lg font-bold text-foreground">{title}</h2>
+      <div className="mt-3 text-sm text-muted-foreground leading-relaxed space-y-3">{children}</div>
     </section>
   );
 }
@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         </Link>
 
         <h1 className="mt-8 text-3xl font-bold tracking-tight">Privacy</h1>
-        <p className="mt-3 text-sm text-gray-500 leading-relaxed">
+        <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
           MemeGPT is a small, self-funded side project, not a company with a
           data team. This page says exactly what happens to what you send,
           in plain language, because that&apos;s more useful than a legal
@@ -223,7 +223,7 @@ export default function PrivacyPage() {
             want that gone too, email{" "}
             <a
               href="mailto:support.memegpt@gmail.com"
-              className="underline hover:text-gray-200 transition-colors"
+              className="underline hover:text-foreground transition-colors"
             >
               support.memegpt@gmail.com
             </a>{" "}
@@ -245,13 +245,13 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <p className="mt-12 text-xs text-gray-600">
+        <p className="mt-12 text-xs text-muted-foreground">
           Questions?{" "}
           <a
             href="https://github.com/Moulik04/memegpt/issues"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-gray-400 transition-colors"
+            className="underline hover:text-foreground transition-colors"
           >
             Open an issue on GitHub
           </a>

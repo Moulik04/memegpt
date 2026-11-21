@@ -12,7 +12,7 @@ export function MemeDisplay({ url, alt = "meme" }: Props) {
   const src = url.startsWith("http") ? url : memeImageUrl(url);
 
   return (
-    <div className="meme-reveal mt-2 rounded-xl overflow-hidden border border-gray-700/60 flex justify-center">
+    <div className="meme-reveal mt-2 rounded-xl overflow-hidden border border-border flex justify-center">
       <PixelRevealImage src={src} alt={alt} />
     </div>
   );

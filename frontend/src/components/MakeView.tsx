@@ -106,24 +106,24 @@ export function MakeView() {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search templates — name, vibe, tags…"
                 className="w-full bg-card border border-border rounded-xl px-4 py-3
-                           text-sm placeholder-gray-600 focus:outline-none
+                           text-sm placeholder:text-muted-foreground focus:outline-none
                            focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all"
               />
             </div>
 
             {loadError && (
-              <p className="text-destructive text-xs bg-destructive/10 border border-destructive/30
+              <p className="text-destructive text-xs border-l-2 border-brand
                             rounded-xl px-3 py-2 mb-4">
                 {loadError}
               </p>
             )}
 
             {!templates && !loadError && (
-              <p className="text-sm text-gray-500 text-center py-12">Loading templates…</p>
+              <p className="text-sm text-muted-foreground text-center py-12">Loading templates…</p>
             )}
 
             {templates && filtered.length === 0 && (
-              <p className="text-sm text-gray-500 text-center py-12">
+              <p className="text-sm text-muted-foreground text-center py-12">
                 No templates match &ldquo;{search}&rdquo;.
               </p>
             )}
@@ -134,7 +134,7 @@ export function MakeView() {
                   key={t.template_id}
                   onClick={() => pickTemplate(t)}
                   className="group arrive-settle rounded-xl overflow-hidden bg-card border border-border
-                             hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5
+                             hover:border-input hover:-translate-y-0.5
                              transition-all duration-200 text-left"
                   style={{
                     animationDelay: `${Math.min(i, 24) * 20}ms`,
@@ -152,7 +152,7 @@ export function MakeView() {
                       />
                     )}
                   </div>
-                  <p className="px-2 py-1.5 text-[11px] text-gray-400 truncate group-hover:text-gray-200">
+                  <p className="px-2 py-1.5 text-[11px] text-muted-foreground truncate group-hover:text-foreground">
                     {t.name}
                   </p>
                 </button>
@@ -163,7 +163,7 @@ export function MakeView() {
           <div className="max-w-md mx-auto">
             <button
               onClick={backToGrid}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors mb-4"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-4"
             >
               ← Choose a different template
             </button>
@@ -171,7 +171,7 @@ export function MakeView() {
             {!result ? (
               <form
                 onSubmit={handleGenerate}
-                className="rounded-2xl bg-card border border-border p-4 flex flex-col gap-3 shadow-lg"
+                className="rounded-2xl bg-card border border-border p-4 flex flex-col gap-3"
               >
                 <div className="flex items-center gap-3">
                   {selected.image_url && (
@@ -185,14 +185,14 @@ export function MakeView() {
                   <div className="min-w-0">
                     <p className="text-sm font-semibold truncate">{selected.name}</p>
                     {selected.description && (
-                      <p className="text-xs text-gray-500 truncate">{selected.description}</p>
+                      <p className="text-xs text-muted-foreground truncate">{selected.description}</p>
                     )}
                   </div>
                 </div>
 
                 {selected.text_boxes.map((box) => (
                   <div key={box.label}>
-                    <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+                    <label className="block text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
                       {box.label.replace(/_/g, " ")}
                     </label>
                     <input
@@ -201,7 +201,7 @@ export function MakeView() {
                       onChange={(e) => setCaptions((prev) => ({ ...prev, [box.label]: e.target.value }))}
                       placeholder={box.description || undefined}
                       className="w-full bg-ink-2 border border-border rounded-lg px-3 py-2
-                                 text-sm placeholder-gray-600 focus:outline-none
+                                 text-sm placeholder:text-muted-foreground focus:outline-none
                                  focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all"
                     />
                   </div>
@@ -213,8 +213,8 @@ export function MakeView() {
                 <button
                   type="submit"
                   disabled={generating}
-                  className="bg-accent hover:bg-accent/90 disabled:opacity-40 transition-colors
-                             text-white text-sm font-semibold rounded-xl px-4 py-2.5"
+                  className="bg-primary hover:bg-primary/85 disabled:opacity-40 transition-colors
+                             text-primary-foreground text-sm font-semibold rounded-xl px-4 py-2.5"
                 >
                   {generating ? "Rendering…" : "Generate meme"}
                 </button>
@@ -224,7 +224,7 @@ export function MakeView() {
                 <MemeCard url={result.url} alt={selected.name} templateId={result.templateId} />
                 <button
                   onClick={backToGrid}
-                  className="mt-4 w-full text-center text-xs text-gray-500 hover:text-gray-300
+                  className="mt-4 w-full text-center text-xs text-muted-foreground hover:text-foreground
                              transition-colors"
                 >
                   Make another

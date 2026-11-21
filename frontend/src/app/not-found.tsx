@@ -13,7 +13,7 @@ export default function NotFound() {
         MemeGPT
       </Link>
 
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-3 shadow-2xl shadow-black/50">
+      <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-3">
         <Image
           src="/landing/404_example.png"
           alt="Is This a Pigeon meme: a confused man asking 'is this a page?'"
@@ -26,15 +26,15 @@ export default function NotFound() {
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight">404: not a page.</h1>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="mt-2 text-sm text-muted-foreground">
           Whatever you were looking for isn&apos;t here. The chatbot is, though.
         </p>
       </div>
 
       <Link
         href="/chat"
-        className="bg-accent hover:bg-accent/90 transition-colors text-white font-semibold
-                   rounded-full px-8 py-3.5 text-base shadow-lg"
+        className="bg-primary hover:bg-primary/85 transition-colors text-primary-foreground font-semibold
+                   rounded-full px-8 py-3.5 text-base"
       >
         Open MemeGPT
       </Link>

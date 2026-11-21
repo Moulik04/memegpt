@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "MemeGPT",
   },
   openGraph: {
@@ -69,7 +69,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#030712",
+  themeColor: "#FFFFFF",
 };
 
 export default function RootLayout({
@@ -82,7 +82,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark font-sans ${anton.variable} ${archivo.variable}`}
+      className={`font-sans ${anton.variable} ${archivo.variable}`}
     >
       <body>
         <AuthProvider>{children}</AuthProvider>

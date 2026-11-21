@@ -39,13 +39,13 @@ export function AuthControl() {
     return (
       <div className="flex items-center gap-2">
         <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
-        <span className="text-[11px] text-gray-500" title={user.email ?? undefined}>
+        <span className="text-[11px] text-muted-foreground" title={user.email ?? undefined}>
           {user.email ? truncateEmail(user.email) : "Signed in"}
         </span>
         <button
           type="button"
           onClick={() => signOut()}
-          className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           Sign out
         </button>
@@ -58,7 +58,7 @@ export function AuthControl() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           Sign in
         </button>

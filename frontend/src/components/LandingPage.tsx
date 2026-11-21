@@ -146,8 +146,8 @@ export function LandingPage() {
           <AuthControl />
           <Link
             href="/chat"
-            className="rounded-full bg-white/5 border border-border px-4 py-2 text-sm text-gray-300
-                       hover:border-accent/60 hover:text-white transition-colors"
+            className="rounded-full bg-muted border border-border px-4 py-2 text-sm text-foreground
+                       hover:border-input hover:text-foreground transition-colors"
           >
             Open the app
           </Link>
@@ -163,8 +163,7 @@ export function LandingPage() {
             return (
               <motion.div
                 key={id}
-                className={`absolute ${slot.className} rounded-xl overflow-hidden border border-white/10
-                           shadow-2xl shadow-black/50 opacity-60 sm:opacity-80`}
+                className={`absolute ${slot.className} rounded-xl overflow-hidden border border-border opacity-60 sm:opacity-80`}
                 initial={{ opacity: 0, rotate: slot.rotate, y: 10 }}
                 animate={{
                   opacity: [0, 0.8, 0.8],
@@ -207,7 +206,7 @@ export function LandingPage() {
             animate="visible"
             variants={fadeUp}
             transition={{ duration: 0.7, delay: 0.25 }}
-            className="mt-6 text-base sm:text-lg text-gray-400 leading-relaxed"
+            className="mt-6 text-base sm:text-lg text-muted-foreground leading-relaxed"
           >
             Say what is on your mind, or paste a whole conversation. MemeGPT
             figures out the moment and hands you back the meme that actually
@@ -223,16 +222,15 @@ export function LandingPage() {
           >
             <Link
               href="/chat"
-              className="w-full sm:w-auto bg-accent hover:bg-accent/90 transition-colors
-                         text-white font-semibold rounded-full px-8 py-3.5 text-base
-                         shadow-lg"
+              className="w-full sm:w-auto bg-primary hover:bg-primary/85 transition-colors
+                         text-primary-foreground font-semibold rounded-full px-8 py-3.5 text-base"
             >
               Start chatting
             </Link>
             <Link
               href="/lore"
-              className="w-full sm:w-auto bg-white/5 hover:bg-white/10 border border-border
-                         hover:border-gray-700 transition-colors text-gray-200 font-semibold
+              className="w-full sm:w-auto bg-muted hover:bg-ink-2 border border-border
+                         hover:border-input transition-colors text-foreground font-semibold
                          rounded-full px-8 py-3.5 text-base"
             >
               Try Lore mode
@@ -243,7 +241,7 @@ export function LandingPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.7, delay: 0.6 }}
-            className="mt-5 text-xs text-gray-600"
+            className="mt-5 text-xs text-muted-foreground"
           >
             No sign up. No email. Just start typing.
           </motion.p>
@@ -254,7 +252,7 @@ export function LandingPage() {
             transition={{ duration: 0.7, delay: 0.75 }}
             className="mt-14 flex flex-col items-center gap-3"
           >
-            <span className="text-xs text-gray-600 uppercase tracking-wide">
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
               watch it happen
             </span>
             <HeroLoop />
@@ -273,7 +271,7 @@ export function LandingPage() {
           className="max-w-2xl mx-auto text-center mb-16"
         >
           <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">How MemeGPT actually works</h2>
-          <p className="mt-3 text-gray-500">Three steps. No template scrolling required.</p>
+          <p className="mt-3 text-muted-foreground">Three steps. No template scrolling required.</p>
         </motion.div>
 
         <div className="max-w-4xl mx-auto grid gap-6 sm:grid-cols-3">
@@ -286,14 +284,14 @@ export function LandingPage() {
               variants={fadeUp}
               transition={{ duration: 0.6, delay: i * 0.12 }}
               className="rounded-2xl bg-card border border-border p-6 transition-all duration-200
-                         hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
+                         hover:border-input hover:-translate-y-0.5"
             >
-              <div className="w-9 h-9 rounded-full bg-accent/20 text-accent font-bold
+              <div className="w-9 h-9 rounded-full bg-muted text-brand font-bold
                              flex items-center justify-center text-sm mb-4">
                 {i + 1}
               </div>
-              <h3 className="font-semibold text-gray-100 mb-2">{step.title}</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{step.body}</p>
+              <h3 className="font-semibold text-foreground mb-2">{step.title}</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">{step.body}</p>
             </motion.div>
           ))}
         </div>
@@ -310,7 +308,7 @@ export function LandingPage() {
           className="max-w-2xl mx-auto text-center mb-16"
         >
           <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">Four ways to use MemeGPT</h2>
-          <p className="mt-3 text-gray-500">Same brain underneath, different amount of control.</p>
+          <p className="mt-3 text-muted-foreground">Same brain underneath, different amount of control.</p>
         </motion.div>
 
         <div className="max-w-4xl mx-auto grid gap-6 sm:grid-cols-2">
@@ -323,11 +321,11 @@ export function LandingPage() {
               variants={fadeUp}
               transition={{ duration: 0.6, delay: i * 0.1 }}
               className="rounded-2xl bg-card border border-border p-8 transition-all duration-200
-                         hover:border-gray-700 hover:shadow-lg hover:-translate-y-0.5"
+                         hover:border-input hover:-translate-y-0.5"
             >
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{mode.label}</span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{mode.label}</span>
               <h3 className="text-xl font-bold mt-2 mb-3">{mode.title}</h3>
-              <p className="text-sm text-gray-400 leading-relaxed">{mode.body}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{mode.body}</p>
             </motion.div>
           ))}
         </div>
@@ -358,16 +356,16 @@ export function LandingPage() {
             <details
               key={item.q}
               className="group rounded-2xl bg-card border border-border p-5 transition-colors
-                         hover:border-gray-700 open:border-gray-700"
+                         hover:border-input open:border-input"
             >
               <summary className="flex items-center justify-between gap-4 cursor-pointer list-none
-                                   font-semibold text-gray-100">
+                                   font-semibold text-foreground">
                 {item.q}
-                <span className="shrink-0 text-gray-500 transition-transform duration-200 group-open:rotate-45">
+                <span className="shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-45">
                   +
                 </span>
               </summary>
-              <p className="mt-3 text-sm text-gray-400 leading-relaxed">{item.a}</p>
+              <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{item.a}</p>
             </details>
           ))}
         </motion.div>
@@ -388,9 +386,8 @@ export function LandingPage() {
           </h2>
           <Link
             href="/chat"
-            className="inline-block mt-8 bg-accent hover:bg-accent/90 transition-colors
-                       text-white font-semibold rounded-full px-8 py-3.5 text-base
-                       shadow-lg"
+            className="inline-block mt-8 bg-primary hover:bg-primary/85 transition-colors
+                       text-primary-foreground font-semibold rounded-full px-8 py-3.5 text-base"
           >
             Open MemeGPT
           </Link>
@@ -399,20 +396,20 @@ export function LandingPage() {
 
       {/* Footer */}
       <footer className="relative z-10 px-6 py-10 pb-24 sm:pb-10 border-t border-border">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-5 text-xs text-gray-600">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-5 text-xs text-muted-foreground">
           <nav className="flex items-center gap-4">
-            <Link href="/chat" className="hover:text-gray-400 transition-colors">Chat</Link>
-            <Link href="/lore" className="hover:text-gray-400 transition-colors">Lore</Link>
-            <Link href="/make" className="hover:text-gray-400 transition-colors">Make</Link>
-            <Link href="/arc" className="hover:text-gray-400 transition-colors">Arc</Link>
-            <Link href="/privacy" className="hover:text-gray-400 transition-colors">Privacy</Link>
+            <Link href="/chat" className="hover:text-foreground transition-colors">Chat</Link>
+            <Link href="/lore" className="hover:text-foreground transition-colors">Lore</Link>
+            <Link href="/make" className="hover:text-foreground transition-colors">Make</Link>
+            <Link href="/arc" className="hover:text-foreground transition-colors">Arc</Link>
+            <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
           </nav>
           <span>MemeGPT. Built for fun, not for profit.</span>
           <a
             href="https://github.com/Moulik04/memegpt"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-gray-400 transition-colors"
+            className="hover:text-foreground transition-colors"
           >
             View source on GitHub
           </a>
@@ -426,8 +423,8 @@ export function LandingPage() {
       >
         <Link
           href="/chat"
-          className="block w-full text-center bg-accent hover:bg-accent/90 transition-colors
-                     text-white font-semibold rounded-full px-8 py-3 text-base shadow-lg"
+          className="block w-full text-center bg-primary hover:bg-primary/85 transition-colors
+                     text-primary-foreground font-semibold rounded-full px-8 py-3 text-base"
         >
           Start chatting
         </Link>

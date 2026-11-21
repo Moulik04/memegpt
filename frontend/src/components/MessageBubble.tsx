@@ -70,7 +70,7 @@ export function MessageBubble({ message, onFeedback }: Props) {
     return (
       <div className="flex justify-end mb-3">
         <div className="max-w-[80%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm leading-relaxed
-                        bg-secondary text-secondary-foreground shadow-lg">
+                        bg-secondary text-secondary-foreground">
           {images.length > 0 && (
             <div className={`flex flex-wrap gap-1.5 ${message.content ? "mb-2" : ""}`}>
               {images.map((src, i) => (
@@ -113,7 +113,7 @@ export function MessageBubble({ message, onFeedback }: Props) {
         {memes.length === 0 && (
           /* Plain text bot message */
           <div className="rounded-2xl rounded-bl-sm bg-card border border-border
-                          px-4 py-2.5 text-sm leading-relaxed text-gray-100 shadow">
+                          px-4 py-2.5 text-sm leading-relaxed text-foreground shadow">
             <DecryptedText text={message.content} />
           </div>
         )}
@@ -135,7 +135,7 @@ export function MessageBubble({ message, onFeedback }: Props) {
              CSS scroll-snap, and a shared-element (layoutId) dot indicator
              that slides between positions instead of just recoloring. */
           <div className="rounded-2xl rounded-bl-sm bg-card border border-border
-                          p-3 shadow-lg">
+                          p-3">
             <div
               ref={trackWrapRef}
               className="overflow-hidden rounded-xl transition-[height] duration-300 ease-out"
@@ -177,12 +177,12 @@ export function MessageBubble({ message, onFeedback }: Props) {
                   onClick={() => setActiveIndex(i)}
                   aria-label={`Meme ${i + 1} of ${memes.length}`}
                   aria-current={i === activeIndex}
-                  className="relative w-1.5 h-1.5 rounded-full bg-gray-700 cursor-pointer"
+                  className="relative w-1.5 h-1.5 rounded-full bg-line cursor-pointer"
                 >
                   {i === activeIndex && (
                     <motion.span
                       layoutId="active-meme-dot"
-                      className="absolute inset-0 rounded-full bg-accent"
+                      className="absolute inset-0 rounded-full bg-paper"
                       transition={{ type: "spring", stiffness: 500, damping: 35 }}
                     />
                   )}

@@ -100,8 +100,8 @@ export function ShareButtons({ memeUrl, large = false }: Props) {
         {canShare && (
           <button
             onClick={handleShare}
-            className="w-full py-3 rounded-xl bg-accent hover:bg-accent/90
-                       text-white font-semibold text-sm transition-colors"
+            className="w-full py-3 rounded-xl bg-primary hover:bg-primary/85
+                       text-primary-foreground font-semibold text-sm transition-colors"
           >
             ↗ Share to WhatsApp / Instagram / Snapchat
           </button>
@@ -109,16 +109,16 @@ export function ShareButtons({ memeUrl, large = false }: Props) {
         <div className="flex gap-2">
           <button
             onClick={handleDownload}
-            className="flex-1 py-2.5 rounded-xl border border-gray-700 hover:border-gray-500
-                       text-gray-300 text-sm transition-colors hover:bg-white/5"
+            className="flex-1 py-2.5 rounded-xl border border-border hover:border-input
+                       text-foreground text-sm transition-colors hover:bg-muted"
           >
             ↓ Download
           </button>
           <button
             onClick={handleCopy}
             disabled={copying}
-            className="flex-1 py-2.5 rounded-xl border border-gray-700 hover:border-gray-500
-                       text-gray-300 text-sm transition-colors hover:bg-white/5 disabled:opacity-50"
+            className="flex-1 py-2.5 rounded-xl border border-border hover:border-input
+                       text-foreground text-sm transition-colors hover:bg-muted disabled:opacity-50"
           >
             {copied ? "✓ Copied!" : copying ? "Copying…" : "⎘ Copy Image"}
           </button>
@@ -132,7 +132,7 @@ export function ShareButtons({ memeUrl, large = false }: Props) {
       <button onClick={handleDownload} className="action-btn" title="Download">
         ↓ Save
       </button>
-      <span className="text-gray-700 text-xs">·</span>
+      <span className="text-muted-foreground text-xs">·</span>
       <button
         onClick={handleCopy}
         disabled={copying}
@@ -143,7 +143,7 @@ export function ShareButtons({ memeUrl, large = false }: Props) {
       </button>
       {canShare && (
         <>
-          <span className="text-gray-700 text-xs">·</span>
+          <span className="text-muted-foreground text-xs">·</span>
           <button
             onClick={handleShare}
             className="action-btn action-btn-primary"

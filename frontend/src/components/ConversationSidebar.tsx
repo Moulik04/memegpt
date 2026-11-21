@@ -106,8 +106,8 @@ export function ConversationSidebar() {
           type="button"
           onClick={handleNewChat}
           className="w-full text-xs font-medium rounded-xl px-3 py-2 bg-card border border-border
-                     text-gray-300 hover:border-accent/60 hover:text-white hover:shadow-lg
-                     hover:-translate-y-0.5 transition-all duration-200"
+                     text-foreground hover:border-input hover:text-foreground
+                     transition-colors duration-200"
         >
           + New chat
         </button>
@@ -131,8 +131,8 @@ export function ConversationSidebar() {
               className={`group flex items-center justify-between gap-2 text-xs rounded-lg px-3 py-2
                           cursor-pointer transition-colors ${
                             c.id === conversationRowId
-                              ? "bg-accent/15 text-white border border-accent/40"
-                              : "text-gray-400 hover:bg-white/5 border border-transparent"
+                              ? "bg-muted text-foreground border border-transparent border-l-2 border-l-brand"
+                              : "text-muted-foreground hover:bg-muted border border-transparent border-l-2"
                           }`}
             >
               <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -155,7 +155,7 @@ export function ConversationSidebar() {
                 onClick={(e) => requestDelete(c.id, e)}
                 title="Delete"
                 aria-label="Delete this chat"
-                className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400
                            transition-opacity shrink-0"
               >
                 ✕
@@ -164,7 +164,7 @@ export function ConversationSidebar() {
           ))}
         </AnimatePresence>
         {loaded && conversations.length === 0 && (
-          <p className="text-[11px] text-gray-600 px-3 py-2">No chats yet.</p>
+          <p className="text-[11px] text-muted-foreground px-3 py-2">No chats yet.</p>
         )}
       </nav>
 

@@ -72,8 +72,8 @@ export function MemeCard({ url, alt, onFeedback, large, templateId }: Props) {
 
   return (
     <div
-      className="rounded-2xl bg-card border border-border p-3 shadow-lg
-                 hover:border-gray-700 hover:shadow-xl hover:-translate-y-0.5
+      className="rounded-2xl bg-card border border-border p-3
+                 hover:border-input hover:-translate-y-0.5
                  transition-all duration-[var(--duration-settle)]"
     >
       {templateId ? (
@@ -91,7 +91,7 @@ export function MemeCard({ url, alt, onFeedback, large, templateId }: Props) {
               <MemeDisplay url={url} alt={alt} />
             </div>
             <div
-              className="absolute inset-0 mt-2 rounded-xl border border-gray-700/60 bg-ink-1
+              className="absolute inset-0 mt-2 rounded-xl border border-border bg-ink-1
                          flex items-center justify-center px-4 text-center
                          [backface-visibility:hidden] [transform:rotateY(180deg)]"
             >
