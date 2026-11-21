@@ -221,9 +221,9 @@ The active row identifies its selected template and has the only spinner. Waitin
 
 #### Data this needs
 
-Source-line attribution needs data the backend doesn't send yet. Lore's segmentation (backend/nlp/segmentation.py) returns only short situation summaries written by the model, and the plan event carries those summaries, not lines. So:
+The backend sends source lines now, but only to a request that asks for them. The redesign's Lore asks with `include_source_lines: true` in the /lore/ JSON body, and with the `include_source_lines` form field on /lore/image/. Without the flag, Lore's segmentation (backend/nlp/segmentation.py) returns only the short situation summaries the model writes, and the plan event carries those summaries, not lines. With it:
 
-- Extend segmentation to return, for each moment, the numbers of the pasted lines it drew on. The backend keeps only numbers that point at real lines of the paste and drops the rest; it never sends quoted text the model wrote.
+- Segmentation returns, for each moment, the numbers of the pasted lines it drew on. The backend keeps only numbers that point at real lines of the paste and drops the rest. It never sends quoted text the model wrote.
 - The browser quotes those lines from the paste it already holds, so nothing new is stored.
 - For screenshots, and for any moment without valid line numbers, show the moment's summary instead of quotes. Every finished meme already carries its summary (situationText in hooks/useMemeStream.ts).
 - Saved history keeps storing summaries only, as the privacy page says, so a reopened Lore chat shows summaries, not quotes.
