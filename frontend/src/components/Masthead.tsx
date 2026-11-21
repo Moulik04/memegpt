@@ -56,7 +56,7 @@ export function Masthead(props: Props) {
 
         {props.variant !== "system" && (
           <>
-            <nav aria-label="MemeGPT" className="hidden md:flex items-center gap-7">
+            <nav aria-label="MemeGPT" className="hidden md:flex items-center gap-4">
               {APP_TABS.map(({ key, href, label }) => {
                 const isActive = key === active;
                 return (
@@ -65,7 +65,7 @@ export function Masthead(props: Props) {
                     href={href}
                     aria-current={isActive ? "page" : undefined}
                     onClick={(e) => navigateWithTransition(router, e, href)}
-                    className={`min-h-11 flex items-center text-base font-medium transition-colors
+                    className={`min-h-11 px-1.5 flex items-center text-base font-medium transition-colors
                                 duration-[var(--duration-fast)] ${
                                   isActive
                                     ? "text-foreground underline decoration-brand decoration-[3px] underline-offset-[10px]"

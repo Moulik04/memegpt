@@ -38,6 +38,7 @@ export function MobileNav({ active, fixed = false }: Props) {
             aria-current={isActive ? "page" : undefined}
             onClick={(e) => navigateWithTransition(router, e, href)}
             className={`flex-1 h-12 flex items-center justify-center text-base font-medium transition-colors
+                        focus-visible:outline-offset-[-4px]
                         duration-[var(--duration-fast)] ${
                           isActive
                             ? "text-foreground underline decoration-brand decoration-[3px] underline-offset-8"
