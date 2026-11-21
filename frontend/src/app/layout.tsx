@@ -1,16 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Anton } from "next/font/google";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
+import localFont from "next/font/local";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { AuthProvider } from "@/lib/AuthProvider";
 import "./globals.css";
 
-// GeistSans/GeistMono ship pre-built, already self-hosted font files —
-// independent of next/font/google's font list (which doesn't have Geist
-// on this Next.js version). Anton is real self-hosting too: Next.js
-// downloads it at build time and serves it same-origin, not a CDN link.
-const anton = Anton({ subsets: ["latin"], weight: "400", variable: "--font-display" });
+// Committed WOFF2 subsets, built from backend/fonts by
+// scripts/build_web_fonts.py, so the build never fetches a font and the
+// site matches the server-rendered Arc card. Licenses sit beside them.
+// Archivo is one variable file covering weights 400 to 800.
+const anton = localFont({
+  src: "./fonts/anton.woff2",
+  weight: "400",
+  variable: "--font-anton",
+  fallback: ["Impact", "sans-serif"],
+});
+const archivo = localFont({
+  src: "./fonts/archivo.woff2",
+  weight: "400 800",
+  variable: "--font-archivo",
+  fallback: ["Arial", "sans-serif"],
+});
 
 const DESCRIPTION = "A chatbot that speaks exclusively in memes.";
 
@@ -73,7 +82,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark font-sans ${anton.variable} ${GeistSans.variable} ${GeistMono.variable}`}
+      className={`dark font-sans ${anton.variable} ${archivo.variable}`}
     >
       <body>
         <AuthProvider>{children}</AuthProvider>

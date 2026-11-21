@@ -106,9 +106,9 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-display: var(--font-display);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-anton);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-archivo);
 }
 
 /* Meme caption treatment — mirrors backend/image_processing/compositor.py's
@@ -116,7 +116,7 @@
    an 8-directional stroke pass). The one place brand and product share an
    implementation. */
 .caption {
-  font-family: var(--font-display);
+  font-family: var(--font-anton);
   text-transform: uppercase;
   color: #FFFFFF;
   -webkit-text-stroke: 0.08em #000000;
@@ -170,7 +170,7 @@
    Depth here is neutral box-shadow, motion is scale/opacity, nothing
    colored blurs. */
 .headline-poster {
-  font-family: var(--font-display);
+  font-family: var(--font-anton);
   text-transform: uppercase;
   font-size: var(--text-display);
   line-height: 0.95;
