@@ -44,7 +44,7 @@
   --scrollbar-track: transparent;
 
   /* shadcn's slots. --accent is shadcn's hover surface, not the brand red,
-     which Tailwind reaches as text-brand / bg-brand / border-brand. */
+     which Tailwind reaches through the "brand" color utilities. */
   --background: var(--ink-0);
   --foreground: var(--paper);
   --card: var(--ink-0);
