@@ -1,0 +1,235 @@
+{
+  "auto_count_text": {
+    "inputs": {
+      "text": "maya: flight delayed again. third time.\nleo: that gate has your mail now\n\njune: this meeting could've been an email\n  you: it has a follow-up meeting\n[11/18/26, 9:41 PM] maya: phone's at 1%",
+      "image_descriptions": null,
+      "requested_count": null,
+      "lexicon": null,
+      "replies": [
+        {
+          "contexts": [
+            {
+              "situation": "my flight got delayed a third time"
+            },
+            {
+              "situation": "a meeting that could have been an email"
+            }
+          ]
+        }
+      ]
+    },
+    "calls": [
+      {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You split a message (and/or photo descriptions) into distinct meme-worthy\nmoments. Identify between 1 and 5 SEPARATE situations — genuinely\ndifferent moments, topics, or punchlines, not just different sentences\nabout the same thing. Never describe the same moment twice, whether in\ndifferent words or from a second angle. Equally, never join two unrelated\nevents into one situation just because the same person mentions them back\nto back: each gets its own. If the whole input is really just one\nsituation, return exactly one. Phrase each situation in 1-2 casual\nfirst-person sentences, exactly as if the user were describing that one\nmoment themselves in a chat message (e.g. \"my dog destroyed the couch again\"\nor \"stuck in traffic for the third hour and everyone in the car is losing it\").\n\n\nRespond with ONLY valid JSON, no markdown, no explanation:\n{\"contexts\": [{\"situation\": \"...\"}]}"
+          },
+          {
+            "role": "user",
+            "content": "Message:\nmaya: flight delayed again. third time.\nleo: that gate has your mail now\n\njune: this meeting could've been an email\n  you: it has a follow-up meeting\n[11/18/26, 9:41 PM] maya: phone's at 1%"
+          }
+        ],
+        "temperature": 0.3,
+        "max_tokens": 700
+      }
+    ],
+    "result": [
+      {
+        "situation": "my flight got delayed a third time",
+        "take_of": null
+      },
+      {
+        "situation": "a meeting that could have been an email",
+        "take_of": null
+      }
+    ]
+  },
+  "count_five_short_then_more": {
+    "inputs": {
+      "text": "maya: flight delayed again. third time.\nleo: that gate has your mail now\n\njune: this meeting could've been an email\n  you: it has a follow-up meeting\n[11/18/26, 9:41 PM] maya: phone's at 1%",
+      "image_descriptions": null,
+      "requested_count": 5,
+      "lexicon": null,
+      "replies": [
+        {
+          "contexts": [
+            {
+              "situation": "my flight got delayed a third time"
+            },
+            {
+              "situation": "a meeting that could have been an email"
+            }
+          ]
+        },
+        {
+          "contexts": [
+            {
+              "situation": "my phone is at one percent and I keep texting"
+            }
+          ]
+        }
+      ]
+    },
+    "calls": [
+      {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You split a message (and/or photo descriptions) into distinct meme-worthy\nmoments. Identify between 1 and 5 SEPARATE situations — genuinely\ndifferent moments, topics, or punchlines, not just different sentences\nabout the same thing. Never describe the same moment twice, whether in\ndifferent words or from a second angle. Equally, never join two unrelated\nevents into one situation just because the same person mentions them back\nto back: each gets its own. If the whole input is really just one\nsituation, return exactly one. Phrase each situation in 1-2 casual\nfirst-person sentences, exactly as if the user were describing that one\nmoment themselves in a chat message (e.g. \"my dog destroyed the couch again\"\nor \"stuck in traffic for the third hour and everyone in the car is losing it\").\nThe user asked for 5 memes. Return up to 5 contexts, strongest first. Never repeat or reword a moment to reach 5: if the input has fewer than 5 genuinely distinct moments, return only the ones that exist.\n\nRespond with ONLY valid JSON, no markdown, no explanation:\n{\"contexts\": [{\"situation\": \"...\"}]}"
+          },
+          {
+            "role": "user",
+            "content": "Message:\nmaya: flight delayed again. third time.\nleo: that gate has your mail now\n\njune: this meeting could've been an email\n  you: it has a follow-up meeting\n[11/18/26, 9:41 PM] maya: phone's at 1%"
+          }
+        ],
+        "temperature": 0.3,
+        "max_tokens": 700
+      },
+      {
+        "messages": [
+          {
+            "role": "system",
+            "content": "A first pass over a message (and/or photo descriptions) already picked out\nthe moments listed under \"Already found\". Check whether it missed any.\nUsually it did not, and the right answer is then an empty list.\n\nReturn a moment only if it is about something none of the found moments\nmention at all: a separate event with its own part of the input that no\nfound moment draws on. Do NOT return a found moment reworded, a detail,\nconsequence or reaction that belongs to one, or a summary that combines\nseveral. Return at most 3.\n\nPhrase each one in 1-2 casual first-person sentences, exactly as if the user\nwere describing that one moment themselves in a chat message.\n\nRespond with ONLY valid JSON, no markdown, no explanation:\n{\"contexts\": [{\"situation\": \"...\"}]}"
+          },
+          {
+            "role": "user",
+            "content": "Message:\nmaya: flight delayed again. third time.\nleo: that gate has your mail now\n\njune: this meeting could've been an email\n  you: it has a follow-up meeting\n[11/18/26, 9:41 PM] maya: phone's at 1%\n\nAlready found:\n1. my flight got delayed a third time\n2. a meeting that could have been an email"
+          }
+        ],
+        "temperature": 0.2,
+        "max_tokens": 700
+      }
+    ],
+    "result": [
+      {
+        "situation": "my flight got delayed a third time",
+        "take_of": null
+      },
+      {
+        "situation": "a meeting that could have been an email",
+        "take_of": null
+      },
+      {
+        "situation": "my phone is at one percent and I keep texting",
+        "take_of": null
+      },
+      {
+        "situation": "my flight got delayed a third time",
+        "take_of": 0
+      },
+      {
+        "situation": "a meeting that could have been an email",
+        "take_of": 1
+      }
+    ]
+  },
+  "text_photos_lexicon": {
+    "inputs": {
+      "text": "maya: flight delayed again. third time.\nleo: that gate has your mail now\n\njune: this meeting could've been an email\n  you: it has a follow-up meeting\n[11/18/26, 9:41 PM] maya: phone's at 1%",
+      "image_descriptions": [
+        "a screenshot of a group chat about a gym",
+        "a photo of a burnt pizza"
+      ],
+      "requested_count": 3,
+      "lexicon": [
+        "maya",
+        "the gate"
+      ],
+      "replies": [
+        {
+          "contexts": [
+            {
+              "situation": "a"
+            },
+            {
+              "situation": "b"
+            },
+            {
+              "situation": "c"
+            }
+          ]
+        }
+      ]
+    },
+    "calls": [
+      {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You split a message (and/or photo descriptions) into distinct meme-worthy\nmoments. Identify between 1 and 5 SEPARATE situations — genuinely\ndifferent moments, topics, or punchlines, not just different sentences\nabout the same thing. Never describe the same moment twice, whether in\ndifferent words or from a second angle. Equally, never join two unrelated\nevents into one situation just because the same person mentions them back\nto back: each gets its own. If the whole input is really just one\nsituation, return exactly one. Phrase each situation in 1-2 casual\nfirst-person sentences, exactly as if the user were describing that one\nmoment themselves in a chat message (e.g. \"my dog destroyed the couch again\"\nor \"stuck in traffic for the third hour and everyone in the car is losing it\").\nThe user asked for 3 memes. Return up to 3 contexts, strongest first. Never repeat or reword a moment to reach 3: if the input has fewer than 3 genuinely distinct moments, return only the ones that exist.\nThis group's recurring names/running jokes, for context only, not something every situation needs to reference: maya, the gate.\nRespond with ONLY valid JSON, no markdown, no explanation:\n{\"contexts\": [{\"situation\": \"...\"}]}"
+          },
+          {
+            "role": "user",
+            "content": "Message:\nmaya: flight delayed again. third time.\nleo: that gate has your mail now\n\njune: this meeting could've been an email\n  you: it has a follow-up meeting\n[11/18/26, 9:41 PM] maya: phone's at 1%\n\nPhoto 1: a screenshot of a group chat about a gym\n\nPhoto 2: a photo of a burnt pizza"
+          }
+        ],
+        "temperature": 0.3,
+        "max_tokens": 700
+      }
+    ],
+    "result": [
+      {
+        "situation": "a",
+        "take_of": null
+      },
+      {
+        "situation": "b",
+        "take_of": null
+      },
+      {
+        "situation": "c",
+        "take_of": null
+      }
+    ]
+  },
+  "photos_only": {
+    "inputs": {
+      "text": null,
+      "image_descriptions": [
+        "a cat on a keyboard",
+        "a dog in a raincoat"
+      ],
+      "requested_count": 2,
+      "lexicon": null,
+      "replies": [
+        {
+          "contexts": [
+            {
+              "situation": "cat"
+            },
+            {
+              "situation": "dog"
+            }
+          ]
+        }
+      ]
+    },
+    "calls": [
+      {
+        "messages": [
+          {
+            "role": "system",
+            "content": "You split a message (and/or photo descriptions) into distinct meme-worthy\nmoments. Identify between 1 and 5 SEPARATE situations — genuinely\ndifferent moments, topics, or punchlines, not just different sentences\nabout the same thing. Never describe the same moment twice, whether in\ndifferent words or from a second angle. Equally, never join two unrelated\nevents into one situation just because the same person mentions them back\nto back: each gets its own. If the whole input is really just one\nsituation, return exactly one. Phrase each situation in 1-2 casual\nfirst-person sentences, exactly as if the user were describing that one\nmoment themselves in a chat message (e.g. \"my dog destroyed the couch again\"\nor \"stuck in traffic for the third hour and everyone in the car is losing it\").\nThe user asked for 2 memes. Return up to 2 contexts, strongest first. Never repeat or reword a moment to reach 2: if the input has fewer than 2 genuinely distinct moments, return only the ones that exist.\n\nRespond with ONLY valid JSON, no markdown, no explanation:\n{\"contexts\": [{\"situation\": \"...\"}]}"
+          },
+          {
+            "role": "user",
+            "content": "Photo 1: a cat on a keyboard\n\nPhoto 2: a dog in a raincoat"
+          }
+        ],
+        "temperature": 0.3,
+        "max_tokens": 700
+      }
+    ],
+    "result": [
+      {
+        "situation": "cat",
+        "take_of": null
+      },
+      {
+        "situation": "dog",
+        "take_of": null
+      }
+    ]
+  }
+}
