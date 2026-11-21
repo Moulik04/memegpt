@@ -109,6 +109,72 @@ _LEXICON_INSTRUCTION_TEMPLATE = (
     "something every situation needs to reference: {lexicon}."
 )
 
+# --- Source lines (opt-in) -----------------------------------------------
+#
+# Only for a request that asks for them. Every other request gets the
+# prompts above exactly as they are. Each non-blank line of the message goes
+# to the model as "<n> | <line>", n being its 1-based position in
+# text.split("\n"), so the browser can quote the same lines from the string
+# it sent. " | " rather than "[n]" because chat exports already start lines
+# with bracketed timestamps.
+_SOURCE_LINES_INSTRUCTION = (
+    'The message\'s lines are numbered: each starts with its number and " | ". '
+    'For each situation, also give "lines": the numbers of the message lines it '
+    "draws on, as a list of integers. Use only numbers that appear before "
+    '" | ". Give an empty list for a situation that comes only from a photo.'
+)
+_PLAIN_FORMAT = '{"contexts": [{"situation": "..."}]}'
+_NUMBERED_FORMAT = '{"contexts": [{"situation": "...", "lines": [3, 4]}]}'
+_RESPOND_LINE = "Respond with ONLY valid JSON"
+# A moment's line list adds roughly 10-30 tokens to its reply.
+_OUTPUT_TOKENS_PER_MOMENT_WITH_LINES = 150
+
+
+def _format_escaped(text: str) -> str:
+    return text.replace("{", "{{").replace("}", "}}")
+
+
+def _with_source_lines(template: str) -> str:
+    """The same prompt template, asking for each moment's line numbers too.
+
+    Applied to the template before .format(), so the user's lexicon is never
+    part of what gets searched and replaced here.
+    """
+    plain, numbered = _format_escaped(_PLAIN_FORMAT), _format_escaped(_NUMBERED_FORMAT)
+    assert template.count(plain) == 1 and template.count(_RESPOND_LINE) == 1
+    template = template.replace(_RESPOND_LINE, f"{_SOURCE_LINES_INSTRUCTION}\n{_RESPOND_LINE}")
+    return template.replace(plain, numbered)
+
+
+_NUMBERED_SEGMENTATION_SYSTEM_PROMPT = _with_source_lines(_SEGMENTATION_SYSTEM_PROMPT)
+_NUMBERED_MORE_SYSTEM_PROMPT = _with_source_lines(_MORE_SYSTEM_PROMPT)
+
+
+def _numbered_lines(text: str) -> list[tuple[int, str]]:
+    return [(n, line) for n, line in enumerate(text.split("\n"), 1) if line.strip()]
+
+
+def _numbered_text(text: str) -> str:
+    return "\n".join(f"{n} | {line}" for n, line in _numbered_lines(text))
+
+
+def _whole_paste_lines(text: str | None, image_descriptions: list[str]) -> list[int] | None:
+    """Every non-blank line, for a single context made from the whole paste
+    (the fast path, or the fallback when the model call fails). None when a
+    photo is involved, so the browser shows the summary instead."""
+    if image_descriptions or not text:
+        return None
+    return [n for n, _ in _numbered_lines(text)] or None
+
+
+def _valid_lines(raw: object, valid: frozenset[int]) -> list[int] | None:
+    """The model's line numbers, keeping only integers that point at a real
+    non-blank line of the paste. Nothing the model writes is quoted."""
+    if not isinstance(raw, list):
+        return None
+    kept = sorted({n for n in raw if type(n) is int and n in valid})
+    return kept or None
+
 # --- Near-duplicate detection -------------------------------------------
 #
 # Word overlap between two situations, after dropping filler words and
@@ -164,14 +230,22 @@ def _is_near_duplicate(a: str, b: str) -> bool:
     return overlap >= _NEAR_DUPLICATE_OVERLAP or containment >= _NEAR_DUPLICATE_CONTAINMENT
 
 
-def _drop_near_duplicates(situations: list[str]) -> list[str]:
+Moment = tuple[str, list[int] | None]  # (situation, source lines)
+
+
+def _drop_near_duplicate_moments(moments: list[Moment]) -> list[Moment]:
     """Keeps the first of every group of exact or reworded repeats, in
-    order — the model lists the strongest moments first."""
-    kept: list[str] = []
-    for situation in situations:
-        if situation.strip() and not any(_is_near_duplicate(situation, k) for k in kept):
-            kept.append(situation)
+    order — the model lists the strongest moments first. A kept moment keeps
+    its own source lines."""
+    kept: list[Moment] = []
+    for situation, lines in moments:
+        if situation.strip() and not any(_is_near_duplicate(situation, k) for k, _ in kept):
+            kept.append((situation, lines))
     return kept
+
+
+def _drop_near_duplicates(situations: list[str]) -> list[str]:
+    return [s for s, _ in _drop_near_duplicate_moments([(s, None) for s in situations])]
 
 
 def _combine_raw(text: str | None, image_descriptions: list[str]) -> str:
@@ -186,29 +260,41 @@ def _combine_raw(text: str | None, image_descriptions: list[str]) -> str:
     return " ".join(parts)
 
 
-def _build_material(text: str | None, image_descriptions: list[str]) -> str:
+def _build_material(text: str | None, image_descriptions: list[str], numbered: bool = False) -> str:
     """Labeled, multi-line material fed to the segmentation LLM call —
-    distinct from _combine_raw, which produces a single situation string."""
+    distinct from _combine_raw, which produces a single situation string.
+    numbered prefixes each non-blank message line with its line number."""
     parts = []
     if text:
-        parts.append(f"Message:\n{text}")
+        parts.append(f"Message:\n{_numbered_text(text) if numbered else text}")
     for i, desc in enumerate(image_descriptions, 1):
         parts.append(f"Photo {i}: {desc}")
     return "\n\n".join(parts)
 
 
-def _build_more_material(material: str, found: list[str]) -> str:
+def _build_more_material(material: str, found: list[str], numbered: bool = False) -> str:
     """The same input, followed by the moments the first request already
-    produced, for the second request to steer clear of."""
-    listed = "\n".join(f"{i}. {situation}" for i, situation in enumerate(found, 1))
+    produced, for the second request to steer clear of. With numbered
+    material they are listed with dashes, so no other numbers sit next to
+    the line numbers."""
+    if numbered:
+        listed = "\n".join(f"- {situation}" for situation in found)
+    else:
+        listed = "\n".join(f"{i}. {situation}" for i, situation in enumerate(found, 1))
     return f"{material}\n\nAlready found:\n{listed}"
 
 
 async def _ask_for_moments(
-    system_prompt: str, material: str, max_tokens: int, deadline: float, temperature: float = 0.75
-) -> list[str] | None:
-    """One model call. Returns the situations it named (possibly none), or
-    None if the call failed or there was no time left to make it."""
+    system_prompt: str,
+    material: str,
+    max_tokens: int,
+    deadline: float,
+    temperature: float = 0.75,
+    valid_lines: frozenset[int] | None = None,
+) -> list[Moment] | None:
+    """One model call. Returns the moments it named (possibly none), or None
+    if the call failed or there was no time left to make it. Source lines
+    are read only when valid_lines is given, and checked against it."""
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return None
@@ -223,7 +309,13 @@ async def _ask_for_moments(
                 timeout=remaining,
             )
             data = json.loads(strip_markdown(raw))
-            return [SegmentedContext(**c).situation for c in data["contexts"]]
+            return [
+                (
+                    SegmentedContext(**c).situation,
+                    _valid_lines(c.get("lines"), valid_lines) if valid_lines is not None else None,
+                )
+                for c in data["contexts"]
+            ]
         except Exception:
             # Broad on purpose — segment_contexts must NEVER raise to the
             # caller (same "never raises" invariant as parse_intent), so any
@@ -238,6 +330,7 @@ async def segment_contexts(
     image_descriptions: list[str] | None = None,
     requested_count: int | None = None,
     lexicon: list[str] | None = None,
+    number_lines: bool = False,
 ) -> list[SegmentedContext]:
     """Identify 1..max_memes_per_request distinct meme-worthy moments.
     Never raises — hard-falls-back to a single context (the plain
@@ -252,12 +345,21 @@ async def segment_contexts(
 
     lexicon (Growth Phase C, optional): this anon user's opt-in Lore
     lexicon — reaches this prompt only through the instruction channel
-    below, never through _build_material's content channel."""
+    below, never through _build_material's content channel.
+
+    number_lines (opt-in): also find which pasted lines each moment draws
+    on, as source_lines. A take shares its moment's lines. Off, the prompts
+    are exactly what they were before source lines existed."""
     settings = get_settings()
     image_descriptions = image_descriptions or []
     max_count = settings.max_memes_per_request
-    material = _build_material(text, image_descriptions)
-    fallback = [SegmentedContext(situation=_combine_raw(text, image_descriptions))]
+    numbered = number_lines and bool(text)
+    valid_lines = frozenset(n for n, _ in _numbered_lines(text)) if numbered and text else None
+    material = _build_material(text, image_descriptions, numbered=numbered)
+    fallback = [SegmentedContext(
+        situation=_combine_raw(text, image_descriptions),
+        source_lines=_whole_paste_lines(text, image_descriptions) if number_lines else None,
+    )]
 
     clamped_count = None
     count_instruction = ""
@@ -269,34 +371,38 @@ async def segment_contexts(
     if lexicon:
         lexicon_instruction = _LEXICON_INSTRUCTION_TEMPLATE.format(lexicon=", ".join(lexicon))
 
-    system_prompt = _SEGMENTATION_SYSTEM_PROMPT.format(
+    system_template = _NUMBERED_SEGMENTATION_SYSTEM_PROMPT if numbered else _SEGMENTATION_SYSTEM_PROMPT
+    system_prompt = system_template.format(
         max_count=max_count,
         count_instruction=count_instruction,
         lexicon_instruction=lexicon_instruction,
     )
-    max_tokens = _OUTPUT_TOKENS_BASE + _OUTPUT_TOKENS_PER_MOMENT * max_count
+    per_moment = _OUTPUT_TOKENS_PER_MOMENT_WITH_LINES if numbered else _OUTPUT_TOKENS_PER_MOMENT
+    max_tokens = _OUTPUT_TOKENS_BASE + per_moment * max_count
     deadline = time.monotonic() + _OVERALL_TIMEOUT_SECONDS
 
     found = await _ask_for_moments(
-        system_prompt, material, max_tokens, deadline, temperature=_SEGMENTATION_TEMPERATURE
+        system_prompt, material, max_tokens, deadline, temperature=_SEGMENTATION_TEMPERATURE,
+        valid_lines=valid_lines,
     )
-    moments = _drop_near_duplicates(found or [])[: clamped_count or max_count]
+    moments = _drop_near_duplicate_moments(found or [])[: clamped_count or max_count]
     if not moments:
         return fallback
 
     if clamped_count is not None and len(moments) < clamped_count:
-        more_prompt = _MORE_SYSTEM_PROMPT.format(
+        more_template = _NUMBERED_MORE_SYSTEM_PROMPT if numbered else _MORE_SYSTEM_PROMPT
+        more_prompt = more_template.format(
             n=clamped_count - len(moments),
             lexicon_instruction=lexicon_instruction,
         )
         more = await _ask_for_moments(
-            more_prompt, _build_more_material(material, moments), max_tokens, deadline,
-            temperature=_MORE_TEMPERATURE,
+            more_prompt, _build_more_material(material, [s for s, _ in moments], numbered=numbered),
+            max_tokens, deadline, temperature=_MORE_TEMPERATURE, valid_lines=valid_lines,
         )
         if more:
-            moments = _drop_near_duplicates(moments + more)[:clamped_count]
+            moments = _drop_near_duplicate_moments(moments + more)[:clamped_count]
 
-    contexts = [SegmentedContext(situation=moment) for moment in moments]
+    contexts = [SegmentedContext(situation=situation, source_lines=lines) for situation, lines in moments]
     if clamped_count is not None:
         # Still short: the input simply has fewer distinct moments than were
         # asked for. Fill the rest with further takes, starting from the
@@ -304,7 +410,8 @@ async def segment_contexts(
         # carries every extra.
         for extra in range(clamped_count - len(moments)):
             source = extra % len(moments)
-            contexts.append(SegmentedContext(situation=moments[source], take_of=source))
+            situation, lines = moments[source]
+            contexts.append(SegmentedContext(situation=situation, take_of=source, source_lines=lines))
 
     return contexts
 
@@ -327,9 +434,11 @@ async def resolve_contexts(
     image_descriptions: list[str] | None = None,
     requested_count: int | None = None,
     lexicon: list[str] | None = None,
+    number_lines: bool = False,
 ) -> list[SegmentedContext]:
     """Returns one entry per meme to generate. The only function other
-    modules should call."""
+    modules should call. number_lines asks for each entry's source_lines;
+    see segment_contexts."""
     image_descriptions = image_descriptions or []
 
     if not _should_segment(text, len(image_descriptions), requested_count):
@@ -341,6 +450,7 @@ async def resolve_contexts(
             situation = text or ""
         else:
             situation = _combine_raw(text, image_descriptions)
-        return [SegmentedContext(situation=situation)]
+        lines = _whole_paste_lines(text, image_descriptions) if number_lines else None
+        return [SegmentedContext(situation=situation, source_lines=lines)]
 
-    return await segment_contexts(text, image_descriptions, requested_count, lexicon)
+    return await segment_contexts(text, image_descriptions, requested_count, lexicon, number_lines=number_lines)

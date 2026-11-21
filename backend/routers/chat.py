@@ -25,7 +25,9 @@ surviving photo directly.
 SSE event stream:
   {"type": "plan",     "situations": [...], "total": N}   — only when N > 1; also carries
                        "take_of": [null, ..., 0] when some entries are another take on an
-                       earlier moment rather than a moment of their own
+                       earlier moment rather than a moment of their own. A Lore request
+                       with include_source_lines gets the plan even for one moment, with
+                       "source_lines": [[1, 2], null, ...] lined up with "situations"
   {"type": "thinking", "stage": "looking",    "message": "..."}   — photo uploads only, sent first
   {"type": "thinking", "stage": "analyzing",  "index": 0, "total": 1, "message": "..."}
   {"type": "thinking", "stage": "rendering",  "index": 0, "total": 1, "template_id": "...", "message": "..."}
@@ -381,6 +383,7 @@ async def _stream_batch(
     surface: str | None = None,
     conversation_row_id: str | None = None,
     reservation: daily_quota.Reservation | None = None,
+    include_source_lines: bool = False,
 ) -> AsyncGenerator[str, None]:
     """Runs each context through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
@@ -402,9 +405,13 @@ async def _stream_batch(
     (daily_quota.py). `contexts` has already been cut to what it granted,
     which can be nothing at all. Whatever was not made is handed back when
     the batch ends, however it ends, and if the visitor asked for more than
-    they had left the batch says so before it closes."""
+    they had left the batch says so before it closes.
+
+    include_source_lines (opt-in, Lore only): the plan is sent even for a
+    single moment and carries each context's source_lines. Without it the
+    plan is exactly what it was before source lines existed."""
     total = len(contexts)
-    if total > 1:
+    if total > 1 or (include_source_lines and total == 1):
         # "Plan theater" for a single meme is pointless — only worth
         # announcing when there's actually more than one situation to work
         # through, regardless of whether that came from the zero-LLM fast
@@ -420,6 +427,8 @@ async def _stream_batch(
         }
         if any(c.take_of is not None for c in contexts):
             plan["take_of"] = [c.take_of for c in contexts]
+        if include_source_lines:
+            plan["source_lines"] = [c.source_lines for c in contexts]
         yield _sse(plan)
     succeeded = 0
     templates_by_moment: dict[int, list[str]] = {}
@@ -621,6 +630,7 @@ async def _contexts_within_allowance(
     image_descriptions: list[str] | None,
     meme_count: int | None,
     lexicon: list[str] | None,
+    number_lines: bool = False,
 ) -> tuple[list[SegmentedContext], daily_quota.Reservation]:
     """resolve_contexts(), held to the visitor's daily allowance
     (daily_quota.py). Returns the situations to render, never more than the
@@ -633,7 +643,9 @@ async def _contexts_within_allowance(
     current = daily_quota.allowance(visitor)
     contexts: list[SegmentedContext] = []
     if not current.exhausted:
-        contexts = await resolve_contexts(text, image_descriptions, current.cap(meme_count), lexicon=lexicon)
+        contexts = await resolve_contexts(
+            text, image_descriptions, current.cap(meme_count), lexicon=lexicon, number_lines=number_lines
+        )
     # At least one, so that a visitor with nothing left is told so.
     wanted = max(len(contexts), _requested_count(meme_count), 1)
     reservation = daily_quota.reserve(visitor, wanted)
@@ -648,6 +660,7 @@ async def handle_text_stream(
     remember_lore: bool,
     surface: str,
     conversation_row_id_in: str | None = None,
+    include_source_lines: bool = False,
 ) -> StreamingResponse:
     """Shared text-turn core for both /chat/ and /lore/ (Growth Phase D).
     Streams SSE events as one or more memes are generated — resolve_contexts
@@ -665,9 +678,14 @@ async def handle_text_stream(
     visitor = identify(request)
     if remember_lore and not daily_quota.allowance(visitor).exhausted:
         schedule_lexicon_extraction(anon_user_id, message, user_id, conversation_row_id)
-    contexts, reservation = await _contexts_within_allowance(visitor, message, None, meme_count, ctx.lexicon)
+    contexts, reservation = await _contexts_within_allowance(
+        visitor, message, None, meme_count, ctx.lexicon, number_lines=include_source_lines
+    )
     return _sse_response(
-        _stream_batch(contexts, conversation_id, ctx, surface, conversation_row_id, reservation)
+        _stream_batch(
+            contexts, conversation_id, ctx, surface, conversation_row_id, reservation,
+            include_source_lines=include_source_lines,
+        )
     )
 
 
@@ -681,6 +699,7 @@ async def handle_image_stream(
     remember_lore: bool,
     surface: str,
     conversation_row_id_in: str | None = None,
+    include_source_lines: bool = False,
 ) -> StreamingResponse:
     """Shared image-turn core for both /chat/image/ and /lore/image/
     (Growth Phase D). Uploads 1+ photos and generates memes from them, in one
@@ -773,10 +792,11 @@ async def handle_image_stream(
             # rather than hard-refusing when the user's words are still usable.
             if message:
                 contexts, reservation = await _contexts_within_allowance(
-                    visitor, message, None, meme_count, ctx.lexicon
+                    visitor, message, None, meme_count, ctx.lexicon, number_lines=include_source_lines
                 )
                 async for event in _stream_batch(
-                    contexts, conv_id, ctx, surface, conversation_row_id, reservation
+                    contexts, conv_id, ctx, surface, conversation_row_id, reservation,
+                    include_source_lines=include_source_lines,
                 ):
                     yield event
                 return
@@ -815,9 +835,12 @@ async def handle_image_stream(
             return
 
         contexts, reservation = await _contexts_within_allowance(
-            visitor, message, descriptions, meme_count, ctx.lexicon
+            visitor, message, descriptions, meme_count, ctx.lexicon, number_lines=include_source_lines
         )
-        async for event in _stream_batch(contexts, conv_id, ctx, surface, conversation_row_id, reservation):
+        async for event in _stream_batch(
+            contexts, conv_id, ctx, surface, conversation_row_id, reservation,
+            include_source_lines=include_source_lines,
+        ):
             yield event
 
     return _sse_response(event_stream())
