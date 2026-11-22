@@ -35,6 +35,7 @@ async def lore(request: Request, body: LoreRequest):
         meme_count=body.meme_count, remember_lore=body.remember_lore, surface="lore",
         conversation_row_id_in=body.conversation_row_id,
         include_source_lines=body.include_source_lines,
+        exclude_templates=body.exclude_templates,
     )
 
 

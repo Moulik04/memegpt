@@ -89,6 +89,11 @@ class LoreRequest(BaseModel):
     # Opt-in: the plan event carries each moment's source_lines (see
     # SegmentedContext), and is sent even for a single moment.
     include_source_lines: bool = False
+    # Templates no meme in this request may use: the ones already shown for
+    # a moment, when the browser asks for another take on it. Unknown ids
+    # are ignored and only the first MAX_EXCLUDED_TEMPLATES count (see
+    # routers/chat.py); the length bound here only keeps the body small.
+    exclude_templates: list[str] | None = Field(default=None, max_length=50)
 
 
 class ChatResponse(BaseModel):
