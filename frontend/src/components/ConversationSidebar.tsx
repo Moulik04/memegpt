@@ -155,7 +155,7 @@ export function ConversationSidebar() {
                 onClick={(e) => requestDelete(c.id, e)}
                 title="Delete"
                 aria-label="Delete this chat"
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive
                            transition-opacity shrink-0"
               >
                 ✕

@@ -82,10 +82,14 @@ export function MemeDisplay({ url, alt = "meme", maxHeightClassName = "max-h-[65
         </figure>
       )}
 
+      {/* Centered by left-0 right-0 mx-auto, not left-1/2 plus a translate:
+          a shrink-to-fit box that starts at 50% can never be wider than the
+          other half of the viewport. */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
           showCloseButton={false}
-          className="w-auto max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-4rem)] p-3 gap-2 bg-background"
+          className="left-0 right-0 mx-auto translate-x-0 w-fit max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-4rem)]
+                     p-3 gap-2 bg-background"
         >
           <DialogTitle className="sr-only">{alt}</DialogTitle>
           <div className="bg-meme-mat border border-meme-edge p-2 md:p-3">

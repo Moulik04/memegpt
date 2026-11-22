@@ -324,7 +324,7 @@ export function LoreView() {
           />
 
           {text.length > MAX_DUMP_CHARS && (
-            <p className="text-[10px] text-amber-500">
+            <p className="text-[10px] text-muted-foreground">
               Long lore! Using the first ~{Math.round(MAX_DUMP_CHARS / 1000)}k characters.
             </p>
           )}
@@ -453,7 +453,7 @@ export function LoreView() {
 
         {displayError && showBudgetMeme && <BudgetNotice message={displayError} />}
         {displayError && !showBudgetMeme && (
-          <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/40
+          <p className="text-destructive text-xs border-l-2 border-brand
                         rounded-xl px-3 py-2">
             {displayError}
           </p>

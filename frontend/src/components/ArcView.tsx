@@ -356,7 +356,7 @@ export function ArcView() {
   if (error || !stats) {
     return (
       <div className="flex-1 flex items-center justify-center px-6">
-        <p className="text-sm text-red-400">{error ?? "Couldn't load your Arc — try again."}</p>
+        <p className="text-sm text-destructive">{error ?? "Couldn't load your Arc — try again."}</p>
       </div>
     );
   }
@@ -414,7 +414,7 @@ export function ArcView() {
 
       {isFinale ? (
         <div className="mt-6 w-full max-w-[380px] flex flex-col items-center gap-2">
-          {cardError && <p className="text-xs text-red-400">{cardError}</p>}
+          {cardError && <p className="text-xs text-destructive">{cardError}</p>}
           <button
             onClick={handleShare}
             disabled={creatingCard}

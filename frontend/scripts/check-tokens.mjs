@@ -23,6 +23,11 @@ const RULES = [
       /(?<![\w-])(?:[a-z-]+:)*(?:text|bg|border|ring|divide|placeholder|fill|stroke|outline|from|to|via|shadow|decoration)-(?:gray|zinc|neutral|slate|stone|white|black)(?:-\d+)?(?:\/\d+)?(?![\w-])/g,
   },
   {
+    name: "raw palette color class (use the tokens: brand for red, destructive for error text)",
+    pattern:
+      /(?<![\w-])(?:[a-z-]+:)*(?:text|bg|border|ring|divide|placeholder|fill|stroke|outline|from|to|via|shadow|decoration|accent|caret)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+(?:\/\d+)?(?![\w-])/g,
+  },
+  {
     name: "dark: variant (there is no dark theme)",
     pattern: /(?<![\w-])(?:[a-z-]+:)*dark:[\w[\]/.:-]+/g,
   },
@@ -33,13 +38,20 @@ const RULES = [
   },
 ];
 
-// Not failures: dark-theme pieces that later steps replace.
+// Not failures: dark-theme pieces and other leftovers that later steps
+// replace. Each must be gone by launch.
 const LATER = [
-  { step: "3 (Chat), 4 (Lore): decrypting text", pattern: /DecryptedText/g },
-  { step: "3 (Chat): thinking orb, glowing prompt chips", pattern: /thinking-orb|prompt-chip/g },
-  { step: "6 (Arc): gauge colors", pattern: /#10b981|#bef264/g },
-  { step: "7 (landing): pixel reveal", pattern: /PixelRevealImage/g },
+  { item: "step 3 (Chat), 4 (Lore): decrypting text", pattern: /DecryptedText/ },
+  { item: "step 3 (Chat): thinking orb, glowing prompt chips", pattern: /thinking-orb|prompt-chip/ },
+  { item: "step 6 (Arc): gauge colors", pattern: /#10b981|#bef264/ },
+  { item: "step 7 (landing): pixel reveal", pattern: /PixelRevealImage/ },
+  { item: "pill-shaped controls (rounded-full); the handoff avoids pills", pattern: /(?<![\w-])rounded-full(?![\w-])/ },
+  // Comment lines are skipped below, so this only flags code and copy.
+  { item: "em dash in a UI string", pattern: /\u2014/, code: true },
+  { item: "step 7: 404 and error memes outside the shared meme frame", pattern: /(?:404|500)_example\.png/ },
 ];
+
+const COMMENT = /^\s*(?:\/\/|\/\*|\*|\{\/\*)/;
 
 function files(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -61,15 +73,19 @@ for (const path of files(SRC)) {
         failures.push(`  src/${file}:${i + 1}  ${match[0]}  (${rule.name})`);
       }
     }
-    for (const { step, pattern } of LATER) {
-      if (line.match(pattern)) later.set(`src/${file}`, step);
+    for (const { item, pattern, code } of LATER) {
+      if (code && file.endsWith(".css")) continue;
+      const text = code ? (COMMENT.test(line) ? "" : line.replace(/\/\*.*?\*\//g, "").replace(/\s\/\/.*$/, "")) : line;
+      if (!pattern.test(text)) continue;
+      if (!later.has(item)) later.set(item, new Set());
+      later.get(item).add(`src/${file}`);
     }
   });
 }
 
 if (later.size) {
-  console.log("check-tokens: dark-theme leftovers for later redesign steps:");
-  for (const [file, step] of later) console.log(`  step ${step}  ${file}`);
+  console.log("check-tokens: leftovers for later redesign steps (not failures):");
+  for (const [item, where] of later) console.log(`  ${item}\n    ${[...where].join("\n    ")}`);
 }
 if (failures.length) {
   console.error(`check-tokens: ${failures.length} violation(s):\n${failures.join("\n")}`);
