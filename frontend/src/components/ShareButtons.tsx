@@ -94,65 +94,34 @@ export function ShareButtons({ memeUrl, large = false }: Props) {
     }
   }
 
-  if (large) {
-    return (
-      <div className="flex flex-col gap-3 w-full mt-4">
-        {canShare && (
-          <button
-            onClick={handleShare}
-            className="w-full py-3 rounded-xl bg-primary hover:bg-primary/85
-                       text-primary-foreground font-semibold text-sm transition-colors"
-          >
-            ↗ Share to WhatsApp / Instagram / Snapchat
-          </button>
-        )}
-        <div className="flex gap-2">
-          <button
-            onClick={handleDownload}
-            className="flex-1 py-2.5 rounded-xl border border-border hover:border-input
-                       text-foreground text-sm transition-colors hover:bg-muted"
-          >
-            ↓ Download
-          </button>
-          <button
-            onClick={handleCopy}
-            disabled={copying}
-            className="flex-1 py-2.5 rounded-xl border border-border hover:border-input
-                       text-foreground text-sm transition-colors hover:bg-muted disabled:opacity-50"
-          >
-            {copied ? "✓ Copied!" : copying ? "Copying…" : "⎘ Copy Image"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex items-center gap-0.5 mt-1">
-      <button onClick={handleDownload} className="action-btn" title="Download">
-        ↓ Save
-      </button>
-      <span className="text-muted-foreground text-xs">·</span>
-      <button
-        onClick={handleCopy}
-        disabled={copying}
-        className="action-btn"
-        title="Copy image"
-      >
-        {copied ? "✓ Copied" : copying ? "…" : "⎘ Copy"}
-      </button>
+    <div className="flex flex-col gap-3 w-full mt-4">
       {canShare && (
-        <>
-          <span className="text-muted-foreground text-xs">·</span>
-          <button
-            onClick={handleShare}
-            className="action-btn action-btn-primary"
-            title="Share"
-          >
-            ↗ Share
-          </button>
-        </>
+        <button
+          onClick={handleShare}
+          className="w-full py-3 rounded-xl bg-primary hover:bg-primary/85
+                     text-primary-foreground font-semibold text-sm transition-colors"
+        >
+          ↗ Share to WhatsApp / Instagram / Snapchat
+        </button>
       )}
+      <div className="flex gap-2">
+        <button
+          onClick={handleDownload}
+          className="flex-1 py-2.5 rounded-xl border border-border hover:border-input
+                     text-foreground text-sm transition-colors hover:bg-muted"
+        >
+          ↓ Download
+        </button>
+        <button
+          onClick={handleCopy}
+          disabled={copying}
+          className="flex-1 py-2.5 rounded-xl border border-border hover:border-input
+                     text-foreground text-sm transition-colors hover:bg-muted disabled:opacity-50"
+        >
+          {copied ? "✓ Copied!" : copying ? "Copying…" : "⎘ Copy Image"}
+        </button>
+      </div>
     </div>
   );
 }

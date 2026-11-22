@@ -19,37 +19,62 @@ import { googleButtonEnabled } from "@/lib/googleIdentity";
 // in English, more in some languages), so leave it room.
 const GOOGLE_BUTTON_WIDTH = 236;
 
-function truncateEmail(email: string): string {
-  return email.length > 22 ? `${email.slice(0, 19)}…` : email;
-}
+const MENU_ITEM =
+  "w-full min-h-11 px-2 text-left text-base font-medium text-foreground hover:bg-muted " +
+  "transition-colors duration-[var(--duration-fast)]";
 
 /**
  * Renders null when Supabase Auth isn't configured (empty env vars) —
  * signed-out visitors and every existing test/screenshot of the app are
  * completely unaffected. Slots into Masthead.tsx's account actions,
- * beside "Forget me".
+ * beside "Forget me". Signed in, the letter avatar opens the account menu:
+ * the signed-in email, History where the page has it, and Sign out.
  */
-export function AuthControl() {
+export function AuthControl({ onHistory }: { onHistory?: () => void }) {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   if (!authEnabled || loading) return null;
 
   if (user) {
     return (
-      <div className="flex items-center gap-2">
-        <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
-        <span className="hidden md:inline text-sm text-muted-foreground" title={user.email ?? undefined}>
-          {user.email ? truncateEmail(user.email) : "Signed in"}
-        </span>
-        <button
-          type="button"
-          onClick={() => signOut()}
-          className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Sign out
-        </button>
-      </div>
+      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Account"
+            className="min-h-11 min-w-11 flex items-center justify-center"
+          >
+            <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" collisionPadding={8} className="w-64 p-2 flex flex-col gap-1">
+          <p className="px-2 py-2 text-sm text-muted-foreground break-all">{user.email ?? "Signed in"}</p>
+          {onHistory && (
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onHistory();
+              }}
+              className={MENU_ITEM}
+            >
+              History
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              signOut();
+            }}
+            className={MENU_ITEM}
+          >
+            Sign out
+          </button>
+        </PopoverContent>
+      </Popover>
     );
   }
 

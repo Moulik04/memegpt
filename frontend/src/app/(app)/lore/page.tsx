@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function LorePage() {
   return (
     <div className="flex flex-col h-full">
-      <Masthead variant="app" active="lore" />
+      <Masthead variant="app" active="lore" history />
       <LoreView />
       <MobileNav active="lore" />
     </div>

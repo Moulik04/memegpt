@@ -11,12 +11,8 @@ export const metadata: Metadata = {
 export default function ChatPage() {
   return (
     <div className="flex flex-col h-full">
-      <Masthead variant="app" active="chat" />
-
-      {/* Chat fills remaining height */}
-      <div className="flex-1 min-h-0 flex flex-col max-w-2xl w-full mx-auto">
-        <ChatWindow />
-      </div>
+      <Masthead variant="app" active="chat" history />
+      <ChatWindow />
 
       <MobileNav active="chat" />
     </div>

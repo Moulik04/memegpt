@@ -2,10 +2,36 @@
 
 import { useState } from "react";
 import { ApiError, sendImageStream, sendStream, type Surface } from "@/lib/api";
-import type { MemeItem, NoticeReason, SSEEvent } from "@/types";
+import { templateLabel } from "@/lib/utils";
+import type { MemeItem, NoticeReason, SSEEvent, UploadErrorCode } from "@/types";
 
 interface ThinkingState {
   message: string;
+}
+
+export type StageKey = "looking" | "analyzing" | "rendering";
+
+/** One step of a submission, worded for the person waiting on it. The last
+ * one in the list is current; the ones before it are finished. Steps that
+ * haven't started are never listed. */
+export interface ThinkingStage {
+  key: StageKey;
+  label: string;
+}
+
+const STAGE_ORDER: StageKey[] = ["looking", "analyzing", "rendering"];
+
+function stageLabel(key: StageKey, photos: number, templateId?: string): string {
+  if (key === "looking") return photos > 1 ? "Looking at the photos" : "Looking at the photo";
+  if (key === "analyzing") return "Reading the message";
+  return templateId ? `Captioning ${templateLabel(templateId)}` : "Captioning the photo";
+}
+
+/** Moves the list to `key`: drops anything at or after it (a later meme in
+ * the same batch starts its own read and caption over), then appends it. */
+function advance(stages: ThinkingStage[], next: ThinkingStage): ThinkingStage[] {
+  const at = STAGE_ORDER.indexOf(next.key);
+  return [...stages.filter((s) => STAGE_ORDER.indexOf(s.key) < at), next];
 }
 
 export interface PlanState {
@@ -19,9 +45,18 @@ export interface PlanState {
   finished: boolean;
 }
 
+export interface StreamFailure {
+  message: string;
+  reason: NoticeReason | null;
+  code: UploadErrorCode | null;
+}
+
 export interface MemeStreamResult {
   memes: MemeItem[];
   plainReply: string | null;
+  /** The submission's error, if it ended in one. The same as the hook's
+   * error state, returned too so a caller can keep it with its turn. */
+  failure: StreamFailure | null;
 }
 
 /**
@@ -42,10 +77,19 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
   // Set with `error` when the backend said which expected case it was, so
   // the caller can show the budget meme for "site_budget".
   const [errorReason, setErrorReason] = useState<NoticeReason | null>(null);
+  // Set with `error` on an upload refusal, so the caller can word it.
+  const [errorCode, setErrorCode] = useState<UploadErrorCode | null>(null);
+  const [stages, setStages] = useState<ThinkingStage[]>([]);
   const [plan, setPlan] = useState<PlanState | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>();
 
-  function handleEvent(event: SSEEvent, collected: MemeItem[], onPlainReply: (s: string) => void) {
+  function handleEvent(
+    event: SSEEvent,
+    collected: MemeItem[],
+    onPlainReply: (s: string) => void,
+    photos: number,
+    onFailure: (f: StreamFailure) => void,
+  ) {
     if (event.type === "plan") {
       setPlan({
         situations: event.situations,
@@ -58,6 +102,12 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
       const progress =
         event.total && event.total > 1 ? ` (${(event.index ?? 0) + 1}/${event.total})` : "";
       setThinking({ message: `${event.message}${progress}` });
+      // Keyed off `stage`, not the backend's own text, which today's site
+      // still prints as is.
+      const key = event.stage as StageKey;
+      if (STAGE_ORDER.includes(key)) {
+        setStages((prev) => advance(prev, { key, label: stageLabel(key, photos, event.template_id) }));
+      }
     } else if (event.type === "done") {
       setConversationId(event.conversation_id);
       if (event.index !== undefined) {
@@ -81,6 +131,8 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     } else if (event.type === "error") {
       setError(event.message);
       setErrorReason(event.reason ?? null);
+      setErrorCode(event.code ?? null);
+      onFailure({ message: event.message, reason: event.reason ?? null, code: event.code ?? null });
     }
     // batch_done needs no handling here — finalization runs once the
     // stream itself ends, which covers every exit path (a full multi-meme
@@ -90,32 +142,50 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
 
   async function run(
     send: (onEvent: (event: SSEEvent) => void) => Promise<void>,
+    photos = 0,
   ): Promise<MemeStreamResult> {
     setLoading(true);
     setError(null);
     setErrorReason(null);
+    setErrorCode(null);
     setPlan(null);
     setThinking({ message: "Reading your vibe…" });
+    // The first step is known before the backend says anything.
+    const first: StageKey = photos > 0 ? "looking" : "analyzing";
+    setStages([{ key: first, label: stageLabel(first, photos) }]);
 
     const collected: MemeItem[] = [];
     let plainReply: string | null = null;
+    let failure: StreamFailure | null = null;
 
     try {
       await send((event) =>
-        handleEvent(event, collected, (s) => {
-          plainReply = s;
-        }),
+        handleEvent(
+          event,
+          collected,
+          (s) => {
+            plainReply = s;
+          },
+          photos,
+          (f) => {
+            failure = f;
+          },
+        ),
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setErrorReason(err instanceof ApiError ? (err.reason ?? null) : null);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      const reason = err instanceof ApiError ? (err.reason ?? null) : null;
+      setError(message);
+      setErrorReason(reason);
+      failure = { message, reason, code: null };
     } finally {
       setLoading(false);
       setThinking(null);
+      setStages([]);
       setPlan((prev) => (prev ? { ...prev, finished: true } : prev));
     }
 
-    return { memes: collected, plainReply };
+    return { memes: collected, plainReply, failure };
   }
 
   async function submitText(
@@ -164,8 +234,20 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
         },
         onEvent,
       ),
+      files.length,
     );
   }
 
-  return { loading, thinking, error, errorReason, plan, conversationId, submitText, submitImages };
+  return {
+    loading,
+    thinking,
+    stages,
+    error,
+    errorReason,
+    errorCode,
+    plan,
+    conversationId,
+    submitText,
+    submitImages,
+  };
 }

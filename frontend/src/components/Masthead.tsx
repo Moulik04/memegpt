@@ -7,10 +7,13 @@ import { forgetAnonId } from "@/lib/identity";
 import { AuthControl } from "@/components/AuthControl";
 import { navigateWithTransition } from "@/lib/viewTransition";
 import { APP_TABS, type AppTab } from "@/lib/appTabs";
+import { useAuth } from "@/hooks/useAuth";
+import { useConversation } from "@/lib/ConversationContext";
 
 type Props =
-  /** Chat, Lore, Make, Arc: one tab is active. */
-  | { variant: "app"; active: AppTab }
+  /** Chat, Lore, Make, Arc: one tab is active. `history` adds the History
+   * button for signed-in visitors, on the surfaces with saved chats. */
+  | { variant: "app"; active: AppTab; history?: boolean }
   /** The landing page: tabs shown, none active. */
   | { variant: "landing" }
   /** Shared meme, privacy, 404, error, sign-in redirect: wordmark only. */
@@ -46,6 +49,9 @@ async function handleForgetMe() {
 export function Masthead(props: Props) {
   const router = useRouter();
   const active = props.variant === "app" ? props.active : null;
+  const { user } = useAuth();
+  const { setHistoryOpen } = useConversation();
+  const showHistory = props.variant === "app" && props.history && !!user;
 
   return (
     <header className="shrink-0 bg-background border-b-2 border-brand">
@@ -65,7 +71,7 @@ export function Masthead(props: Props) {
                     href={href}
                     aria-current={isActive ? "page" : undefined}
                     onClick={(e) => navigateWithTransition(router, e, href)}
-                    className={`min-h-11 px-1.5 flex items-center text-base font-medium transition-colors
+                    className={`min-h-11 min-w-11 px-1.5 flex items-center justify-center text-base font-medium transition-colors
                                 duration-[var(--duration-fast)] ${
                                   isActive
                                     ? "text-foreground underline decoration-brand decoration-[3px] underline-offset-[10px]"
@@ -79,7 +85,19 @@ export function Masthead(props: Props) {
             </nav>
 
             <div className="ml-auto flex items-center gap-1 md:gap-3">
-              <AuthControl />
+              {/* On a phone, History is in the account menu only. */}
+              {showHistory && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(true)}
+                  aria-haspopup="dialog"
+                  className="hidden md:inline-flex items-center min-h-11 px-2 text-base font-medium text-foreground
+                             transition-colors duration-[var(--duration-fast)]"
+                >
+                  History
+                </button>
+              )}
+              <AuthControl onHistory={showHistory ? () => setHistoryOpen(true) : undefined} />
               <button
                 type="button"
                 onClick={handleForgetMe}

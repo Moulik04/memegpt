@@ -1,103 +1,125 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "motion/react";
-import { Paperclip } from "lucide-react";
+import { AnimatePresence, LayoutGroup, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
-import { useMemeStream } from "@/hooks/useMemeStream";
+import { useMemeStream, type StreamFailure, type ThinkingStage } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
 import { useAuth } from "@/hooks/useAuth";
-import { pickRandomPrompts } from "@/lib/examplePrompts";
-import { MessageBubble } from "./MessageBubble";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_PER_MESSAGE,
+  PICK_TOO_LARGE,
+  PICK_TOO_MANY,
+  noticeText,
+} from "@/lib/notices";
+import { MemeDisplay } from "./MemeDisplay";
+import { MemeActions } from "./MemeActions";
 import BudgetNotice from "./BudgetNotice";
-import { ThinkingBubble } from "./ThinkingBubble";
-import type { ChatMessage, MemeItem, PersistedMessage } from "@/types";
+import type { MemeItem, PersistedMessage } from "@/types";
 
-// Growth Phase H, Stage 3 — reconstructs the grouped-bubble shape a live
-// SSE batch already produces (one user turn, one assistant turn whose
-// `memes` array can hold several) from the flat, one-row-per-meme table
-// GET /conversations/{id}/messages actually returns.
-function groupPersistedMessages(rows: PersistedMessage[]): ChatMessage[] {
-  const result: ChatMessage[] = [];
-  let openMemes: MemeItem[] | null = null;
+/** The copy deck's empty state and its four starter prompts. */
+const EMPTY_LINE = "Something happened. We can work with that.";
+const STARTER_PROMPTS = [
+  "the meeting that could've been an email",
+  "day 1 of the gym vs day 2",
+  "starting the essay the night before it's due",
+  "when the flight gets delayed for the third time",
+];
 
-  for (const row of rows) {
-    if (row.role === "user") {
-      openMemes = null;
-      result.push({ role: "user", content: row.content, timestamp: row.created_at });
-      continue;
-    }
-    if (row.meme_url) {
-      const meme: MemeItem = { url: row.meme_url, situationText: row.content, memeId: row.meme_id ?? undefined };
-      if (openMemes) {
-        openMemes.push(meme);
-      } else {
-        openMemes = [meme];
-        result.push({ role: "assistant", content: "", memes: openMemes, timestamp: row.created_at });
-      }
-    } else {
-      openMemes = null;
-      result.push({ role: "assistant", content: row.content, timestamp: row.created_at });
-    }
-  }
-  return result;
+/** One message and what came back for it. */
+interface Turn {
+  id: string;
+  text: string;
+  /** Preview URLs (blob:) of the photos sent with it, kept for the life of
+   * the page so the sent message keeps showing them. */
+  images?: string[];
+  memes: MemeItem[];
+  /** A text-only reply, such as when photos couldn't be looked at. */
+  reply?: string;
+  notice?: { text: string; budget: boolean };
+  pending: boolean;
 }
 
-// Client-side only — a fast-fail UX nicety, NOT a security control. The
-// real limits are enforced server-side by uploads/safe_ingest.py / config.py.
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_IMAGES_PER_REQUEST = 6; // matches config.py's max_images_per_request
+type Rating = "up" | "down";
+type RateMeme = (meme: MemeItem, rating: Rating) => void;
 
 interface PendingImage {
   file: File;
   previewUrl: string;
 }
 
+let turnCounter = 0;
+const newTurnId = () => `turn-${Date.now()}-${turnCounter++}`;
+
+/** A turn worth keeping under Earlier: it got a meme or a reply. */
+const hasAnswer = (t: Turn) => t.memes.length > 0 || !!t.reply;
+
+// Rebuilds turns from the one-row-per-meme table that
+// GET /conversations/{id}/messages returns.
+function turnsFromPersisted(rows: PersistedMessage[]): Turn[] {
+  const turns: Turn[] = [];
+  let current: Turn | null = null;
+  for (const row of rows) {
+    if (row.role === "user") {
+      current = { id: `saved-${row.id}`, text: row.content, memes: [], pending: false };
+      turns.push(current);
+      continue;
+    }
+    if (!current) {
+      current = { id: `saved-${row.id}`, text: "", memes: [], pending: false };
+      turns.push(current);
+    }
+    if (row.meme_url) {
+      current.memes.push({ url: row.meme_url, situationText: row.content, memeId: row.meme_id ?? undefined });
+    } else if (row.content) {
+      current.reply = row.content;
+    }
+  }
+  return turns;
+}
+
+function failureNotice(failure: StreamFailure, sentPhotos: boolean): Turn["notice"] {
+  return {
+    text: noticeText(failure.message, { code: failure.code, hasReason: !!failure.reason, sentPhotos }),
+    budget: failure.reason === "site_budget",
+  };
+}
+
+const SETTLE = { duration: 0.32, ease: [0.16, 1, 0.3, 1] as const };
+
 export function ChatWindow() {
-  // Populated client-side only, after mount — pickRandomPrompts() uses
-  // unseeded Math.random(), so picking it during the initial render (which
-  // runs on both the server and the client during hydration) produced two
-  // different chip sets and a React hydration mismatch on every page load.
-  // Starting empty on both passes and filling in via useEffect keeps the
-  // server and client's first render identical; the chips pop in a moment
-  // after mount instead.
-  const [examplePrompts, setExamplePrompts] = useState<string[]>([]);
-  useEffect(() => {
-    setExamplePrompts(pickRandomPrompts(6));
-  }, []);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  // By meme URL, so a rating survives the meme moving into Earlier or
+  // opening full size.
+  const [ratings, setRatings] = useState<Record<string, Rating>>({});
+  const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingImagesRef = useRef<PendingImage[]>([]);
+  const reduceMotion = useReducedMotion();
 
   const { user } = useAuth();
   const { conversationRowId, setConversationRowId, bumpRefresh } = useConversation();
-  const { loading, thinking, error, errorReason, conversationId, submitText, submitImages } = useMemeStream(
-    "chat",
-    conversationRowId,
-  );
-  const pendingImagesRef = useRef<PendingImage[]>([]);
+  const { loading, stages, conversationId, submitText, submitImages } = useMemeStream("chat", conversationRowId);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, thinking]);
-
-  // Hydrate from a persisted conversation when one becomes selected (sidebar
-  // click), and reset to a blank slate when it's cleared ("New chat", or
-  // switching surfaces). Anonymous use never sets conversationRowId at all,
-  // so this effect is a no-op for every anonymous page load.
+  // Load a saved conversation when one is picked in History, and start
+  // empty when the selection clears (New chat). Signed out, this never runs
+  // past the first branch.
   useEffect(() => {
     if (!conversationRowId) {
-      setMessages([]);
+      setTurns([]);
       return;
     }
     let cancelled = false;
-    getConversationMessages(conversationRowId).then((rows) => {
-      if (!cancelled) setMessages(groupPersistedMessages(rows));
-    });
+    getConversationMessages(conversationRowId)
+      .then((rows) => {
+        if (!cancelled) setTurns(turnsFromPersisted(rows));
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -108,17 +130,16 @@ export function ChatWindow() {
   }, [pendingImages]);
 
   useEffect(() => {
-    // Revoke whatever's still pending (never submitted) on unmount only —
-    // NOT on every pendingImages change, since a submitted message's
-    // userImages keep their preview URLs alive for the life of the
-    // conversation (see submit() below).
+    // Revoke only what was never sent, on unmount. Sent photos keep their
+    // preview URLs for the life of the page.
     return () => {
       pendingImagesRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl));
     };
   }, []);
 
   const handleFeedback = useCallback(
-    async (meme: MemeItem, rating: "up" | "down") => {
+    async (meme: MemeItem, rating: Rating) => {
+      setRatings((prev) => ({ ...prev, [meme.url]: rating }));
       // A rating only: which meme, which template, up or down. The text
       // behind the meme is not sent with it.
       await postFeedback({
@@ -137,58 +158,46 @@ export function ChatWindow() {
       if (target) URL.revokeObjectURL(target.previewUrl);
       return prev.filter((_, i) => i !== index);
     });
+    setPickError(null);
   }
 
+  // A pick that breaks a limit is turned away whole; photos already
+  // attached stay.
   function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
-    if (files.length === 0) return;
-    const oversized = files.find((f) => f.size > MAX_IMAGE_BYTES);
-    if (oversized) {
-      setLocalError(`That image is over ${MAX_IMAGE_BYTES / (1024 * 1024)}MB — try a smaller one.`);
-      e.target.value = "";
-      return;
-    }
-    if (pendingImages.length + files.length > MAX_IMAGES_PER_REQUEST) {
-      setLocalError(`Up to ${MAX_IMAGES_PER_REQUEST} photos per message — remove some before adding more.`);
-      e.target.value = "";
-      return;
-    }
-    setPendingImages((prev) => [
-      ...prev,
-      ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
-    ]);
-    setLocalError(null);
     e.target.value = "";
+    if (files.length === 0) return;
+    if (files.some((f) => f.size > MAX_IMAGE_BYTES)) {
+      setPickError(PICK_TOO_LARGE);
+      return;
+    }
+    if (pendingImages.length + files.length > MAX_IMAGES_PER_MESSAGE) {
+      setPickError(PICK_TOO_MANY);
+      return;
+    }
+    setPendingImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+    setPickError(null);
   }
 
-  async function submit(text: string) {
+  async function submit(raw: string) {
+    const text = raw.trim();
     const images = pendingImages;
-    if ((!text.trim() && images.length === 0) || loading) return;
+    if ((!text && images.length === 0) || loading) return;
 
-    const userMsg: ChatMessage = {
-      role: "user",
-      content: text.trim(),
-      userImages: images.length > 0 ? images.map((p) => p.previewUrl) : undefined,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    const id = newTurnId();
+    setTurns((prev) => [
+      ...prev,
+      { id, text, images: images.length > 0 ? images.map((p) => p.previewUrl) : undefined, memes: [], pending: true },
+    ]);
     setInput("");
-    // Ownership of these preview URLs transfers to userMsg above — reset the
-    // composer's pending state WITHOUT revoking them.
+    // The preview URLs now belong to the sent turn: clear without revoking.
     setPendingImages([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setLocalError(null);
+    setPickError(null);
+    scrollRef.current?.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
 
-    // Auto-create a conversation on first message when signed in with none
-    // active — otherwise a signed-in user who just starts typing (the
-    // natural thing to do, not "click + New chat first") gets zero
-    // persistence: routers/chat.py only writes messages when a verified
-    // user_id AND an ownership-checked conversation_row_id are both
-    // present. setConversationRowId(id) here won't be visible to
-    // submitText/submitImages below in this same call (conversationRowId
-    // is a plain closed-over param, React state doesn't apply until the
-    // next render) — pass activeConversationRowId as an explicit override
-    // instead of relying on it.
+    // Signed in with no conversation picked, the first message starts one,
+    // so it's saved. The new id is passed straight through: state set here
+    // isn't visible to this same call.
     let activeConversationRowId = conversationRowId;
     if (user && !activeConversationRowId) {
       const created = await createConversation("chat").catch(() => null);
@@ -198,25 +207,31 @@ export function ChatWindow() {
       }
     }
 
-    const { memes, plainReply } = images.length > 0
-      ? await submitImages(images.map((p) => p.file), text.trim() || undefined, undefined, undefined, activeConversationRowId)
-      : await submitText(text.trim(), undefined, undefined, activeConversationRowId);
+    const { memes, plainReply, failure } =
+      images.length > 0
+        ? await submitImages(
+            images.map((p) => p.file),
+            text || undefined,
+            undefined,
+            undefined,
+            activeConversationRowId,
+          )
+        : await submitText(text, undefined, undefined, activeConversationRowId);
 
-    if (memes.length > 0) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "", memes, timestamp: new Date().toISOString() },
-      ]);
-    } else if (plainReply) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: plainReply, timestamp: new Date().toISOString() },
-      ]);
-    }
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              memes,
+              reply: memes.length === 0 ? (plainReply ?? undefined) : undefined,
+              notice: memes.length === 0 && failure ? failureNotice(failure, images.length > 0) : undefined,
+              pending: false,
+            }
+          : t,
+      ),
+    );
 
-    // Growth Phase H, Stage 3 — a persisted turn just landed a title and/or
-    // moved to the top of the sidebar's newest-first order; a no-op when
-    // there's no active conversationRowId (anonymous use).
     if (activeConversationRowId) bumpRefresh();
   }
 
@@ -225,173 +240,318 @@ export function ChatWindow() {
     submit(input);
   }
 
-  function handlePromptChip(prompt: string) {
+  function pickStarter(prompt: string) {
     setInput(prompt);
     inputRef.current?.focus();
   }
 
-  const displayError = localError ?? error;
-  // The shared daily budget ran out: the notice comes with a pre-made meme.
-  const showBudgetMeme = !localError && errorReason === "site_budget";
+  const lead = turns.length > 0 ? turns[turns.length - 1] : null;
+  const earlier = turns.slice(0, -1).filter(hasAnswer).reverse();
+  const canSend = !loading && (input.trim().length > 0 || pendingImages.length > 0);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 chat-scroll">
-        {messages.length === 0 && !thinking && (
-          <div className="flex flex-col items-center h-full gap-10 pt-[12vh] pb-8 text-center">
-            <div className="arrive-settle">
-              <h2 className="headline-poster max-w-md mx-auto">
-                say something.
-                <br />
-                get a meme <span className="hl">back.</span>
-              </h2>
-              <p
-                className="margin-note text-sm mt-4 arrive-settle"
-                style={{ animationDelay: "90ms", animationFillMode: "backwards" }}
-              >
-                it only speaks meme — pick a prompt below, or attach a photo ↓
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-xl">
-              {examplePrompts.map((p, i) => (
-                <button
-                  key={p}
-                  onClick={() => handlePromptChip(p)}
-                  onMouseMove={(e) => {
-                    // Direct DOM mutation, not React state — a mousemove
-                    // handler firing dozens of times a second has no
-                    // business triggering a re-render just to move a
-                    // radial-gradient position.
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    e.currentTarget.style.setProperty("--mx", `${e.clientX - rect.left}px`);
-                    e.currentTarget.style.setProperty("--my", `${e.clientY - rect.top}px`);
-                  }}
-                  className="prompt-chip arrive-settle"
-                  style={{
-                    animationDelay: `${150 + i * 60}ms`,
-                    animationFillMode: "backwards",
-                  }}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+    <MotionConfig reducedMotion="user" transition={SETTLE}>
+      <div className="flex flex-col flex-1 min-h-0">
+        <h1 className="sr-only">Chat</h1>
 
-        {messages.map((msg, i) => (
-          <MessageBubble
-            key={i}
-            message={msg}
-            onFeedback={
-              msg.role === "assistant" && msg.memes && msg.memes.length > 0
-                ? (meme, rating) => handleFeedback(meme, rating)
-                : undefined
-            }
-          />
-        ))}
+        {/* The composer: on top from 768px up, where the next lead story
+            appears; above the bottom tabs on a phone. */}
+        <div className="order-last md:order-first shrink-0 border-t md:border-t-0 md:border-b border-border bg-background">
+          <div className="mx-auto max-w-6xl px-4 md:px-8 py-3 md:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
+            <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+              {pendingImages.length > 0 && (
+                <ul aria-label="Attached photos" className="flex flex-wrap gap-x-3 gap-y-1">
+                  <AnimatePresence initial={false}>
+                    {pendingImages.map((p, i) => (
+                      <motion.li
+                        key={p.previewUrl}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                        className="flex items-center gap-1"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- local preview */}
+                        <img
+                          src={p.previewUrl}
+                          alt={`Attached photo ${i + 1}`}
+                          className="w-12 h-12 object-cover border border-border"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removePendingImage(i)}
+                          aria-label={`Remove photo ${i + 1}`}
+                          className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground
+                                     underline underline-offset-4 transition-colors duration-[var(--duration-fast)]"
+                        >
+                          Remove
+                        </button>
+                      </motion.li>
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              )}
 
-        {thinking && <ThinkingBubble message={thinking.message} />}
-
-        {displayError && showBudgetMeme && (
-          <div className="flex justify-start mb-3">
-            <BudgetNotice message={displayError} />
-          </div>
-        )}
-        {displayError && !showBudgetMeme && (
-          <div className="flex justify-start mb-3">
-            <p className="text-destructive text-xs border-l-2 border-brand
-                          rounded-xl px-3 py-2 max-w-[80%]">
-              {displayError}
-            </p>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input bar */}
-      <div className="shrink-0 border-t border-border px-3 py-3">
-        {pendingImages.length > 0 && (
-          <div className="flex items-center gap-2 mb-2 px-1 overflow-x-auto">
-            <AnimatePresence mode="popLayout" initial={false}>
-              {pendingImages.map((p, i) => (
-                <motion.div
-                  key={p.previewUrl}
-                  layout
-                  initial={{ opacity: 0, scale: 0.85 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.85 }}
-                  transition={{ duration: 0.15 }}
-                  className="relative shrink-0"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.previewUrl}
-                    alt="Attached preview"
-                    className="w-10 h-10 rounded-lg object-cover border border-border"
+              <div className="flex flex-col md:flex-row gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  aria-label="Message"
+                  enterKeyHint="send"
+                  placeholder={pendingImages.length > 0 ? "Add a caption (optional)" : "What happened?"}
+                  disabled={loading}
+                  className="w-full md:flex-1 min-h-12 px-3 text-base bg-background border border-input rounded-sm
+                             placeholder:text-muted-foreground disabled:opacity-60"
+                />
+                <div className="flex gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFilesSelected}
+                    disabled={loading}
+                    className="hidden"
                   />
                   <button
                     type="button"
-                    onClick={() => removePendingImage(i)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-paper
-                               border border-paper text-primary-foreground hover:bg-paper/85
-                               text-[10px] flex items-center justify-center leading-none"
-                    title="Remove"
-                    aria-label="Remove image"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={loading}
+                    className="min-h-12 px-5 border border-input rounded-sm text-base font-medium text-foreground
+                               hover:bg-muted disabled:opacity-40 transition-colors duration-[var(--duration-fast)]"
                   >
-                    ✕
+                    Photo
                   </button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                  <button
+                    type="submit"
+                    disabled={!canSend}
+                    className="flex-1 md:flex-none min-h-12 px-6 rounded-sm bg-primary text-primary-foreground
+                               text-base font-semibold hover:bg-primary/85 disabled:opacity-40
+                               transition-colors duration-[var(--duration-fast)]"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+
+              {pickError && (
+                <p role="alert" className="text-base text-foreground border-l-2 border-brand pl-3">
+                  {pickError}
+                </p>
+              )}
+            </form>
           </div>
-        )}
-        <form onSubmit={handleSubmit} className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleFilesSelected}
-            disabled={loading}
-            className="hidden"
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={loading}
-            title="Attach photos"
-            aria-label="Attach photos"
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl
-                       border border-border text-muted-foreground hover:text-foreground
-                       hover:border-input disabled:opacity-40 transition-colors"
-          >
-            <Paperclip size={16} strokeWidth={2} aria-hidden="true" />
-          </button>
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              pendingImages.length > 0 ? "Add a caption (optional)…" : "Type a message…"
-            }
-            disabled={loading}
-            className="flex-1 bg-card border border-input rounded-xl px-4 py-2.5
-                       text-sm placeholder:text-muted-foreground
-                       disabled:opacity-50 transition-all"
-          />
-          <button
-            type="submit"
-            disabled={loading || (!input.trim() && pendingImages.length === 0)}
-            className="bg-primary hover:bg-primary/85 disabled:opacity-40 transition-colors
-                       text-primary-foreground text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
-          >
-            Send
-          </button>
-        </form>
+        </div>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto chat-scroll">
+          <LayoutGroup>
+            <div className="mx-auto max-w-6xl px-4 md:px-8 py-6 md:py-8 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
+              <section aria-label="Latest" className="min-w-0">
+                {lead ? <LeadStory key={lead.id} turn={lead} stages={stages} ratings={ratings} onFeedback={handleFeedback} /> : (
+                  <div className="max-w-2xl">
+                    <h2 className="font-display text-4xl md:text-6xl leading-[0.95] text-foreground">{EMPTY_LINE}</h2>
+                    <ul className="mt-6 md:mt-8 flex flex-col gap-1" aria-label="Starter prompts">
+                      {STARTER_PROMPTS.map((p) => (
+                        <li key={p}>
+                          <button
+                            type="button"
+                            onClick={() => pickStarter(p)}
+                            className="min-h-11 text-left text-lg text-foreground underline decoration-brand
+                                       decoration-2 underline-offset-4 hover:decoration-[3px]"
+                          >
+                            {p}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+
+              {earlier.length > 0 && (
+                <aside aria-labelledby="earlier-heading" className="mt-10 lg:mt-0 min-w-0">
+                  <h2
+                    id="earlier-heading"
+                    className="border-t-2 border-foreground pt-2 text-sm font-bold uppercase tracking-wide text-foreground"
+                  >
+                    Earlier
+                  </h2>
+                  <ol className="flex flex-col">
+                    {earlier.map((turn) => (
+                      <EarlierStory key={turn.id} turn={turn} ratings={ratings} onFeedback={handleFeedback} />
+                    ))}
+                  </ol>
+                </aside>
+              )}
+            </div>
+          </LayoutGroup>
+        </div>
       </div>
-    </div>
+    </MotionConfig>
+  );
+}
+
+function UserLine({ turn, size }: { turn: Turn; size: "lead" | "earlier" }) {
+  const lead = size === "lead";
+  return (
+    <motion.div layout="position" layoutId={`line-${turn.id}`} className="flex items-start gap-3">
+      {turn.images && turn.images.length > 0 && (
+        <div className="flex flex-wrap gap-1 shrink-0">
+          {turn.images.map((src, i) => (
+            // eslint-disable-next-line @next/next/no-img-element -- local preview
+            <img
+              key={src}
+              src={src}
+              alt={`Sent photo ${i + 1}`}
+              className={`${lead ? "w-12 h-12" : "w-8 h-8"} object-cover border border-border`}
+            />
+          ))}
+        </div>
+      )}
+      {turn.text && (
+        <p
+          className={
+            lead
+              ? "text-lg md:text-xl font-semibold leading-snug text-foreground"
+              : "text-sm font-medium leading-snug text-foreground"
+          }
+        >
+          {turn.text}
+        </p>
+      )}
+    </motion.div>
+  );
+}
+
+function Stages({ stages }: { stages: ThinkingStage[] }) {
+  return (
+    <ol aria-live="polite" className="mt-4 flex flex-col gap-1 text-base">
+      {stages.map((stage, i) => {
+        const current = i === stages.length - 1;
+        return (
+          <motion.li
+            key={`${stage.key}-${stage.label}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className={current ? "text-foreground font-medium" : "text-muted-foreground"}
+            aria-current={current ? "step" : undefined}
+          >
+            {stage.label}
+          </motion.li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function LeadStory({
+  turn,
+  stages,
+  ratings,
+  onFeedback,
+}: {
+  turn: Turn;
+  stages: ThinkingStage[];
+  ratings: Record<string, Rating>;
+  onFeedback: RateMeme;
+}) {
+  const single = turn.memes.length === 1;
+  const reduceMotion = useReducedMotion();
+  return (
+    // The old lead's line leaves from exactly where this one is drawn, so
+    // this fades in once that line has moved off it.
+    <motion.article
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, delay: 0.12, ease: "easeOut" }}
+    >
+      <UserLine turn={turn} size="lead" />
+      {turn.pending && <Stages stages={stages} />}
+
+      {turn.notice &&
+        (turn.notice.budget ? (
+          <div className="mt-4">
+            <BudgetNotice message={turn.notice.text} maxHeightClassName="max-h-[45vh]" />
+          </div>
+        ) : (
+          <p role="alert" className="mt-4 text-base text-foreground border-l-2 border-brand pl-3 max-w-prose">
+            {turn.notice.text}
+          </p>
+        ))}
+
+      {turn.reply && <p className="mt-4 text-lg text-foreground max-w-prose">{turn.reply}</p>}
+
+      <div className="flex flex-col gap-8">
+        {turn.memes.map((meme, i) => (
+          // From 1024px up, one meme sits in a slot of fixed minimum height,
+          // so the page doesn't jump between tall and wide answers. The
+          // image is centered in it, with its action row lined up under the
+          // image. On narrower screens the row keeps the column's full width
+          // so it never wraps under a tall meme.
+          <div
+            key={meme.url}
+            className={`mt-4 flex flex-col items-center justify-center ${single ? "lg:min-h-[min(66vh,700px)]" : ""}`}
+          >
+            <div className="w-full lg:w-fit max-w-full">
+              <motion.div layoutId={`meme-${turn.id}-${i}`}>
+                <MemeDisplay
+                  url={meme.url}
+                  alt={meme.situationText || turn.text || "A meme from MemeGPT"}
+                  className="flex justify-center max-w-full"
+                  maxHeightClassName="max-h-[55vh] lg:max-h-[min(62vh,640px)]"
+                />
+              </motion.div>
+              <div className="mt-2">
+                <MemeActions
+                  url={meme.url}
+                  memeId={meme.memeId}
+                  rating={ratings[meme.url]}
+                  onFeedback={(r) => onFeedback(meme, r)}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </motion.article>
+  );
+}
+
+function EarlierStory({
+  turn,
+  ratings,
+  onFeedback,
+}: {
+  turn: Turn;
+  ratings: Record<string, Rating>;
+  onFeedback: RateMeme;
+}) {
+  return (
+    <li className="py-5 border-b border-border last:border-b-0">
+      <UserLine turn={turn} size="earlier" />
+      {turn.reply && <p className="mt-2 text-sm text-muted-foreground">{turn.reply}</p>}
+      {turn.memes.map((meme, i) => (
+        <motion.div key={meme.url} layoutId={`meme-${turn.id}-${i}`} className="mt-2 w-3/4 md:w-full">
+          <MemeDisplay
+            url={meme.url}
+            alt={meme.situationText || turn.text || "A meme from MemeGPT"}
+            className="flex justify-start"
+            maxHeightClassName="max-h-48 lg:max-h-56"
+            heading={turn.text ? <p className="text-base font-semibold text-foreground pr-2">{turn.text}</p> : undefined}
+            footer={
+              <MemeActions
+                url={meme.url}
+                memeId={meme.memeId}
+                rating={ratings[meme.url]}
+                onFeedback={(r) => onFeedback(meme, r)}
+              />
+            }
+          />
+        </motion.div>
+      ))}
+    </li>
   );
 }

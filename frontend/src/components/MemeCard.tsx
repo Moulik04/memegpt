@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MemeDisplay } from "./MemeDisplay";
-import { FeedbackButtons } from "./FeedbackButtons";
+import { MemeActions } from "./MemeActions";
 import { ShareButtons } from "./ShareButtons";
 import { templateLabel } from "@/lib/utils";
 
@@ -21,7 +21,9 @@ if (typeof window !== "undefined") {
 interface Props {
   url: string;
   alt?: string;
-  /** Omit for contexts with no feedback concept (e.g. the public share page). */
+  /** For the share link. */
+  memeId?: string;
+  /** Omit where a meme takes no rating: Make, and the public share page. */
   onFeedback?: (rating: "up" | "down") => void;
   /** ShareButtons' large/primary mode — the public share page. */
   large?: boolean;
@@ -39,7 +41,7 @@ interface Props {
  * per image — genuinely different enough not to force through this same
  * component.
  */
-export function MemeCard({ url, alt, onFeedback, large, templateId }: Props) {
+export function MemeCard({ url, alt, memeId, onFeedback, large, templateId }: Props) {
   // A card can land right under a cursor that's just resting there from
   // whatever action produced it (e.g. Make's "Generate" button sits where
   // the result card then renders). Two things confirmed live, both
@@ -102,10 +104,13 @@ export function MemeCard({ url, alt, onFeedback, large, templateId }: Props) {
       ) : (
         <MemeDisplay url={url} alt={alt} />
       )}
-      <div className="flex items-center justify-between mt-2">
-        <ShareButtons memeUrl={url} large={large} />
-        {onFeedback && <FeedbackButtons onFeedback={onFeedback} />}
-      </div>
+      {large ? (
+        <ShareButtons memeUrl={url} large />
+      ) : (
+        <div className="mt-2">
+          <MemeActions url={url} memeId={memeId} onFeedback={onFeedback} />
+        </div>
+      )}
     </div>
   );
 }

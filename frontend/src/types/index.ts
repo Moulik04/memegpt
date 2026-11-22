@@ -14,21 +14,6 @@ export interface MemeItem {
   takeOf?: number;
 }
 
-// Client-side rendering type for the `messages` list. A user turn never
-// has `memes`; an assistant turn accumulates ALL memes from one submission
-// here — length 1 renders exactly like a single-meme reply always has,
-// length 2+ renders as a swipeable carousel (see MessageBubble.tsx).
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  memes?: MemeItem[];
-  // Preview URLs (blob:) for photos the user attached to this turn — kept
-  // alive for the life of the conversation, not revoked after sending, so
-  // the sent bubble can keep showing the actual photo (see ChatWindow.tsx).
-  userImages?: string[];
-  timestamp: string;
-}
-
 export interface MemeGenerationRequest {
   template_id: string;
   texts: Record<string, string>;
@@ -117,12 +102,23 @@ export interface BatchDoneEvent {
 //   visitor_limit this visitor's own daily allowance
 export type NoticeReason = "busy" | "site_budget" | "visitor_limit";
 
+// Set on an upload refusal, so the frontend words it (lib/notices.ts). An
+// older backend sends none, and the message is shown as is.
+export type UploadErrorCode =
+  | "image_refused"
+  | "file_too_large"
+  | "unrecognized_file_type"
+  | "dimensions_too_large"
+  | "invalid_image"
+  | "upload_failed";
+
 export interface ErrorEvent {
   type: "error";
   index?: number;
   total?: number;
   message: string;
   reason?: NoticeReason;
+  code?: UploadErrorCode;
 }
 
 export type SSEEvent = PlanEvent | ThinkingEvent | DoneEvent | BatchDoneEvent | ErrorEvent;
