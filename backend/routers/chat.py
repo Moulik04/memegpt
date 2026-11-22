@@ -35,6 +35,10 @@ SSE event stream:
                        — plus "take_of": <index> on a meme that is another take
   {"type": "batch_done", "total": 1, "succeeded": 1}
   {"type": "error",    "index": 0, "total": 1, "message": "..."}
+                       — an upload refusal also carries "code": "image_refused" (the safety
+                       check), one of _UPLOAD_REJECTION_CODES' values, or "upload_failed",
+                       so a client can word it itself. The code never says why the safety
+                       check refused a photo.
 """
 
 import asyncio
@@ -125,6 +129,17 @@ def _requested_count(meme_count: int | None) -> int:
     if meme_count is None:
         return 0
     return max(1, min(meme_count, get_settings().max_memes_per_request))
+
+
+# The code a client sees for each UploadRejected.reason. A decompression
+# bomb is reported the way any oversized image is.
+_UPLOAD_REJECTION_CODES = {
+    "file_too_large": "file_too_large",
+    "unrecognized_file_type": "unrecognized_file_type",
+    "decompression_bomb": "dimensions_too_large",
+    "dimensions_too_large": "dimensions_too_large",
+    "invalid_image": "invalid_image",
+}
 
 
 def _upload_rejection_message(reason: str) -> str:
@@ -775,7 +790,7 @@ async def handle_image_stream(
         if refused:
             for rejection in refused:
                 telemetry.record_upload_refusal(rejection.category, surface)
-            yield _sse({"type": "error", "message": _UPLOAD_SAFETY_REFUSAL})
+            yield _sse({"type": "error", "code": "image_refused", "message": _UPLOAD_SAFETY_REFUSAL})
             return
         if moderation_rejections:
             if any(isinstance(r, ModerationOutOfBudget) for r in moderation_rejections):
@@ -806,7 +821,8 @@ async def handle_image_stream(
             upload_rejections = [r for r in ingest_results if isinstance(r, UploadRejected)]
             reason = upload_rejections[0].reason if upload_rejections else None
             message_to_show = _upload_rejection_message(reason) if reason else _GENERIC_UPLOAD_REFUSAL
-            yield _sse({"type": "error", "message": message_to_show})
+            code = _UPLOAD_REJECTION_CODES.get(reason or "", "upload_failed")
+            yield _sse({"type": "error", "code": code, "message": message_to_show})
             return
 
         if resolved_mode == "canvas":
