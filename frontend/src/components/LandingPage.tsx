@@ -95,7 +95,7 @@ const FAQS = [
   },
   {
     q: "What's the difference between Chat, Lore, and Make?",
-    a: "Chat is a normal back-and-forth, one meme per reply. Lore is for big dumps — paste a whole group chat or a stack of screenshots and get several memes back at once. Make skips the AI's judgment entirely: you pick the template and write the captions yourself.",
+    a: "Chat is a normal back-and-forth, usually one meme per reply. Lore is for big dumps — paste a whole group chat or a stack of screenshots and get several memes back at once. Make skips the AI's judgment entirely: you pick the template and write the captions yourself.",
   },
   {
     q: "What if it picks the wrong template?",

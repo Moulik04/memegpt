@@ -489,7 +489,7 @@ Text below is the source for UI copy. Interface copy uses no em dash. Keep the u
 Use these five questions and answers:
 
 1. **Is MemeGPT free?** Yes. Every part works without signing in: no email, no account. Signing in only adds saved Chat and Lore history across devices.
-2. **What's the difference between Chat, Lore and Make?** Chat is a normal back-and-forth, one meme per reply. Lore is for big dumps: paste a whole group chat or a stack of screenshots and get several memes back at once. Make skips the AI's judgment: you pick the template and write the captions.
+2. **What's the difference between Chat, Lore and Make?** Chat is a normal back-and-forth, usually one meme per reply. Lore is for big dumps: paste a whole group chat or a stack of screenshots and get several memes back at once. Make skips the AI's judgment: you pick the template and write the captions.
 3. **What if it picks the wrong template?** Thumbs it down. Every reply has feedback buttons, and MemeGPT learns from what actually lands.
 4. **Can I upload photos or screenshots?** Yes. Attach up to six at a time in Chat or Lore. MemeGPT reads what's in them the same way it reads text.
 5. **Does it work on my phone?** Yes. It's a full mobile site, and you can add it to your home screen. On Android you can share a screenshot straight from Photos into Lore.
@@ -540,6 +540,10 @@ Collapsed preview shows two or three real lines plus **more messages**. Credit e
 - Download: **Download**
 - Meme that fails to load, in any meme frame: **MemeGPT couldn't load this meme.** Action: **Try again**
 - Full-size view of a meme: open control label **Open full size**, dismiss with **Close**
+- Thinking stage when a photo is captioned directly, with no catalog template: **Captioning the photo**
+- Share where the browser has no share sheet, which copies the meme's share link: **Link copied**. Failure: **Couldn't share. Try Download.**
+- History drawer with no saved chats: **No chats yet.**
+- Delete confirmation body: **This also removes the memes MemeGPT made in it, any ratings on them, and any lore terms it picked up. Share links to those memes stop working. This can't be undone.**
 - Make search placeholder: **Search templates by name, vibe or tag**
 - Template action: **Choose template**
 - Caption control labels: **Caption 1**, **Caption 2**, **Caption 3**, **Caption 4**, **Caption 5**. An empty field may show only its matching number.
