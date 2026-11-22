@@ -217,13 +217,3 @@ html:has([data-fixed-tabs]) {
 @media (prefers-reduced-motion: reduce) {
   .thinking-orb { animation: none; opacity: 0.9; }
 }
-
-/* Share / action buttons under memes */
-.action-btn {
-  @apply flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground
-         transition-colors duration-150 px-2 py-1 rounded-lg hover:bg-muted
-         cursor-pointer border-0 bg-transparent;
-}
-.action-btn-primary {
-  @apply text-brand hover:text-brand/80 hover:bg-muted;
-}

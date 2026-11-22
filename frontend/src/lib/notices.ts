@@ -18,17 +18,27 @@ const UPLOAD_ERRORS: Record<UploadErrorCode, string> = {
   upload_failed: "Upload failed. The one engineer is still the whole department. Try a different photo.",
 };
 
+export interface Notice {
+  heading?: string;
+  text: string;
+}
+
+/** The deck's general error, for a failure the backend didn't name. */
+export const GENERAL_FAILURE: Notice = { heading: "Something broke.", text: "Not you. Us. Try again in a moment." };
+
 /**
  * What to show for a failed submission. An upload refusal is worded from
- * its code. A photo send that failed some other way, without a reason the
- * backend named (busy, budget, limit), gets the general upload failure.
- * Anything else keeps the backend's message.
+ * its code. A notice the backend named (busy, budget, limit) keeps its
+ * message, which is the deck's wording. Anything else never shows the
+ * backend's text, which can be a raw exception: a photo send gets the
+ * general upload failure, a text send the general error.
  */
-export function noticeText(
+export function noticeFor(
   message: string,
   { code, hasReason, sentPhotos }: { code: UploadErrorCode | null; hasReason: boolean; sentPhotos: boolean },
-): string {
-  if (code) return UPLOAD_ERRORS[code];
-  if (sentPhotos && !hasReason) return UPLOAD_ERRORS.upload_failed;
-  return message;
+): Notice {
+  if (code) return { text: UPLOAD_ERRORS[code] };
+  if (hasReason) return { text: message };
+  if (sentPhotos) return { text: UPLOAD_ERRORS.upload_failed };
+  return GENERAL_FAILURE;
 }

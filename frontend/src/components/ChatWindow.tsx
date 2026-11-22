@@ -11,7 +11,8 @@ import {
   MAX_IMAGES_PER_MESSAGE,
   PICK_TOO_LARGE,
   PICK_TOO_MANY,
-  noticeText,
+  noticeFor,
+  type Notice,
 } from "@/lib/notices";
 import { MemeDisplay } from "./MemeDisplay";
 import { MemeActions } from "./MemeActions";
@@ -37,7 +38,7 @@ interface Turn {
   memes: MemeItem[];
   /** A text-only reply, such as when photos couldn't be looked at. */
   reply?: string;
-  notice?: { text: string; budget: boolean };
+  notice?: Notice & { budget: boolean };
   pending: boolean;
 }
 
@@ -81,7 +82,7 @@ function turnsFromPersisted(rows: PersistedMessage[]): Turn[] {
 
 function failureNotice(failure: StreamFailure, sentPhotos: boolean): Turn["notice"] {
   return {
-    text: noticeText(failure.message, { code: failure.code, hasReason: !!failure.reason, sentPhotos }),
+    ...noticeFor(failure.message, { code: failure.code, hasReason: !!failure.reason, sentPhotos }),
     budget: failure.reason === "site_budget",
   };
 }
@@ -477,9 +478,10 @@ function LeadStory({
             <BudgetNotice message={turn.notice.text} maxHeightClassName="max-h-[45vh]" />
           </div>
         ) : (
-          <p role="alert" className="mt-4 text-base text-foreground border-l-2 border-brand pl-3 max-w-prose">
-            {turn.notice.text}
-          </p>
+          <div role="alert" className="mt-4 text-base text-foreground border-l-2 border-brand pl-3 max-w-prose">
+            {turn.notice.heading && <p className="font-semibold">{turn.notice.heading}</p>}
+            <p>{turn.notice.text}</p>
+          </div>
         ))}
 
       {turn.reply && <p className="mt-4 text-lg text-foreground max-w-prose">{turn.reply}</p>}
