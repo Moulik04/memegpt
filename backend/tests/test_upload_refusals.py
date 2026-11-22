@@ -31,6 +31,7 @@ from uploads.safe_ingest import (
     ModerationBusy,
     ModerationOutOfBudget,
     ModerationRejected,
+    UploadRejected,
 )
 
 _REFUSED = "MemeGPT can't use this image. Try describing it in words instead."
@@ -60,6 +61,8 @@ async def _fake_safe_ingest(upload):
         raise ModerationOutOfBudget()
     if name in _VERDICTS:
         raise ModerationRejected(_VERDICTS[name])
+    if name.startswith("rejected-"):
+        raise UploadRejected(name.removeprefix("rejected-").removesuffix(".jpg"))
     return CleanImage(
         image=Image.new("RGB", (10, 10)), width=10, height=10, content_type="image/jpeg", source_filename=name
     )
@@ -181,3 +184,33 @@ async def test_a_photo_that_passes_is_not_counted(counted, monkeypatch):
     await _post_images(["clean.jpg"])
 
     assert counted == []
+
+
+def _error_events(events: list[dict]) -> list[dict]:
+    return [e for e in events if e.get("type") == "error"]
+
+
+@pytest.mark.parametrize("name", sorted(_VERDICTS))
+@pytest.mark.parametrize("path", ["/chat/image/", "/lore/image/"])
+async def test_a_refused_photo_carries_a_code_that_never_says_why(counted, path, name):
+    [event] = _error_events(await _post_images([name], path))
+    assert event["code"] == "image_refused"
+    assert set(event) == {"type", "code", "message"}
+
+
+@pytest.mark.parametrize(
+    "reason,code",
+    [
+        ("file_too_large", "file_too_large"),
+        ("unrecognized_file_type", "unrecognized_file_type"),
+        ("dimensions_too_large", "dimensions_too_large"),
+        ("decompression_bomb", "dimensions_too_large"),
+        ("invalid_image", "invalid_image"),
+        ("something_new", "upload_failed"),
+    ],
+)
+@pytest.mark.parametrize("path", ["/chat/image/", "/lore/image/"])
+async def test_a_photo_that_fails_validation_carries_its_code(counted, path, reason, code):
+    [event] = _error_events(await _post_images([f"rejected-{reason}.jpg"], path))
+    assert event["code"] == code
+    assert event["message"]
