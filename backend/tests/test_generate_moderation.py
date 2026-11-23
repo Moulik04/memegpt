@@ -52,6 +52,9 @@ async def test_safe_caption_allows_generation(monkeypatch):
 
     assert resp.status_code == 200
     assert resp.json()["template_id"] == "drake"
+    # The id behind the meme's /m/{id} share page, and the one its URL uses.
+    meme_id = resp.json()["meme_id"]
+    assert meme_id and meme_id in resp.json()["meme_url"]
 
 
 async def test_no_groq_key_fails_closed_by_default(monkeypatch):

@@ -15,6 +15,10 @@ def _text_boxes_for(template_id: str) -> list[TextBoxInfo]:
         TextBoxInfo(
             label=box.label,
             description=config.box_descriptions.get(box.label, ""),
+            x_pct=box.x_pct,
+            y_pct=box.y_pct,
+            w_pct=box.w_pct,
+            h_pct=box.h_pct,
         )
         for box in config.text_boxes
     ]

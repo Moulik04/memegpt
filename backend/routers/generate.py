@@ -123,5 +123,6 @@ async def _generate(request: Request, body: MemeGenerationRequest) -> MemeGenera
         meme_url=saved.url,
         template_id=body.template_id,
         texts=body.texts,
+        meme_id=saved.meme_id,
     )
 

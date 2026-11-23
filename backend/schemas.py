@@ -260,6 +260,8 @@ class MemeGenerationResponse(BaseModel):
     meme_url: str
     template_id: str
     texts: dict[str, str]
+    # The saved meme's id, for its /m/{id} share page.
+    meme_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +280,14 @@ class TextBoxInfo(BaseModel):
 
     label: str
     description: str
+    # Where the compositor draws this caption, as percentages of the template
+    # image's width and height (TextBoxConfig, the same numbers compose_meme
+    # uses). Make numbers each box on the bare template from these.
+    # tests/test_template_box_positions.py keeps them in step.
+    x_pct: float
+    y_pct: float
+    w_pct: float
+    h_pct: float
 
 
 class ExplainResponse(BaseModel):
