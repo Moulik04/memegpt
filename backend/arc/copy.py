@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 from db import RawArcStats
 from image_processing.compositor import template_image_url
-from schemas import ArcStats, ArcTemplate
+from schemas import ArcStats, ArcTemplate, ArcTier
 from vector_db.chroma_client import get_template_record
 
 _MIN_MEMES_FOR_ARC = 5
@@ -62,6 +62,15 @@ def _tier_for_aura(aura: int) -> str:
         if aura < threshold:
             return name
     return _TOP_TIER
+
+
+def _tier_ladder() -> list[ArcTier]:
+    """Every tier with the lowest aura that earns it, top tier first. Built
+    from _TIER_THRESHOLDS, the same list _tier_for_aura grades with, so a
+    tier table and its "N to the next tier" line can't drift from the score."""
+    floors = [0] + [threshold for threshold, _ in _TIER_THRESHOLDS]
+    names = [name for _, name in _TIER_THRESHOLDS] + [_TOP_TIER]
+    return [ArcTier(name=name, min_aura=floor) for floor, name in reversed(list(zip(floors, names)))]
 
 
 def _stable_index(key: str, n: int) -> int:
@@ -183,12 +192,28 @@ def _split_roast(chat_count: int, lore_count: int, make_count: int) -> str:
     return "range."
 
 
+# --- Volume and streak lines ---
+# The fixed lead-ins ("memes generated this arc.", "consecutive days.") are
+# interface copy; these are the punchlines after them, like hour_roast and
+# split_roast.
+
+_VOLUME_ROAST = "no thoughts, just memes."
+
+# One streak length decides both the streak line and the verdict's
+# dedication branch, so the two never disagree about what counts as a lot.
+_DEDICATED_STREAK_DAYS = 7
+
+
+def _streak_roast(longest_streak_days: int) -> str:
+    return "no days off." if longest_streak_days >= _DEDICATED_STREAK_DAYS else "still an arc."
+
+
 # --- Closing verdict (priority-ordered, first match wins, 2 lines each) ---
 
 def _verdict(raw: RawArcStats, seed: str) -> str:
     if raw.total_memes < 15:
         options = ["your arc just started. plot: unknown.", "early days. character development: pending."]
-    elif raw.longest_streak_days >= 7:
+    elif raw.longest_streak_days >= _DEDICATED_STREAK_DAYS:
         options = ["no days off. concerning dedication.", "we get it, you're committed."]
     elif raw.distinct_templates <= 2:
         options = ["character development: none detected. Arc continues.", "found a personality and stuck with it."]
@@ -235,11 +260,15 @@ def build_arc_stats(raw: RawArcStats | None, tz: str = "UTC") -> ArcStats:
 
     busiest_local_hour: int | None = None
     busiest_time_label: str | None = None
+    busiest_hour_label: str | None = None
     hour_roast: str | None = None
     if raw.busiest_sample_ts is not None:
         busiest_local = raw.busiest_sample_ts.astimezone(ZoneInfo(tz))
         busiest_local_hour = busiest_local.hour
         busiest_time_label = busiest_local.strftime("%-I:%M %p")
+        # The same moment as the time label and hour_roast, so the hour shown
+        # and the line about it always agree.
+        busiest_hour_label = busiest_local.strftime("%-I %p")
         hour_roast = _hour_roast(busiest_local_hour, seed)
 
     aura = _compute_aura(raw, busiest_local_hour)
@@ -267,14 +296,18 @@ def build_arc_stats(raw: RawArcStats | None, tz: str = "UTC") -> ArcStats:
         period_label=period_label,
         aura=aura,
         tier=tier,
+        tiers=_tier_ladder(),
         top_templates=top_templates,
         busiest_date=raw.busiest_date.isoformat() if raw.busiest_date else None,
         busiest_time_label=busiest_time_label,
+        busiest_hour_label=busiest_hour_label,
         hour_roast=hour_roast,
         chat_count=raw.chat_count,
         lore_count=raw.lore_count,
         make_count=raw.make_count,
         split_roast=_split_roast(raw.chat_count, raw.lore_count, raw.make_count),
         longest_streak_days=raw.longest_streak_days,
+        volume_roast=_VOLUME_ROAST,
+        streak_roast=_streak_roast(raw.longest_streak_days),
         verdict=_verdict(raw, seed),
     )
