@@ -14,6 +14,9 @@ interface Props {
   rating?: "up" | "down";
   /** An action shown first, such as Lore's Another take. */
   lead?: ReactNode;
+  /** Keep the lead in the row on a phone too. Only for a short row, as in
+   * Make, where it sits beside Share and Download with no ratings. */
+  leadInline?: boolean;
 }
 
 type ShareNote = "copied" | "failed" | null;
@@ -28,7 +31,7 @@ export const MEME_ACTION =
  * takes a rating), Share and Download. Unboxed, small icons, 44px targets.
  * A rating is given once and stays marked.
  */
-export function MemeActions({ url, memeId, onFeedback, rating: given, lead }: Props) {
+export function MemeActions({ url, memeId, onFeedback, rating: given, lead, leadInline = false }: Props) {
   const [rating, setRating] = useState<"up" | "down" | null>(given ?? null);
   const [note, setNote] = useState<ShareNote>(null);
   const [downloading, setDownloading] = useState(false);
@@ -112,7 +115,7 @@ export function MemeActions({ url, memeId, onFeedback, rating: given, lead }: Pr
     <div className="flex flex-wrap items-center gap-x-1 -ml-2">
       {/* On a phone the lead action takes its own line, so the rest of
           the row never wraps one action onto a line by itself. */}
-      {lead && <div className="basis-full sm:basis-auto flex">{lead}</div>}
+      {lead && <div className={`${leadInline ? "" : "basis-full sm:basis-auto "}flex`}>{lead}</div>}
       {onFeedback && (
         <>
           {(["up", "down"] as const).map((value) => {

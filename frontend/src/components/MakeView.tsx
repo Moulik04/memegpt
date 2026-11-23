@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Plus } from "lucide-react";
 import { ApiError, generateMeme, listTemplates, memeImageUrl } from "@/lib/api";
 import { GENERAL_FAILURE } from "@/lib/notices";
+import { templateLabel } from "@/lib/templateLabel";
 import BudgetNotice from "./BudgetNotice";
 import { MemeDisplay } from "./MemeDisplay";
 import { MEME_ACTION, MemeActions } from "./MemeActions";
@@ -111,16 +112,22 @@ export function MakeView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
 
+  // Name, label and tags, name matches first; each group keeps the shuffle.
   const filtered = useMemo(() => {
     if (!templates) return [];
     const q = search.trim().toLowerCase();
     if (!q) return templates;
-    return templates.filter(
-      (t) =>
-        t.name.toLowerCase().includes(q) ||
-        t.description.toLowerCase().includes(q) ||
-        t.tags.some((tag) => tag.toLowerCase().includes(q)),
-    );
+    const byName: ExplainResponse[] = [];
+    const byRest: ExplainResponse[] = [];
+    for (const t of templates) {
+      if (t.name.toLowerCase().includes(q)) byName.push(t);
+      else if (
+        (templateLabel(t.description) ?? "").toLowerCase().includes(q) ||
+        t.tags.some((tag) => tag.toLowerCase().includes(q))
+      )
+        byRest.push(t);
+    }
+    return [...byName, ...byRest];
   }, [templates, search]);
 
   const captions = selected ? (captionsByTemplate[selected.template_id] ?? {}) : {};
@@ -258,6 +265,7 @@ export function MakeView() {
                 <MemeActions
                   url={result.url}
                   memeId={result.memeId}
+                  leadInline
                   lead={
                     <button type="button" onClick={backToLibrary} className={MEME_ACTION}>
                       <Plus size={16} strokeWidth={2} aria-hidden="true" />
@@ -480,7 +488,11 @@ function Library({
                         </span>
                       )}
                     </span>
-                    <span className="text-sm text-muted-foreground line-clamp-2">{t.description}</span>
+                    {templateLabel(t.description) && (
+                      <span className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
+                        {templateLabel(t.description)}
+                      </span>
+                    )}
                     <span className="text-base font-medium text-foreground underline decoration-brand decoration-2 underline-offset-4 self-start group-hover:decoration-[3px]">
                       Choose template
                     </span>
