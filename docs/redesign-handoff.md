@@ -524,6 +524,8 @@ Collapsed preview shows two or three real lines plus **more messages**. Credit e
 - Row action: **Delete**
 - Delete confirmation: **Delete this chat?** Button: **Delete chat** (**Deleting…** while busy). Failure: **MemeGPT couldn't delete that chat. Please try again.**
 - Lore action: **Drop the lore**
+- Lore paste field, label and placeholder: **Paste the group chat**
+- Link under the Lore retention copy, to the privacy page: **Privacy**
 - Lore count: **Auto**, **1**, **2**, **3**, **4**, **5**
 - Remember lore switch: **Remember lore**
 - Remember lore helper, on: **Remember lore is on. Short recurring names and jokes are kept for future memes until you use Forget me.**
@@ -541,6 +543,7 @@ Collapsed preview shows two or three real lines plus **more messages**. Credit e
 - Another take when no different template is left (the current meme stays): **MemeGPT couldn't find a different template for this one.**
 - In-progress status names the actual template, for example **Captioning Low Battery**
 - Lore result action: **Another take**
+- Label above a take row (from an explicit count larger than the moments found), over its repeated source lines: **Another take**
 - Rating actions: **Thumbs up**, **Thumbs down**
 - Share: **Share**
 - Download: **Download**

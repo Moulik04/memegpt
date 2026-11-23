@@ -41,8 +41,7 @@ const RULES = [
 // Not failures: dark-theme pieces and other leftovers that later steps
 // replace. Each must be gone by launch.
 const LATER = [
-  { item: "step 4 (Lore): decrypting text", pattern: /DecryptedText/ },
-  { item: "steps 4 (Lore), 7 (landing): thinking orb, glowing prompt chips", pattern: /thinking-orb|prompt-chip/ },
+  { item: "step 7 (landing): thinking orb", pattern: /thinking-orb/ },
   { item: "step 6 (Arc): gauge colors", pattern: /#10b981|#bef264/ },
   { item: "step 7 (landing): pixel reveal", pattern: /PixelRevealImage/ },
   { item: "pill-shaped controls (rounded-full); the handoff avoids pills", pattern: /(?<![\w-])rounded-full(?![\w-])/ },
