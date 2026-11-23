@@ -71,11 +71,14 @@ async function authHeaders(): Promise<Record<string, string>> {
 // failure and show the budget meme with it.
 export class ApiError extends Error {
   reason?: NoticeReason;
+  /** The response's HTTP status, when there was a response. */
+  status?: number;
 
-  constructor(message: string, reason?: NoticeReason) {
+  constructor(message: string, reason?: NoticeReason, status?: number) {
     super(message);
     this.name = "ApiError";
     this.reason = reason;
+    this.status = status;
   }
 }
 
@@ -83,11 +86,11 @@ async function _apiError(res: Response): Promise<ApiError> {
   const raw = await res.text();
   try {
     const parsed = JSON.parse(raw);
-    if (typeof parsed?.detail === "string") return new ApiError(parsed.detail, parsed.reason);
+    if (typeof parsed?.detail === "string") return new ApiError(parsed.detail, parsed.reason, res.status);
   } catch {
     // Not JSON — fall through to the raw body below.
   }
-  return new ApiError(`${res.status} ${res.statusText}: ${raw}`);
+  return new ApiError(`${res.status} ${res.statusText}: ${raw}`, undefined, res.status);
 }
 
 const VISIT_HEADER = "X-MemeGPT-Visit";

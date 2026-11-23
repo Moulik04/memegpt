@@ -23,11 +23,20 @@ export interface MemeGenerationResponse {
   meme_url: string;
   template_id: string;
   texts: Record<string, string>;
+  // The saved meme's id, for its /m/{id} share page. Absent from an older
+  // backend.
+  meme_id?: string;
 }
 
 export interface TextBoxInfo {
   label: string;
   description: string;
+  // Where the compositor draws this caption, as percentages of the
+  // template image. Absent from an older backend.
+  x_pct?: number;
+  y_pct?: number;
+  w_pct?: number;
+  h_pct?: number;
 }
 
 export interface ExplainResponse {

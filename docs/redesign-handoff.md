@@ -554,6 +554,10 @@ Collapsed preview shows two or three real lines plus **more messages**. Credit e
 - History drawer with no saved chats: **No chats yet.**
 - Delete confirmation body: **This also removes the memes MemeGPT made in it, any ratings on them, and any lore terms it picked up. Share links to those memes stop working. This can't be undone.**
 - Make search placeholder: **Search templates by name, vibe or tag**
+- Clear the search: **Clear search**
+- Tag on an animated template's listing (its thumbnail is the first frame, still): **GIF**
+- Library that couldn't load: **Something broke.** with **Not you. Us. Try again in a moment.** and **Try again**
+- Make status while rendering: **Rendering…**
 - Template action: **Choose template**
 - Caption control labels: **Caption 1**, **Caption 2**, **Caption 3**, **Caption 4**, **Caption 5**. An empty field may show only its matching number.
 - Return to library: **Change template**
