@@ -59,6 +59,10 @@ export interface PlanEvent {
   // distinct moments: one entry per situation, the index of the moment it
   // is another take on, or null for a moment of its own.
   take_of?: (number | null)[];
+  // Sent only to a request with include_source_lines (the redesign's Lore):
+  // one entry per situation, the sorted numbers of the pasted lines it drew
+  // on, or null to show the summary instead. See lib/sourceLines.ts.
+  source_lines?: (number[] | null)[];
 }
 
 export interface ThinkingEvent {
@@ -112,13 +116,17 @@ export type UploadErrorCode =
   | "invalid_image"
   | "upload_failed";
 
+// Set when another take on a Lore moment found no template it may use. The
+// meme already shown stays.
+export type TakeErrorCode = "no_fresh_template";
+
 export interface ErrorEvent {
   type: "error";
   index?: number;
   total?: number;
   message: string;
   reason?: NoticeReason;
-  code?: UploadErrorCode;
+  code?: UploadErrorCode | TakeErrorCode;
 }
 
 export type SSEEvent = PlanEvent | ThinkingEvent | DoneEvent | BatchDoneEvent | ErrorEvent;
@@ -129,6 +137,14 @@ export interface ImageChatOptions {
   memeCount?: number;
   rememberLore?: boolean;
   conversationRowId?: string;
+}
+
+// Lore-only options for a text request.
+export interface LoreTextOptions {
+  // Templates no meme in this request may use, for another take.
+  excludeTemplates?: string[];
+  // False only for another take, which needs no plan.
+  includeSourceLines?: boolean;
 }
 
 // Growth Phase D — Arc. Mirrors backend/schemas.py's ArcTemplate/ArcStats.

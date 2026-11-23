@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ApiError, sendImageStream, sendStream, type Surface } from "@/lib/api";
 import { templateLabel } from "@/lib/utils";
-import type { MemeItem, NoticeReason, SSEEvent, UploadErrorCode } from "@/types";
+import type { LoreTextOptions, MemeItem, NoticeReason, SSEEvent, UploadErrorCode } from "@/types";
 
 interface ThinkingState {
   message: string;
@@ -40,6 +40,15 @@ export interface PlanState {
   doneIndices: Set<number>;
   // Parallel to situations: the moment an entry is another take on, or null.
   takeOf: (number | null)[];
+  // Parallel to situations: the pasted line numbers each drew on, or null.
+  // Absent when the backend sent none (an older backend).
+  sourceLines?: (number[] | null)[];
+  // The meme each finished entry made, by index, as it lands.
+  memes: Record<number, MemeItem>;
+  // Entries the backend said it could not make.
+  failedIndices: Set<number>;
+  // The entry being worked on now, from the latest thinking event.
+  activeIndex: number | null;
   // True once the stream has ended, however it ended. An entry that is
   // still not done at that point is never going to be.
   finished: boolean;
@@ -49,6 +58,10 @@ export interface StreamFailure {
   message: string;
   reason: NoticeReason | null;
   code: UploadErrorCode | null;
+  /** Another take found no template it may use. */
+  noFreshTemplate?: boolean;
+  /** The plan entry it belongs to, when it is one entry's error. */
+  index?: number;
 }
 
 export interface MemeStreamResult {
@@ -57,6 +70,8 @@ export interface MemeStreamResult {
   /** The submission's error, if it ended in one. The same as the hook's
    * error state, returned too so a caller can keep it with its turn. */
   failure: StreamFailure | null;
+  /** The plan as it stood when the stream ended, if one was sent. */
+  plan: PlanState | null;
 }
 
 /**
@@ -89,16 +104,30 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     onPlainReply: (s: string) => void,
     photos: number,
     onFailure: (f: StreamFailure) => void,
+    current: { plan: PlanState | null },
   ) {
+    // The plan is kept here as well as in state, so run() can return it as
+    // it stood when the stream ended.
+    const updatePlan = (change: (p: PlanState) => PlanState) => {
+      if (!current.plan) return;
+      current.plan = change(current.plan);
+      setPlan(current.plan);
+    };
     if (event.type === "plan") {
-      setPlan({
+      current.plan = {
         situations: event.situations,
         total: event.total,
         doneIndices: new Set(),
         takeOf: event.take_of ?? event.situations.map(() => null),
+        sourceLines: event.source_lines,
+        memes: {},
+        failedIndices: new Set(),
+        activeIndex: null,
         finished: false,
-      });
+      };
+      setPlan(current.plan);
     } else if (event.type === "thinking") {
+      if (event.index !== undefined) updatePlan((p) => ({ ...p, activeIndex: event.index as number }));
       const progress =
         event.total && event.total > 1 ? ` (${(event.index ?? 0) + 1}/${event.total})` : "";
       setThinking({ message: `${event.message}${progress}` });
@@ -110,29 +139,47 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
       }
     } else if (event.type === "done") {
       setConversationId(event.conversation_id);
+      const meme: MemeItem | null = event.message.meme_url
+        ? {
+            url: event.message.meme_url,
+            templateId: event.template_used,
+            situationText: event.message.content,
+            memeId: event.message.meme_id,
+            takeOf: event.take_of,
+          }
+        : null;
       if (event.index !== undefined) {
-        setPlan((prev) =>
-          prev ? { ...prev, doneIndices: new Set(prev.doneIndices).add(event.index as number) } : prev,
-        );
+        const index = event.index;
+        updatePlan((p) => ({
+          ...p,
+          doneIndices: new Set(p.doneIndices).add(index),
+          memes: meme ? { ...p.memes, [index]: meme } : p.memes,
+        }));
       }
-      if (event.message.meme_url) {
-        collected.push({
-          url: event.message.meme_url,
-          templateId: event.template_used,
-          situationText: event.message.content,
-          memeId: event.message.meme_id,
-          takeOf: event.take_of,
-        });
+      if (meme) {
+        collected.push(meme);
       } else {
         // A graceful text-only reply (e.g. vision unavailable) rather than
         // a meme — still worth surfacing, just not as a meme card.
         onPlainReply(event.message.content);
       }
     } else if (event.type === "error") {
+      const noFreshTemplate = event.code === "no_fresh_template";
+      const code = event.code && !noFreshTemplate ? (event.code as UploadErrorCode) : null;
+      if (event.index !== undefined) {
+        const index = event.index;
+        updatePlan((p) => ({ ...p, failedIndices: new Set(p.failedIndices).add(index) }));
+      }
       setError(event.message);
       setErrorReason(event.reason ?? null);
-      setErrorCode(event.code ?? null);
-      onFailure({ message: event.message, reason: event.reason ?? null, code: event.code ?? null });
+      setErrorCode(code);
+      onFailure({
+        message: event.message,
+        reason: event.reason ?? null,
+        code,
+        noFreshTemplate,
+        index: event.index,
+      });
     }
     // batch_done needs no handling here — finalization runs once the
     // stream itself ends, which covers every exit path (a full multi-meme
@@ -157,6 +204,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     const collected: MemeItem[] = [];
     let plainReply: string | null = null;
     let failure: StreamFailure | null = null;
+    const current: { plan: PlanState | null } = { plan: null };
 
     try {
       await send((event) =>
@@ -170,6 +218,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
           (f) => {
             failure = f;
           },
+          current,
         ),
       );
     } catch (err) {
@@ -182,10 +231,11 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
       setLoading(false);
       setThinking(null);
       setStages([]);
-      setPlan((prev) => (prev ? { ...prev, finished: true } : prev));
+      if (current.plan) current.plan = { ...current.plan, finished: true, activeIndex: null };
+      setPlan(current.plan);
     }
 
-    return { memes: collected, plainReply, failure };
+    return { memes: collected, plainReply, failure, plan: current.plan };
   }
 
   async function submitText(
@@ -200,6 +250,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
     // see the OLD value, since React state updates don't apply until the
     // next render.
     conversationRowIdOverride?: string,
+    lore?: LoreTextOptions,
   ): Promise<MemeStreamResult> {
     return run((onEvent) =>
       sendStream(
@@ -210,6 +261,7 @@ export function useMemeStream(surface: Surface, conversationRowId?: string) {
         memeCount,
         rememberLore,
         conversationRowIdOverride ?? conversationRowId,
+        lore,
       ),
     );
   }

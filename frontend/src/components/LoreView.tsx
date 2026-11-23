@@ -3,19 +3,55 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
-import { Paperclip } from "lucide-react";
-import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
-import { useMemeStream, type PlanState } from "@/hooks/useMemeStream";
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
+import { createConversation, getConversationMessages, memeImageUrl, postFeedback } from "@/lib/api";
+import { useMemeStream, type PlanState, type StreamFailure } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  MAX_IMAGE_BYTES,
+  MAX_IMAGES_PER_MESSAGE,
+  PICK_TOO_LARGE,
+  PICK_TOO_MANY,
+  noticeFor,
+  type Notice,
+} from "@/lib/notices";
+import {
+  isOverCut,
+  linesForEntry,
+  moreMessagesLabel,
+  previewLines,
+  quoteLines,
+  splitSpeaker,
+  type QuotedLine,
+} from "@/lib/sourceLines";
+import { MemeDisplay } from "./MemeDisplay";
+import { MEME_ACTION, MemeActions } from "./MemeActions";
 import BudgetNotice from "./BudgetNotice";
-import { MemeCard } from "./MemeCard";
-import { ThinkingBubble } from "./ThinkingBubble";
-import { DecryptedText } from "./DecryptedText";
 import type { MemeItem, PersistedMessage } from "@/types";
 
 const BACKEND_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+/** Copy deck, section 7.4. */
+const COUNT_OPTIONS: { label: string; value: number | undefined }[] = [
+  { label: "Auto", value: undefined },
+  ...[1, 2, 3, 4, 5].map((n) => ({ label: String(n), value: n })),
+];
+const RETENTION_SIGNED_OUT = "Your text and original photos aren't saved. Only the memes MemeGPT makes are.";
+const RETENTION_SIGNED_IN =
+  "You're signed in, so this is saved to your history, usually as a short summary of each moment. Original photos aren't kept.";
+const REMEMBER_ON =
+  "Remember lore is on. Short recurring names and jokes are kept for future memes until you use Forget me.";
+const REMEMBER_OFF = "Remember lore is off. Turn it on to carry recurring names and jokes into future memes.";
+const OVER_CUT = "Only the first 20,000 characters are used.";
+const FAILED_MOMENT = "This one didn't come out.";
+const UP_NEXT = "Up next";
+const NO_FRESH_TEMPLATE = "MemeGPT couldn't find a different template for this one.";
+const ANOTHER_TAKE = "Another take";
+
+/** Tall memes pair side by side; anything less tall than this gets a row. */
+const TALL_RATIO = 1.1;
 
 function base64ToFile(dataBase64: string, filename: string, contentType: string): File {
   const byteChars = atob(dataBase64);
@@ -24,36 +60,8 @@ function base64ToFile(dataBase64: string, filename: string, contentType: string)
   return new File([bytes], filename, { type: contentType });
 }
 
-const MEME_COUNT_OPTIONS = [2, 3, 4, 5];
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // matches config.py's max_image_bytes
-const MAX_IMAGES_PER_REQUEST = 6; // matches config.py's max_images_per_request
-// Matches config.py's max_dump_chars default — a UX nicety only, the real
-// clamp is server-side (routers/chat.py's _clamp_dump_text). Never blocks
-// submission, just sets expectations.
-const MAX_DUMP_CHARS = 20000;
-// Matches config.py's segmentation_text_threshold_chars/max_memes_per_request
-// defaults — below this length the backend takes the zero-LLM-call fast
-// path (one situation, no segmentation call at all), so an estimate here
-// would just be noise.
-const SEGMENTATION_TEXT_THRESHOLD_CHARS = 240;
-const MAX_MEMES_PER_REQUEST = 5;
-
-// A rough proxy only — paragraph breaks are a cheap client-side heuristic,
-// not a reimplementation of the backend's actual semantic segmentation
-// call (nlp/segmentation.py's segment_contexts()). The two are allowed to
-// disagree; this exists to set expectations before submit, not to predict
-// the real result.
-function estimateMomentCount(text: string): number {
-  const blocks = text
-    .trim()
-    .split(/\n\s*\n/)
-    .filter((block) => block.trim().length > 0);
-  return Math.max(1, Math.min(MAX_MEMES_PER_REQUEST, blocks.length));
-}
-
-// Counts moments and extra takes separately, so the heading never calls a
-// second take a moment, and reports the real total once the stream has
-// ended short (a meme that failed, or a connection that dropped).
+// Counts moments and extra takes separately, so the status never calls a
+// second take a moment, and adds the real total only if Lore finished short.
 function planHeading(plan: PlanState): string {
   const takes = plan.takeOf.filter((t) => t !== null).length;
   const moments = plan.total - takes;
@@ -69,101 +77,215 @@ interface PendingImage {
   previewUrl: string;
 }
 
-type FeedEntry =
-  | { kind: "meme"; meme: MemeItem; votedKey: string }
-  | { kind: "text"; content: string; key: string };
-
-// Growth Phase H, Stage 3 — Lore's feed never showed user-echo entries
-// (handleSubmit below only ever pushes results, not the submission itself),
-// so hydration keeps that: only assistant rows become feed entries.
-function groupPersistedFeed(rows: PersistedMessage[]): FeedEntry[] {
-  return rows
-    .filter((r) => r.role === "assistant")
-    .map((r) =>
-      r.meme_url
-        ? {
-            kind: "meme" as const,
-            meme: { url: r.meme_url, situationText: r.content, memeId: r.meme_id ?? undefined },
-            votedKey: r.id,
-          }
-        : { kind: "text" as const, content: r.content, key: r.id },
-    );
+/** One paste or set of screenshots and everything that came back for it. */
+interface Submission {
+  id: string;
+  /** The exact string sent, which source lines number. Empty for
+   * screenshots only and for a chat reopened from history. */
+  sent: string;
+  images?: string[];
+  plan: PlanState | null;
+  /** The memes, for a submission with no plan (history, older backend). */
+  memes: MemeItem[];
+  reply?: string;
+  notice?: Notice & { budget: boolean };
+  pending: boolean;
 }
 
+type RowState = "done" | "active" | "waiting" | "failed";
+
+/** One moment (or take) of a submission, in source order. */
+interface Row {
+  key: string;
+  index: number;
+  /** The moment it is another take on, if it is one. */
+  takeOf: number | null;
+  summary: string;
+  quote: QuotedLine[] | null;
+  meme: MemeItem | null;
+  state: RowState;
+}
+
+function rowsFor(sub: Submission): Row[] {
+  const plan = sub.plan;
+  if (!plan) {
+    return sub.memes.map((meme, i) => ({
+      key: `${sub.id}-${i}`,
+      index: i,
+      takeOf: meme.takeOf ?? null,
+      summary: meme.situationText,
+      quote: null,
+      meme,
+      state: "done" as const,
+    }));
+  }
+  return plan.situations.map((summary, i) => {
+    const meme = plan.memes[i] ?? null;
+    const failed = plan.failedIndices.has(i) || (plan.finished && !plan.doneIndices.has(i));
+    const state: RowState = meme
+      ? "done"
+      : failed
+        ? "failed"
+        : plan.activeIndex === i
+          ? "active"
+          : "waiting";
+    return {
+      key: `${sub.id}-${i}`,
+      index: i,
+      takeOf: plan.takeOf[i] ?? null,
+      summary,
+      quote: sub.sent ? quoteLines(sub.sent, linesForEntry(plan.sourceLines, plan.takeOf, i)) : null,
+      meme,
+      state,
+    };
+  });
+}
+
+let submissionCounter = 0;
+const newSubmissionId = () => `lore-${Date.now()}-${submissionCounter++}`;
+
+// A reopened Lore chat stores one summary per moment (as the user row) and
+// the meme made from it. Quotes are never stored, so it shows summaries.
+function submissionFromPersisted(rows: PersistedMessage[]): Submission[] {
+  const memes: MemeItem[] = [];
+  let reply: string | undefined;
+  for (const row of rows) {
+    if (row.role !== "assistant") continue;
+    if (row.meme_url) memes.push({ url: row.meme_url, situationText: row.content, memeId: row.meme_id ?? undefined });
+    else if (row.content) reply = row.content;
+  }
+  if (memes.length === 0 && !reply) return [];
+  return [{ id: "saved", sent: "", plan: null, memes, reply, pending: false }];
+}
+
+function failureNotice(failure: StreamFailure, sentPhotos: boolean): Submission["notice"] {
+  return {
+    ...noticeFor(failure.message, { code: failure.code, hasReason: !!failure.reason, sentPhotos }),
+    budget: failure.reason === "site_budget",
+  };
+}
+
+function preload(url: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve();
+    img.src = url.startsWith("http") ? url : memeImageUrl(url);
+  });
+}
+
+type Rating = "up" | "down";
+
+/** What another take on a row has done: the meme it now shows, the
+ * templates that row has used, and a note when it couldn't make one. */
+interface TakeState {
+  meme?: MemeItem;
+  used: string[];
+  note?: string;
+}
+
+const SETTLE = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const };
+
 /**
- * Lore — the surface for big context dumps: paste a whole conversation,
- * upload a stack of screenshots, get several memes back. Every meme from
- * every submission renders as its own permanently-visible card in a flat
- * feed (not a carousel, not grouped chat bubbles) — each independently
- * viewable, shareable, and feedback-able, deliberately unlike Chat's
- * swipeable multi-meme carousel.
+ * Lore: paste a whole group chat or drop in screenshots, get one meme per
+ * moment back, in chat order, each credited to the lines it came from.
  */
 export function LoreView() {
   const [text, setText] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [memeCount, setMemeCount] = useState<number | undefined>(undefined);
-  // Growth Phase C — strictly opt-in, off by default, and deliberately NOT
-  // reset per-submission in handleSubmit below: this means "remember this
-  // whole conversation," not "remember just this one message."
+  // Off by default and kept across submissions: it means "remember this
+  // group", not "remember this one paste".
   const [rememberLore, setRememberLore] = useState(false);
-  const [feed, setFeed] = useState<FeedEntry[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const [ratings, setRatings] = useState<Record<string, Rating>>({});
+  const [takes, setTakes] = useState<Record<string, TakeState>>({});
+  const [taking, setTaking] = useState<string | null>(null);
+  const [sizes, setSizes] = useState<Record<string, number>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const focusPaste = useRef(false);
+  const focusExpand = useRef(false);
+  const expandRef = useRef<HTMLButtonElement>(null);
+  const pendingImagesRef = useRef<PendingImage[]>([]);
+  const dragDepth = useRef(0);
 
   const { user } = useAuth();
   const { conversationRowId, setConversationRowId, bumpRefresh } = useConversation();
-  const { loading, thinking, error, errorReason, plan, conversationId, submitText, submitImages } = useMemeStream(
-    "lore",
-    conversationRowId,
-  );
+  const { loading, stages, plan, conversationId, submitText, submitImages } = useMemeStream("lore", conversationRowId);
+  // Another take runs as its own request, so the submission's plan stays.
+  const take = useMemeStream("lore", conversationRowId);
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
 
-  // Hydrate from a persisted conversation when one becomes selected, reset
-  // to an empty feed when it's cleared — same precedent as ChatWindow.tsx.
   useEffect(() => {
     if (!conversationRowId) {
-      setFeed([]);
+      setSubmissions([]);
       return;
     }
     let cancelled = false;
-    getConversationMessages(conversationRowId).then((rows) => {
-      if (!cancelled) setFeed(groupPersistedFeed(rows));
-    });
+    getConversationMessages(conversationRowId)
+      .then((rows) => {
+        if (!cancelled) setSubmissions(submissionFromPersisted(rows));
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [conversationRowId]);
 
-  // Consume a share-target handoff (?intake=<token>) on mount, if present.
-  // Reads window.location.search directly rather than next/navigation's
-  // useSearchParams() to avoid that hook's Suspense-boundary requirement on
-  // an otherwise statically-prerendered page. Pre-fills the composer —
-  // never auto-submits — then strips the query param so a refresh doesn't
-  // retry an already-consumed (single-use) token.
+  useEffect(() => {
+    pendingImagesRef.current = pendingImages;
+  }, [pendingImages]);
+
+  useEffect(
+    () => () => {
+      pendingImagesRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    },
+    [],
+  );
+
+  // Focus follows the swap between the field and its preview, so a
+  // keyboard user never loses their place.
+  useEffect(() => {
+    if (!collapsed && focusPaste.current) {
+      focusPaste.current = false;
+      textareaRef.current?.focus();
+    }
+    if (collapsed && focusExpand.current) {
+      focusExpand.current = false;
+      expandRef.current?.focus();
+    }
+  }, [collapsed]);
+
+  // A share-target handoff (?intake=<token>) fills the composer, never
+  // sends, and the token is dropped from the address so a refresh doesn't
+  // retry a single-use token.
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("intake");
     if (!token) return;
-
     (async () => {
       try {
         const res = await fetch(`${BACKEND_BASE}/share-intake/${token}/`);
         if (!res.ok) return;
         const data = await res.json();
-
-        if (data.text) setText((prev) => prev || data.text);
-
-        const newImages: PendingImage[] = (data.images ?? []).map(
-          (img: { filename: string; content_type: string; data_base64: string }) => {
+        if (data.text) {
+          setText((prev) => prev || data.text);
+          if (previewLines(data.text).more > 0) setCollapsed(true);
+        }
+        const newImages: PendingImage[] = (data.images ?? [])
+          .slice(0, MAX_IMAGES_PER_MESSAGE)
+          .map((img: { filename: string; content_type: string; data_base64: string }) => {
             const file = base64ToFile(img.data_base64, img.filename, img.content_type);
             return { file, previewUrl: URL.createObjectURL(file) };
-          },
-        );
-        if (newImages.length > 0) setPendingImages((prev) => [...prev, ...newImages]);
+          });
+        if (newImages.length > 0) setPendingImages((prev) => [...prev, ...newImages].slice(0, MAX_IMAGES_PER_MESSAGE));
       } catch {
-        // Worst case the user just re-shares or attaches manually.
+        // Worst case the visitor shares again or attaches by hand.
       } finally {
         router.replace("/lore");
       }
@@ -172,7 +294,8 @@ export function LoreView() {
   }, []);
 
   const handleFeedback = useCallback(
-    async (meme: MemeItem, rating: "up" | "down") => {
+    async (meme: MemeItem, rating: Rating) => {
+      setRatings((prev) => ({ ...prev, [meme.url]: rating }));
       await postFeedback({
         conversation_id: conversationId,
         template_id: meme.templateId || "",
@@ -183,22 +306,24 @@ export function LoreView() {
     [conversationId],
   );
 
+  const handleSize = useCallback((url: string, width: number, height: number) => {
+    setSizes((prev) => (prev[url] ? prev : { ...prev, [url]: height / width }));
+  }, []);
+
+  // A pick that breaks a limit is turned away whole; images already
+  // attached stay.
   function addFiles(files: File[]) {
     if (files.length === 0) return;
-    const oversized = files.find((f) => f.size > MAX_IMAGE_BYTES);
-    if (oversized) {
-      setLocalError(`That image is over ${MAX_IMAGE_BYTES / (1024 * 1024)}MB — try a smaller one.`);
+    if (files.some((f) => f.size > MAX_IMAGE_BYTES)) {
+      setPickError(PICK_TOO_LARGE);
       return;
     }
-    if (pendingImages.length + files.length > MAX_IMAGES_PER_REQUEST) {
-      setLocalError(`Up to ${MAX_IMAGES_PER_REQUEST} photos per message — remove some before adding more.`);
+    if (pendingImages.length + files.length > MAX_IMAGES_PER_MESSAGE) {
+      setPickError(PICK_TOO_MANY);
       return;
     }
-    setPendingImages((prev) => [
-      ...prev,
-      ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
-    ]);
-    setLocalError(null);
+    setPendingImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+    setPickError(null);
   }
 
   function removePendingImage(index: number) {
@@ -207,41 +332,70 @@ export function LoreView() {
       if (target) URL.revokeObjectURL(target.previewUrl);
       return prev.filter((_, i) => i !== index);
     });
+    setPickError(null);
   }
 
-  function clearPendingImages() {
-    pendingImages.forEach((p) => URL.revokeObjectURL(p.previewUrl));
-    setPendingImages([]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  function handleTextareaInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
+  function handleTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setText(e.target.value);
     const el = e.target;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 400)}px`;
   }
 
+  function expandPaste() {
+    focusPaste.current = true;
+    setCollapsed(false);
+  }
+
+  function handleDragEnter(e: React.DragEvent) {
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragActive(true);
+  }
+
+  function handleDragLeave() {
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragActive(false);
+  }
+
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
+    dragDepth.current = 0;
     setDragActive(false);
+    if (loading) return;
     addFiles(Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/")));
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if ((!text.trim() && pendingImages.length === 0) || loading) return;
-
+    // Trimmed before sending, and the trimmed string is what lines number.
+    const sent = text.trim();
     const images = pendingImages;
-    const submittedText = text.trim();
-    setText("");
-    clearPendingImages();
-    setLocalError(null);
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    if ((!sent && images.length === 0) || loading) return;
 
-    // Same auto-create-on-first-message fix as ChatWindow.tsx — see that
-    // file's comment for why activeConversationRowId is passed explicitly
-    // rather than relying on setConversationRowId() being visible yet.
+    const id = newSubmissionId();
+    setSubmissions((prev) => [
+      {
+        id,
+        sent: images.length > 0 ? "" : sent,
+        images: images.length > 0 ? images.map((p) => p.previewUrl) : undefined,
+        plan: null,
+        memes: [],
+        pending: true,
+      },
+      ...prev,
+    ]);
+    setText("");
+    setCollapsed(false);
+    // The preview URLs now belong to the sent submission.
+    setPendingImages([]);
+    setPickError(null);
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    requestAnimationFrame(() =>
+      resultsRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" }),
+    );
+
     let activeConversationRowId = conversationRowId;
     if (user && !activeConversationRowId) {
       const created = await createConversation("lore").catch(() => null);
@@ -251,302 +405,662 @@ export function LoreView() {
       }
     }
 
-    const { memes, plainReply } =
+    const result =
       images.length > 0
-        ? await submitImages(images.map((p) => p.file), submittedText || undefined, memeCount, rememberLore, activeConversationRowId)
-        : await submitText(submittedText, memeCount, rememberLore, activeConversationRowId);
+        ? await submitImages(
+            images.map((p) => p.file),
+            sent || undefined,
+            memeCount,
+            rememberLore,
+            activeConversationRowId,
+          )
+        : await submitText(sent, memeCount, rememberLore, activeConversationRowId);
 
-    if (memes.length > 0) {
-      setFeed((prev) => [
-        ...prev,
-        ...memes.map((meme, i) => ({
-          kind: "meme" as const,
-          meme,
-          votedKey: `${Date.now()}-${i}`,
-        })),
-      ]);
-    } else if (plainReply) {
-      setFeed((prev) => [...prev, { kind: "text", content: plainReply, key: `${Date.now()}` }]);
-    }
-
+    setSubmissions((prev) =>
+      prev.map((s) =>
+        s.id === id
+          ? {
+              ...s,
+              plan: result.plan,
+              memes: result.memes,
+              reply: result.memes.length === 0 ? (result.plainReply ?? undefined) : undefined,
+              notice:
+                result.memes.length === 0 && result.failure
+                  ? failureNotice(result.failure, images.length > 0)
+                  : undefined,
+              pending: false,
+            }
+          : s,
+      ),
+    );
     if (activeConversationRowId) bumpRefresh();
   }
 
-  const displayError = localError ?? error;
-  // The shared daily budget ran out: the notice comes with a pre-made meme.
-  const showBudgetMeme = !localError && errorReason === "site_budget";
+  async function anotherTake(sub: Submission, row: Row) {
+    const current = takes[row.key]?.meme ?? row.meme;
+    if (!current || taking) return;
+    const moment = row.takeOf ?? row.index;
+    // The summary is what the first pick saw, so the take stays on the
+    // same moment, and history keeps storing summaries, not pasted lines.
+    const summary = sub.plan?.situations[moment] ?? row.summary;
+    // Every template already shown for this moment, in any of its rows.
+    const used = new Set(takes[row.key]?.used ?? []);
+    for (const r of rowsFor(sub)) {
+      if ((r.takeOf ?? r.index) !== moment) continue;
+      const shown = takes[r.key]?.meme ?? r.meme;
+      if (shown?.templateId) used.add(shown.templateId);
+      for (const t of takes[r.key]?.used ?? []) used.add(t);
+    }
+
+    setTaking(row.key);
+    setTakes((prev) => ({ ...prev, [row.key]: { ...prev[row.key], used: [...used], note: undefined } }));
+    const result = await take.submitText(summary, 1, false, conversationRowId, {
+      excludeTemplates: [...used],
+      includeSourceLines: false,
+    });
+    const meme = result.memes[0];
+    if (meme) {
+      // Swapped only once the new image is ready, so the frame never blanks.
+      await preload(meme.url);
+      setTakes((prev) => ({
+        ...prev,
+        [row.key]: {
+          meme: { ...meme, takeOf: row.takeOf ?? undefined },
+          used: meme.templateId ? [...used, meme.templateId] : [...used],
+        },
+      }));
+    } else {
+      const f = result.failure;
+      const note = f?.noFreshTemplate
+        ? NO_FRESH_TEMPLATE
+        : f
+          ? [noticeFor(f.message, { code: f.code, hasReason: !!f.reason, sentPhotos: false })]
+              .map((n) => (n.heading ? `${n.heading} ${n.text}` : n.text))[0]
+          : NO_FRESH_TEMPLATE;
+      setTakes((prev) => ({ ...prev, [row.key]: { ...prev[row.key], used: [...used], note } }));
+    }
+    setTaking(null);
+    if (conversationRowId) bumpRefresh();
+  }
+
+  const preview = previewLines(text);
+  const showPreview = collapsed && preview.more > 0;
+  const canSend = !loading && (text.trim().length > 0 || pendingImages.length > 0);
+  const currentStage = stages.length > 0 ? stages[stages.length - 1].label : null;
 
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 chat-scroll">
-      <div className="max-w-2xl mx-auto flex flex-col gap-4">
-        {/* Composer */}
-        <form
-          onSubmit={handleSubmit}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragActive(true);
-          }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={handleDrop}
-          className={`relative rounded-2xl border-2 p-4 flex flex-col gap-3 transition-all
-                      has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2
-                      has-[textarea:focus-visible]:outline-focus-ring ${
-            dragActive
-              ? "border-input border-solid bg-muted"
-              : "border-border border-dashed bg-card focus-within:border-input"
-          }`}
-        >
-          <AnimatePresence>
+    <MotionConfig reducedMotion="user" transition={SETTLE}>
+      <div className="flex-1 overflow-y-auto chat-scroll">
+        <div className="mx-auto max-w-6xl px-4 md:px-8 pt-6 md:pt-8 pb-12">
+          <h1 className="sr-only">Lore</h1>
+
+          <form
+            onSubmit={handleSubmit}
+            onDragEnter={handleDragEnter}
+            onDragOver={(e) => {
+              if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+            }}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className="relative flex flex-col gap-4 lg:max-w-3xl"
+          >
             {dragActive && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2
-                           rounded-2xl bg-card/95 pointer-events-none"
-              >
-                <span className="text-2xl">📥</span>
-                <p className="text-sm font-semibold text-foreground">Drop to add screenshots</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={handleTextareaInput}
-            placeholder="Paste a whole conversation, a group chat thread, anything with a bunch of moments in it…"
-            disabled={loading}
-            rows={4}
-            className="w-full bg-transparent resize-none text-sm placeholder:text-muted-foreground
-                       focus:outline-none disabled:opacity-50"
-          />
-
-          {text.length > MAX_DUMP_CHARS && (
-            <p className="text-[10px] text-muted-foreground">
-              Long lore! Using the first ~{Math.round(MAX_DUMP_CHARS / 1000)}k characters.
-            </p>
-          )}
-
-          {text.length > SEGMENTATION_TEXT_THRESHOLD_CHARS && !memeCount && (
-            <p className="text-[10px] text-muted-foreground">
-              Looks like ~{estimateMomentCount(text)} moment
-              {estimateMomentCount(text) === 1 ? "" : "s"} worth memeing — rough
-              estimate, MemeGPT will decide for real.
-            </p>
-          )}
-
-          {pendingImages.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto">
-              <AnimatePresence mode="popLayout" initial={false}>
-                {pendingImages.map((p, i) => (
-                  <motion.div
-                    key={p.previewUrl}
-                    layout
-                    initial={{ opacity: 0, scale: 0.85 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.85 }}
-                    transition={{ duration: 0.15 }}
-                    className="relative shrink-0"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.previewUrl}
-                      alt="Attached preview"
-                      className="w-14 h-14 rounded-lg object-cover border border-border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removePendingImage(i)}
-                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-paper
-                                 border border-paper text-primary-foreground hover:bg-paper/85
-                                 text-[10px] flex items-center justify-center leading-none"
-                      title="Remove"
-                      aria-label="Remove image"
-                    >
-                      ✕
-                    </button>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => {
-                addFiles(Array.from(e.target.files ?? []));
-                e.target.value = "";
-              }}
-              disabled={loading}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-              title="Attach or drop screenshots"
-              aria-label="Attach or drop screenshots"
-              className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl
-                         border border-border text-muted-foreground hover:text-foreground
-                         hover:border-input disabled:opacity-40 transition-colors"
-            >
-              <Paperclip size={16} strokeWidth={2} aria-hidden="true" />
-            </button>
-            <select
-              value={memeCount ?? ""}
-              onChange={(e) => setMemeCount(e.target.value ? Number(e.target.value) : undefined)}
-              disabled={loading}
-              title="Number of memes"
-              className="shrink-0 bg-card border border-input rounded-xl px-2 py-2.5
-                         text-xs text-muted-foreground
-                         disabled:opacity-40 transition-colors"
-            >
-              <option value="">Auto</option>
-              {MEME_COUNT_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n} memes
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setRememberLore((v) => !v)}
-              disabled={loading}
-              title="Extract and remember this group's recurring names/running jokes for future callbacks"
-              aria-pressed={rememberLore}
-              className={`shrink-0 text-xs font-medium rounded-full px-3 py-2.5 transition-colors ${
-                rememberLore
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-ink-2 border border-border text-muted-foreground hover:text-foreground"
-              } disabled:opacity-40`}
-            >
-              🧠 Remember lore
-            </button>
-            <button
-              type="submit"
-              disabled={loading || (!text.trim() && pendingImages.length === 0)}
-              className="w-full sm:w-auto sm:ml-auto bg-primary hover:bg-primary/85 disabled:opacity-40
-                         transition-colors text-primary-foreground text-sm font-semibold rounded-xl px-4 py-2.5 shrink-0"
-            >
-              Drop the lore
-            </button>
-          </div>
-
-          <p className="text-[10px] text-muted-foreground">
-            {user
-              ? "You're signed in, so this is saved to your history, usually as a short summary of each moment. Original photos aren't kept."
-              : "Your text and original photos aren't saved. Only the memes MemeGPT makes are."}
-            {rememberLore
-              ? " Remember lore is on. Short recurring names and jokes are kept for future memes until you use Forget me."
-              : " Remember lore is off. Turn it on to carry recurring names and jokes into future memes."}{" "}
-            <Link href="/privacy" className="underline hover:text-foreground transition-colors">
-              Privacy details
-            </Link>
-          </p>
-        </form>
-
-        {displayError && showBudgetMeme && <BudgetNotice message={displayError} />}
-        {displayError && !showBudgetMeme && (
-          <p className="text-destructive text-xs border-l-2 border-brand
-                        rounded-xl px-3 py-2">
-            {displayError}
-          </p>
-        )}
-
-        {plan && plan.total > 1 && (
-          <div className="rounded-2xl bg-card border border-border px-4 py-3">
-            <p className="text-[10px] text-muted-foreground mb-2 uppercase tracking-wide">
-              {planHeading(plan)}
-            </p>
-            <ul className="flex flex-col gap-1.5">
-              {plan.situations.map((situation, i) => {
-                const done = plan.doneIndices.has(i);
-                const missed = plan.finished && !done;
-                return (
-                  <li key={i} className="flex items-start gap-2 text-xs">
-                    <span
-                      className={done ? "text-foreground" : missed ? "text-destructive" : "text-muted-foreground"}
-                    >
-                      {done ? "✓" : missed ? "✕" : "○"}
-                    </span>
-                    <span className={done ? "text-muted-foreground" : "text-muted-foreground"}>
-                      {situation}
-                      {missed && " (not made)"}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-
-        {thinking && <ThinkingBubble message={thinking.message} />}
-
-        {/* Flat feed — every meme its own permanently-visible card. Each
-            entry gets a staggered settle-in (capped so a long history
-            doesn't queue an absurd cumulative delay) — this is where it
-            matters most: one Lore submission routinely lands several memes
-            at once, and watching them cascade in one after another is a
-            better signal that something real happened than a batch of
-            cards just appearing. */}
-        <div className="flex flex-col gap-4">
-          {feed.map((entry, i) => {
-            const style = {
-              animationDelay: `${Math.min(i, 5) * 70}ms`,
-              animationFillMode: "backwards" as const,
-            };
-            // When several memes land from one submission, hovering one
-            // dims the rest instead of leaving them all at equal visual
-            // weight — draws focus to the one you're looking at without
-            // hiding the others, since they're all still worth a glance.
-            const dimmed = hoveredIndex !== null && hoveredIndex !== i;
-            const hoverProps = {
-              onMouseEnter: () => setHoveredIndex(i),
-              onMouseLeave: () => setHoveredIndex(null),
-            };
-            return entry.kind === "meme" ? (
               <div
-                key={entry.votedKey}
-                className={`arrive-settle transition-[opacity,transform] duration-200 ${
-                  dimmed ? "opacity-50 scale-[0.98]" : "opacity-100 scale-100"
-                }`}
-                style={style}
-                {...hoverProps}
+                className="absolute inset-0 z-10 flex items-center justify-center bg-background/95
+                           border-2 border-dashed border-foreground pointer-events-none"
               >
-                {entry.meme.takeOf !== undefined && (
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1.5 px-1">
-                    Another take
-                  </p>
-                )}
-                <MemeCard
-                  url={entry.meme.url}
-                  alt={entry.meme.situationText}
-                  templateId={entry.meme.templateId}
-                  onFeedback={(rating) => handleFeedback(entry.meme, rating)}
-                />
+                <p className="font-display text-3xl md:text-4xl text-foreground">Drop screenshots here</p>
+              </div>
+            )}
+
+            {showPreview ? (
+              <div className="border border-input rounded-sm px-3 py-3">
+                <TranscriptLines lines={preview.lines} />
+                <button
+                  ref={expandRef}
+                  type="button"
+                  onClick={expandPaste}
+                  aria-expanded={false}
+                  aria-controls="lore-paste"
+                  className="mt-1 min-h-11 text-base font-medium text-foreground underline decoration-brand
+                             decoration-2 underline-offset-4 hover:decoration-[3px]"
+                >
+                  {moreMessagesLabel(preview.more)}
+                </button>
               </div>
             ) : (
-              <p
-                key={entry.key}
-                className={`arrive-settle text-sm text-foreground bg-card border border-border
-                           rounded-2xl px-4 py-3 transition-[opacity,transform] duration-200 ${
-                             dimmed ? "opacity-50 scale-[0.98]" : "opacity-100 scale-100"
-                           }`}
-                style={style}
-                {...hoverProps}
+              <textarea
+                id="lore-paste"
+                ref={textareaRef}
+                value={text}
+                onChange={handleTextChange}
+                onPaste={() =>
+                  // A long paste folds to its first lines once it has landed.
+                  // Not on blur: the swap would move Drop the lore out from
+                  // under a click on it.
+                  requestAnimationFrame(() => {
+                    if (previewLines(textareaRef.current?.value ?? "").more > 0) {
+                      focusExpand.current = true;
+                      setCollapsed(true);
+                    }
+                  })
+                }
+                aria-label="Paste the group chat"
+                placeholder="Paste the group chat"
+                disabled={loading}
+                rows={6}
+                className="w-full min-h-40 px-3 py-3 text-base leading-relaxed bg-background border border-input
+                           rounded-sm resize-none placeholder:text-muted-foreground disabled:opacity-60"
+              />
+            )}
+
+            {isOverCut(text.trim()) && <p className="text-base text-muted-foreground">{OVER_CUT}</p>}
+
+            {pendingImages.length > 0 && (
+              <ul aria-label="Attached screenshots" className="flex flex-wrap gap-x-3 gap-y-1">
+                <AnimatePresence initial={false}>
+                  {pendingImages.map((p, i) => (
+                    <motion.li
+                      key={p.previewUrl}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+                      className="flex items-center gap-1"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- local preview */}
+                      <img
+                        src={p.previewUrl}
+                        alt={`Attached screenshot ${i + 1}`}
+                        className="w-12 h-12 object-cover border border-border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePendingImage(i)}
+                        aria-label={`Remove screenshot ${i + 1}`}
+                        className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground
+                                   underline underline-offset-4 transition-colors duration-[var(--duration-fast)]"
+                      >
+                        Remove
+                      </button>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+            )}
+
+            <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
+              <fieldset className="flex items-center">
+                <legend className="sr-only">Number of memes</legend>
+                <div className="flex">
+                  {COUNT_OPTIONS.map((option) => (
+                    <label key={option.label} className="relative -ml-px first:ml-0">
+                      <input
+                        type="radio"
+                        name="lore-count"
+                        checked={memeCount === option.value}
+                        onChange={() => setMemeCount(option.value)}
+                        disabled={loading}
+                        className="peer sr-only"
+                      />
+                      <span
+                        className="flex items-center justify-center min-h-11 min-w-11 px-3 border border-input
+                                   text-base font-medium text-foreground cursor-pointer select-none
+                                   peer-checked:bg-foreground peer-checked:text-background peer-checked:border-foreground
+                                   peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2
+                                   peer-focus-visible:outline-focus-ring peer-disabled:opacity-60
+                                   transition-colors duration-[var(--duration-fast)]"
+                      >
+                        {option.label}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={rememberLore}
+                aria-describedby="lore-remember-help"
+                onClick={() => setRememberLore((v) => !v)}
+                disabled={loading}
+                className="self-start md:self-auto min-h-11 inline-flex items-center gap-3 text-base font-medium
+                           text-foreground disabled:opacity-60"
               >
-                <DecryptedText text={entry.content} />
+                <span
+                  aria-hidden="true"
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-sm border transition-colors
+                              duration-[var(--duration-fast)] ${
+                                rememberLore ? "bg-foreground border-foreground" : "bg-muted border-input"
+                              }`}
+                >
+                  <span
+                    className={`absolute top-[3px] h-4 w-4 rounded-[2px] transition-transform
+                                duration-[var(--duration-fast)] motion-reduce:transition-none ${
+                                  rememberLore ? "translate-x-[23px] bg-background" : "translate-x-[3px] bg-muted-foreground"
+                                }`}
+                  />
+                </span>
+                Remember lore
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => {
+                  addFiles(Array.from(e.target.files ?? []));
+                  e.target.value = "";
+                }}
+                disabled={loading}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                className="min-h-12 px-5 border border-input rounded-sm text-base font-medium text-foreground
+                           hover:bg-muted disabled:opacity-40 transition-colors duration-[var(--duration-fast)]"
+              >
+                Photo
+              </button>
+              <button
+                type="submit"
+                disabled={!canSend}
+                className="flex-1 md:flex-none min-h-12 px-6 rounded-sm bg-primary text-primary-foreground
+                           text-base font-semibold hover:bg-primary/85 disabled:opacity-40
+                           transition-colors duration-[var(--duration-fast)]"
+              >
+                Drop the lore
+              </button>
+            </div>
+
+            {pickError && (
+              <p role="alert" className="text-base text-foreground border-l-2 border-brand pl-3">
+                {pickError}
               </p>
-            );
-          })}
+            )}
+
+            <div className="flex flex-col gap-1 text-sm text-muted-foreground max-w-prose">
+              <p>{user ? RETENTION_SIGNED_IN : RETENTION_SIGNED_OUT}</p>
+              <p id="lore-remember-help">{rememberLore ? REMEMBER_ON : REMEMBER_OFF}</p>
+              <p>
+                <Link
+                  href="/privacy"
+                  className="inline-flex min-h-11 items-center text-base text-foreground underline underline-offset-4"
+                >
+                  Privacy
+                </Link>
+              </p>
+            </div>
+          </form>
+
+          <div ref={resultsRef} className="scroll-mt-4 flex flex-col">
+            {submissions.map((sub, i) => (
+              <SubmissionBlock
+                key={sub.id}
+                sub={sub}
+                latest={i === 0}
+                livePlan={sub.pending ? plan : null}
+                stage={sub.pending ? currentStage : null}
+                takes={takes}
+                taking={taking}
+                takeStage={take.stages.length > 0 ? take.stages[take.stages.length - 1].label : null}
+                ratings={ratings}
+                sizes={sizes}
+                onSize={handleSize}
+                onFeedback={handleFeedback}
+                onAnotherTake={anotherTake}
+              />
+            ))}
+          </div>
         </div>
       </div>
+    </MotionConfig>
+  );
+}
+
+function TranscriptLines({ lines, className = "" }: { lines: QuotedLine[]; className?: string }) {
+  return (
+    <div className={`flex flex-col gap-0.5 text-base leading-snug text-foreground ${className}`}>
+      {lines.map((line) => (
+        <p key={line.number}>
+          {line.speaker && <span className="font-bold">{line.speaker}: </span>}
+          {line.text}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+/** The sent paste, collapsed to three lines with the rest a tap away. */
+function SentTranscript({ sent }: { sent: string }) {
+  const [open, setOpen] = useState(false);
+  const { lines, more } = previewLines(sent);
+  const all = sent
+    .split("\n")
+    .map((line, i) => ({ number: i + 1, ...splitSpeaker(line) }))
+    .filter((l) => l.text.trim() !== "");
+  return (
+    <div className="border-l-2 border-border pl-3">
+      <TranscriptLines lines={lines} className="text-muted-foreground" />
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <TranscriptLines lines={all.slice(lines.length)} className="text-muted-foreground" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {more > 0 && !open && (
+        <button
+          type="button"
+          aria-expanded={false}
+          onClick={() => setOpen(true)}
+          className="min-h-11 text-base font-medium text-foreground underline decoration-brand decoration-2
+                     underline-offset-4"
+        >
+          {moreMessagesLabel(more)}
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface BlockProps {
+  sub: Submission;
+  latest: boolean;
+  livePlan: PlanState | null;
+  stage: string | null;
+  takes: Record<string, TakeState>;
+  taking: string | null;
+  takeStage: string | null;
+  ratings: Record<string, Rating>;
+  sizes: Record<string, number>;
+  onSize: (url: string, width: number, height: number) => void;
+  onFeedback: (meme: MemeItem, rating: Rating) => void;
+  onAnotherTake: (sub: Submission, row: Row) => void;
+}
+
+function SubmissionBlock(props: BlockProps) {
+  const { sub, latest, livePlan, stage } = props;
+  const shown: Submission = sub.pending ? { ...sub, plan: livePlan } : sub;
+  const rows = rowsFor(shown);
+  const heading = shown.plan ? planHeading(shown.plan) : null;
+
+  return (
+    <section
+      aria-label={latest ? "Latest lore" : "Earlier lore"}
+      className={`pt-8 mt-8 md:mt-10 ${latest ? "border-t-2 border-foreground" : "border-t border-border"}`}
+    >
+      {sub.sent && <SentTranscript sent={sub.sent} />}
+      {sub.images && sub.images.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {sub.images.map((src, i) => (
+            // eslint-disable-next-line @next/next/no-img-element -- local preview
+            <img key={src} src={src} alt={`Sent screenshot ${i + 1}`} className="w-12 h-12 object-cover border border-border" />
+          ))}
+        </div>
+      )}
+
+      <div aria-live="polite">
+        {heading && (
+          <h2 className="mt-5 font-display text-3xl md:text-4xl leading-tight text-foreground">{heading}</h2>
+        )}
+        {sub.pending && !shown.plan && stage && (
+          <p className="mt-5 flex items-center gap-2 text-base font-medium text-foreground">
+            <Spinner />
+            {stage}
+          </p>
+        )}
+      </div>
+
+      {sub.notice &&
+        (sub.notice.budget ? (
+          <div className="mt-5">
+            <BudgetNotice message={sub.notice.text} maxHeightClassName="max-h-[45vh]" />
+          </div>
+        ) : (
+          <div role="alert" className="mt-5 text-base text-foreground border-l-2 border-brand pl-3 max-w-prose">
+            {sub.notice.heading && <p className="font-semibold">{sub.notice.heading}</p>}
+            <p>{sub.notice.text}</p>
+          </div>
+        ))}
+
+      {sub.reply && <p className="mt-5 text-lg text-foreground max-w-prose">{sub.reply}</p>}
+
+      {sub.pending ? (
+        <ProgressRows {...props} rows={rows} />
+      ) : (
+        <ResultRows {...props} rows={rows} />
+      )}
+    </section>
+  );
+}
+
+function Spinner() {
+  return (
+    <>
+      <LoaderCircle
+        size={18}
+        strokeWidth={2.25}
+        aria-hidden="true"
+        className="shrink-0 animate-spin motion-reduce:hidden"
+      />
+      {/* Reduced motion: a static marker in the spinner's place. */}
+      <span aria-hidden="true" className="hidden motion-reduce:inline-block shrink-0 h-2.5 w-2.5 bg-foreground" />
+    </>
+  );
+}
+
+/** The lines a row came from, or its summary when it has none. */
+function Source({ row, size }: { row: Row; size: "row" | "pull" }) {
+  const pull = size === "pull";
+  return (
+    <div className={pull ? "border-l-2 border-brand pl-4" : ""}>
+      {row.takeOf !== null && (
+        <p className="text-sm font-bold uppercase tracking-wide text-muted-foreground mb-1">{ANOTHER_TAKE}</p>
+      )}
+      {row.quote ? (
+        <blockquote>
+          <TranscriptLines
+            lines={row.quote}
+            className={pull ? "text-lg md:text-xl font-medium gap-1" : "text-base"}
+          />
+        </blockquote>
+      ) : (
+        <p className={`text-foreground ${pull ? "text-lg md:text-xl" : "text-base"}`}>{row.summary}</p>
+      )}
+    </div>
+  );
+}
+
+function ProgressRows({ rows, stage, ratings, onFeedback, onSize }: BlockProps & { rows: Row[] }) {
+  return (
+    <ol className="mt-4 flex flex-col">
+      {rows.map((row) => (
+        <li
+          key={row.key}
+          aria-current={row.state === "active" ? "step" : undefined}
+          className="grid gap-3 md:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] md:gap-8 py-5 border-b border-border
+                     last:border-b-0"
+        >
+          <Source row={row} size="row" />
+          <div className="min-w-0">
+            {row.state === "done" && row.meme && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <MemeDisplay
+                  url={row.meme.url}
+                  alt={row.meme.situationText || row.summary}
+                  className="flex justify-start"
+                  maxHeightClassName="max-h-[45vh] md:max-h-80"
+                  onSize={(w, h) => onSize(row.meme!.url, w, h)}
+                />
+                <div className="mt-1">
+                  <MemeActions
+                    url={row.meme.url}
+                    memeId={row.meme.memeId}
+                    rating={ratings[row.meme.url]}
+                    onFeedback={(r) => onFeedback(row.meme!, r)}
+                  />
+                </div>
+              </motion.div>
+            )}
+            {row.state === "active" && (
+              <p className="flex items-center gap-2 text-base font-medium text-foreground">
+                <Spinner />
+                {stage ?? "Reading the message"}
+              </p>
+            )}
+            {row.state === "waiting" && <p className="text-base text-muted-foreground">{UP_NEXT}</p>}
+            {row.state === "failed" && <p className="text-base text-foreground">{FAILED_MOMENT}</p>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Rows grouped for the results page: two tall memes in a row share it. */
+function groupRows(rows: Row[], isTall: (row: Row) => boolean): Row[][] {
+  const groups: Row[][] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (isTall(rows[i]) && i + 1 < rows.length && isTall(rows[i + 1])) {
+      groups.push([rows[i], rows[i + 1]]);
+      i++;
+    } else {
+      groups.push([rows[i]]);
+    }
+  }
+  return groups;
+}
+
+function ResultRows(props: BlockProps & { rows: Row[] }) {
+  const { rows, takes, sizes } = props;
+  const memeOf = (row: Row) => takes[row.key]?.meme ?? row.meme;
+  const isTall = (row: Row) => {
+    const meme = memeOf(row);
+    return !!meme && (sizes[meme.url] ?? 0) > TALL_RATIO;
+  };
+  const groups = groupRows(rows, isTall);
+
+  return (
+    <ol className="mt-6 flex flex-col gap-10 md:gap-14">
+      {groups.map((group) =>
+        group.length === 2 ? (
+          // Two tall memes side by side, from 768px up, where each column
+          // is still at least 320px wide.
+          <li key={group[0].key} className="grid gap-10 md:grid-cols-2 md:gap-8">
+            {group.map((row) => (
+              <div key={row.key} className="flex flex-col gap-4 min-w-0">
+                <Source row={row} size="pull" />
+                <ResultMeme row={row} {...props} />
+              </div>
+            ))}
+          </li>
+        ) : (
+          // One meme: lines above it on a phone, a pull quote beside it
+          // from 1024px up, the meme taking the rest of the width.
+          <li
+            key={group[0].key}
+            className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] lg:gap-10 lg:items-start"
+          >
+            <Source row={group[0]} size="pull" />
+            <ResultMeme row={group[0]} {...props} />
+          </li>
+        ),
+      )}
+    </ol>
+  );
+}
+
+function ResultMeme({
+  row,
+  sub,
+  takes,
+  taking,
+  takeStage,
+  ratings,
+  onFeedback,
+  onSize,
+  onAnotherTake,
+}: BlockProps & { row: Row }) {
+  const reduceMotion = useReducedMotion();
+  const state = takes[row.key];
+  const meme = state?.meme ?? row.meme;
+
+  if (!meme) {
+    return <p className="text-base text-foreground">{FAILED_MOMENT}</p>;
+  }
+
+  const busy = taking === row.key;
+  const anotherTake = (
+    <button
+      type="button"
+      onClick={() => onAnotherTake(sub, row)}
+      disabled={taking !== null}
+      aria-busy={busy}
+      className={`${MEME_ACTION} disabled:opacity-40`}
+    >
+      <RefreshCw size={16} strokeWidth={2} aria-hidden="true" className={busy ? "motion-safe:animate-spin" : ""} />
+      {ANOTHER_TAKE}
+    </button>
+  );
+
+  return (
+    <div className="min-w-0">
+      {/* The new take fades in over the old one in the same frame, once
+          its image has loaded. */}
+      <div className="relative">
+        <AnimatePresence initial={false} mode="popLayout">
+          <motion.div
+            key={meme.url}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <MemeDisplay
+              url={meme.url}
+              alt={meme.situationText || row.summary}
+              className="flex justify-start"
+              maxHeightClassName="max-h-[70vh] lg:max-h-[min(80vh,860px)]"
+              onSize={(w, h) => onSize(meme.url, w, h)}
+              heading={<Source row={row} size="row" />}
+              footer={
+                <MemeActions
+                  url={meme.url}
+                  memeId={meme.memeId}
+                  rating={ratings[meme.url]}
+                  onFeedback={(r) => onFeedback(meme, r)}
+                />
+              }
+            />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <div className="mt-1">
+        <MemeActions
+          key={meme.url}
+          url={meme.url}
+          memeId={meme.memeId}
+          rating={ratings[meme.url]}
+          onFeedback={(r) => onFeedback(meme, r)}
+          lead={anotherTake}
+        />
+      </div>
+      <p role="status" className="text-base text-foreground">
+        {busy ? takeStage : state?.note ?? ""}
+      </p>
     </div>
   );
 }

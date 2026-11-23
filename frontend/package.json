@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-tokens.mjs",
+    "prebuild": "node scripts/check-tokens.mjs && npm test",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "check:tokens": "node scripts/check-tokens.mjs"
+    "check:tokens": "node scripts/check-tokens.mjs",
+    "test": "node --test src/lib/*.test.ts"
   },
   "dependencies": {
     "@next/third-parties": "^14.2.3",

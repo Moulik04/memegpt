@@ -533,6 +533,12 @@ Collapsed preview shows two or three real lines plus **more messages**. Credit e
 - Lore progress: **Found 4 moments worth memeing**. Only if Lore finishes short: **Found 4 moments worth memeing. 3 of 4 memes made**
 - Failed moment: **This one didn't come out.**
 - Example queued row: **Maya's 1% is up next**
+- Queued row in the built app, where the moment has no written name: its quoted source lines with **Up next** (its summary with **Up next** when it has no lines)
+- Collapsed transcript preview: two or three lines, then **7 more messages** (**1 more message** for one)
+- Paste longer than the backend's cut: **Only the first 20,000 characters are used.**
+- Lore progress when an explicit count adds takes: **Found 4 moments worth memeing, plus 1 more take**
+- Dragging files over Lore: **Drop screenshots here**
+- Another take when no different template is left (the current meme stays): **MemeGPT couldn't find a different template for this one.**
 - In-progress status names the actual template, for example **Captioning Low Battery**
 - Lore result action: **Another take**
 - Rating actions: **Thumbs up**, **Thumbs down**

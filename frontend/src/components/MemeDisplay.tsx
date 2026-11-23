@@ -15,6 +15,8 @@ interface Props {
   heading?: ReactNode;
   /** Shown under the image in the full-size view, such as the action row. */
   footer?: ReactNode;
+  /** Called with the image's natural size once it has loaded. */
+  onSize?: (width: number, height: number) => void;
 }
 
 type LoadState = "loading" | "ready" | "broken";
@@ -39,6 +41,7 @@ export function MemeDisplay({
   className = "mt-2 flex justify-center",
   heading,
   footer,
+  onSize,
 }: Props) {
   const base = url.startsWith("http") ? url : memeImageUrl(url);
   const [attempt, setAttempt] = useState(0);
@@ -52,11 +55,17 @@ export function MemeDisplay({
     // onLoad, so check once after mount too.
     const img = imgRef.current;
     if (img?.complete) {
-      if (img.naturalWidth > 0) loadedSources.add(src);
+      if (img.naturalWidth > 0) {
+        loadedSources.add(src);
+        onSize?.(img.naturalWidth, img.naturalHeight);
+      }
       setState(img.naturalWidth > 0 ? "ready" : "broken");
     } else {
       setState(loadedSources.has(src) ? "ready" : "loading");
     }
+    // onSize is a report, not an input: a new callback each render must
+    // not re-run this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
   return (
@@ -97,9 +106,10 @@ export function MemeDisplay({
               ref={imgRef}
               src={src}
               alt={alt}
-              onLoad={() => {
+              onLoad={(e) => {
                 loadedSources.add(src);
                 setState("ready");
+                onSize?.(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight);
               }}
               onError={() => setState("broken")}
               className={`block w-auto h-auto max-w-full ${maxHeightClassName} border border-meme-edge`}

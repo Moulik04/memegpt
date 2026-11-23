@@ -5,6 +5,7 @@ import type {
   ExplainResponse,
   FeedbackRequest,
   ImageChatOptions,
+  LoreTextOptions,
   MemeGenerationRequest,
   MemeGenerationResponse,
   NoticeReason,
@@ -171,7 +172,8 @@ export async function sendStream(
   onEvent: (event: SSEEvent) => void,
   memeCount?: number,
   rememberLore?: boolean,
-  conversationRowId?: string
+  conversationRowId?: string,
+  lore: LoreTextOptions = {}
 ): Promise<void> {
   const body: Record<string, unknown> = {
     message,
@@ -181,6 +183,9 @@ export async function sendStream(
   if (surface === "lore") {
     body.meme_count = memeCount;
     body.remember_lore = rememberLore ?? false;
+    // The plan then says which pasted lines each moment drew on.
+    body.include_source_lines = lore.includeSourceLines ?? true;
+    if (lore.excludeTemplates?.length) body.exclude_templates = lore.excludeTemplates;
   }
 
   const res = await fetch(`${BASE}/${surface}/`, {
@@ -217,6 +222,9 @@ export async function sendImageStream(
   if (surface === "lore") {
     if (options.memeCount) form.append("meme_count", String(options.memeCount));
     if (options.rememberLore) form.append("remember_lore", "true");
+    // Screenshots have no pasted lines, but the flag also sends the plan
+    // for a single moment, which Lore's progress rows are built from.
+    form.append("include_source_lines", "true");
   }
 
   let res: Response;

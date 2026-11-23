@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Download, Share, ThumbsDown, ThumbsUp } from "lucide-react";
 import { memeImageUrl } from "@/lib/api";
 
@@ -12,11 +12,13 @@ interface Props {
   onFeedback?: (rating: "up" | "down") => void;
   /** A rating already given, when the caller keeps track across remounts. */
   rating?: "up" | "down";
+  /** An action shown first, such as Lore's Another take. */
+  lead?: ReactNode;
 }
 
 type ShareNote = "copied" | "failed" | null;
 
-const ACTION =
+export const MEME_ACTION =
   "min-h-11 min-w-11 px-2 inline-flex items-center justify-center gap-1.5 text-base font-medium " +
   "text-muted-foreground hover:text-foreground transition-colors duration-[var(--duration-fast)] " +
   "disabled:cursor-not-allowed";
@@ -26,7 +28,7 @@ const ACTION =
  * takes a rating), Share and Download. Unboxed, small icons, 44px targets.
  * A rating is given once and stays marked.
  */
-export function MemeActions({ url, memeId, onFeedback, rating: given }: Props) {
+export function MemeActions({ url, memeId, onFeedback, rating: given, lead }: Props) {
   const [rating, setRating] = useState<"up" | "down" | null>(given ?? null);
   const [note, setNote] = useState<ShareNote>(null);
   const [downloading, setDownloading] = useState(false);
@@ -108,6 +110,9 @@ export function MemeActions({ url, memeId, onFeedback, rating: given }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-x-1 -ml-2">
+      {/* On a phone the lead action takes its own line, so the rest of
+          the row never wraps one action onto a line by itself. */}
+      {lead && <div className="basis-full sm:basis-auto flex">{lead}</div>}
       {onFeedback && (
         <>
           {(["up", "down"] as const).map((value) => {
@@ -121,7 +126,7 @@ export function MemeActions({ url, memeId, onFeedback, rating: given }: Props) {
                 aria-label={value === "up" ? "Thumbs up" : "Thumbs down"}
                 aria-pressed={chosen}
                 disabled={rating !== null && !chosen}
-                className={`${ACTION} ${chosen ? "text-foreground" : ""} ${
+                className={`${MEME_ACTION} ${chosen ? "text-foreground" : ""} ${
                   rating !== null && !chosen ? "opacity-40" : ""
                 }`}
               >
@@ -131,11 +136,11 @@ export function MemeActions({ url, memeId, onFeedback, rating: given }: Props) {
           })}
         </>
       )}
-      <button type="button" onClick={handleShare} className={ACTION}>
+      <button type="button" onClick={handleShare} className={MEME_ACTION}>
         <Share size={16} strokeWidth={2} aria-hidden="true" />
         Share
       </button>
-      <button type="button" onClick={handleDownload} aria-busy={downloading} className={ACTION}>
+      <button type="button" onClick={handleDownload} aria-busy={downloading} className={MEME_ACTION}>
         <Download size={16} strokeWidth={2} aria-hidden="true" />
         Download
       </button>
