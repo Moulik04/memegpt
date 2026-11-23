@@ -1,3 +1,4 @@
+import logging
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -23,6 +24,7 @@ from schemas import MemeGenerationRequest, MemeGenerationResponse
 from visitor import identify, require_vouched
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _GENERIC_CAPTION_REFUSAL = "That caption couldn't be used — try different text."
 
@@ -100,7 +102,9 @@ async def _generate(request: Request, body: MemeGenerationRequest) -> MemeGenera
         )
         telemetry.record_meme_generation("make", time.monotonic() - start)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # The exception's text names a server path: log it, don't send it.
+        logger.exception("make failed rendering template=%s", body.template_id)
+        raise HTTPException(status_code=404, detail="That template isn't available.") from exc
 
     telemetry.record_template_selection(body.template_id)
     anon_user_id = get_anon_user_id(request)

@@ -35,6 +35,9 @@ SSE event stream:
                        — plus "take_of": <index> on a meme that is another take
   {"type": "batch_done", "total": 1, "succeeded": 1}
   {"type": "error",    "index": 0, "total": 1, "message": "..."}
+                       — a take with no template left that it may use also carries
+                       "code": "no_fresh_template". A failure the visitor can't act
+                       on carries a fixed message, never the exception's own text.
                        — an upload refusal also carries "code": "image_refused" (the safety
                        check), one of _UPLOAD_REJECTION_CODES' values, or "upload_failed",
                        so a client can word it itself. The code never says why the safety
@@ -59,7 +62,13 @@ from config import get_settings
 from identity import get_anon_user_id
 from image_processing.compositor import compose_meme, compose_meme_on_image
 from memory.conversation_store import add_turn, get_recent_templates
-from nlp.intent_router import is_busy_fallback, is_daily_budget_fallback, is_fallback, parse_intent
+from nlp.intent_router import (
+    _FALLBACK_TEMPLATES,
+    is_busy_fallback,
+    is_daily_budget_fallback,
+    is_fallback,
+    parse_intent,
+)
 from nlp.lexicon import schedule_lexicon_extraction
 from nlp.segmentation import resolve_contexts
 from nlp.vision import (
@@ -88,7 +97,7 @@ from uploads.safe_ingest import (
     UploadRejected,
     safe_ingest,
 )
-from vector_db.chroma_client import log_usage
+from vector_db.chroma_client import list_template_ids, log_usage
 from visitor import Visitor, identify, require_vouched
 
 logger = logging.getLogger(__name__)
@@ -142,6 +151,16 @@ _UPLOAD_REJECTION_CODES = {
 }
 
 
+def _valid_exclusions(ids: list[str] | None) -> list[str] | None:
+    """The templates a request may rule out: known ids only, each once, the
+    first MAX_EXCLUDED_TEMPLATES of them. None when nothing is left."""
+    if not ids:
+        return None
+    known = set(list_template_ids() or _FALLBACK_TEMPLATES)
+    kept = [t for t in dict.fromkeys(ids) if t in known][:MAX_EXCLUDED_TEMPLATES]
+    return kept or None
+
+
 def _upload_rejection_message(reason: str) -> str:
     """Maps a non-safety UploadRejected.reason to specific, friendly text.
 
@@ -183,6 +202,11 @@ def _sse(event: dict) -> str:
 
 _TITLE_MAX_CHARS = 48
 
+# What a visitor sees when a turn fails for a reason that is ours to fix.
+# The exception itself goes to the log: its text can name server paths.
+_TURN_FAILED = "Something broke. Not you. Us. Try again in a moment."
+# The most templates one request may rule out (LoreRequest.exclude_templates).
+MAX_EXCLUDED_TEMPLATES = 10
 _NO_FRESH_TEMPLATE_FOR_TAKE = (
     "MemeGPT couldn't find a different template for another take, so that one was skipped."
 )
@@ -251,8 +275,9 @@ async def _stream_chat_turn(
     start = time.monotonic()
     try:
         intent = await _resolve_intent_for_turn(user_message, conversation_id, ctx, exclude_templates)
-    except Exception as exc:
-        yield {"type": "error", "index": index, "total": total, "message": str(exc)}
+    except Exception:
+        logger.exception("turn failed picking a template surface=%s", surface)
+        yield {"type": "error", "index": index, "total": total, "message": _TURN_FAILED}
         return
 
     if is_daily_budget_fallback(intent):
@@ -267,7 +292,13 @@ async def _stream_chat_turn(
         return
 
     if exclude_templates and intent.template_id in exclude_templates:
-        yield {"type": "error", "index": index, "total": total, "message": _NO_FRESH_TEMPLATE_FOR_TAKE}
+        yield {
+            "type": "error",
+            "index": index,
+            "total": total,
+            "code": "no_fresh_template",
+            "message": _NO_FRESH_TEMPLATE_FOR_TAKE,
+        }
         return
 
     friendly_name = intent.template_id.replace("_", " ")
@@ -284,8 +315,9 @@ async def _stream_chat_turn(
         response = await _render_and_record_turn(
             intent, user_message, conversation_id, ctx, surface, conversation_row_id
         )
-    except FileNotFoundError as exc:
-        yield {"type": "error", "index": index, "total": total, "message": f"Template not found: {exc}"}
+    except FileNotFoundError:
+        logger.exception("turn failed rendering template=%s surface=%s", intent.template_id, surface)
+        yield {"type": "error", "index": index, "total": total, "message": _TURN_FAILED}
         return
     telemetry.record_meme_generation(surface, time.monotonic() - start)
 
@@ -399,6 +431,7 @@ async def _stream_batch(
     conversation_row_id: str | None = None,
     reservation: daily_quota.Reservation | None = None,
     include_source_lines: bool = False,
+    exclude_templates: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Runs each context through _stream_chat_turn IN SEQUENCE (not
     parallel — this lets each context's avoid_templates see the previous
@@ -424,7 +457,12 @@ async def _stream_batch(
 
     include_source_lines (opt-in, Lore only): the plan is sent even for a
     single moment and carries each context's source_lines. Without it the
-    plan is exactly what it was before source lines existed."""
+    plan is exactly what it was before source lines existed.
+
+    exclude_templates (opt-in, Lore only): templates no meme in this batch
+    may use, already checked by _valid_exclusions. Lore sends them when the
+    visitor asks for another take on a moment it already showed. They are
+    ruled out the same way a take's own moment templates are."""
     total = len(contexts)
     if total > 1 or (include_source_lines and total == 1):
         # "Plan theater" for a single meme is pointless — only worth
@@ -453,11 +491,14 @@ async def _stream_batch(
             if out_of_budget:
                 break
             moment = i if context.take_of is None else context.take_of
+            excluded = list(exclude_templates or [])
+            if context.take_of is not None:
+                excluded += [t for t in templates_by_moment.get(moment, []) if t not in excluded]
             async for event in _stream_chat_turn(
                 context.situation, conversation_id, ctx, surface, index=i, total=total,
                 conversation_row_id=conversation_row_id,
                 take_of=context.take_of,
-                exclude_templates=list(templates_by_moment.get(moment, [])) if context.take_of is not None else None,
+                exclude_templates=excluded or None,
             ):
                 if event.get("type") == "done":
                     succeeded += 1
@@ -507,8 +548,9 @@ async def _stream_canvas_turn(
 
     try:
         saved = await compose_meme_on_image(image, texts)
-    except Exception as exc:
-        yield {"type": "error", "index": index, "total": total, "message": str(exc)}
+    except Exception:
+        logger.exception("canvas turn failed rendering surface=%s", surface)
+        yield {"type": "error", "index": index, "total": total, "message": _TURN_FAILED}
         return
 
     await db.insert_meme(
@@ -676,6 +718,7 @@ async def handle_text_stream(
     surface: str,
     conversation_row_id_in: str | None = None,
     include_source_lines: bool = False,
+    exclude_templates: list[str] | None = None,
 ) -> StreamingResponse:
     """Shared text-turn core for both /chat/ and /lore/ (Growth Phase D).
     Streams SSE events as one or more memes are generated — resolve_contexts
@@ -700,6 +743,7 @@ async def handle_text_stream(
         _stream_batch(
             contexts, conversation_id, ctx, surface, conversation_row_id, reservation,
             include_source_lines=include_source_lines,
+            exclude_templates=_valid_exclusions(exclude_templates),
         )
     )
 
