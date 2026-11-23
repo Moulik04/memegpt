@@ -1,279 +1,282 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { motion } from "motion/react";
-import { createArcCard, getArc, memeImageUrl } from "@/lib/api";
-import { MemeCard } from "./MemeCard";
-import { Gauge } from "./charts/gauge";
-import type { ArcStats } from "@/types";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { ArrowLeft, ArrowRight, X } from "lucide-react";
+import { ApiError, createArcCard, getArc, memeImageUrl } from "@/lib/api";
+import { arcSeasonLine, daysLabel, ladderPosition, timesLabel } from "@/lib/arcFormat";
+import { GENERAL_FAILURE, type Notice } from "@/lib/notices";
+import { MemeDisplay } from "./MemeDisplay";
+import { MEME_ACTION, MemeActions } from "./MemeActions";
+import type { ArcCardResponse, ArcStats } from "@/types";
 
-// Arc — Story-style tap-through reveal (same pattern Spotify Wrapped
-// popularized for exactly this use case). Stripped down to plain,
-// token-based styling for now (no glow/gradient) — a dedicated visual
-// pass for Arc's reveal is a separate, later effort, not part of this
-// phase's monochrome-foundation work.
+// Arc: a tap-through story staged like a sports back page. Five frames,
+// then the finale and its share card. Nothing advances on a timer.
 
-const STEP_DURATION_MS = 3800;
+const MIN_MEMES = 5;
 
-// Mirrors backend/arc/copy.py's _TIER_THRESHOLDS — the aura value just
-// below "aura farming god" (the uncapped top tier). Used only to give the
-// finale gauge a meaningful 100% mark ("how close to god-tier"), not a
-// real cap on the aura score itself.
-const AURA_GOD_TIER_THRESHOLD = 20_000;
+/** Copy deck, section 7.7. */
+const LOADING = "Calculating your Arc…";
+const EMPTY_HEADING = "Your arc hasn't started yet.";
+const EMPTY_TEXT = "Go be unwell somewhere. Five memes minimum before MemeGPT has anything to judge you for.";
+const START_IN_CHAT = "Start in Chat";
+const SHARE = "Share your Arc";
+const RENDERING = "Rendering…";
+const BACK_TO_ARC = "Back to your Arc";
 
-type Step =
-  // `numeric` is set only for genuinely numeric stats (total memes, streak
-  // days) — it drives OdometerNumber's digit-roll. Steps whose `big` is
-  // free-form text (a time label, a template name, "3 / 5") leave it unset
-  // and just render `big` as plain text, same as before.
-  | { kind: "stat"; kicker: string; big: string; numeric?: number; small?: boolean; cap: React.ReactNode }
-  | { kind: "image"; kicker: string; imageUrl: string; name: string; cap: React.ReactNode }
-  | { kind: "finale" };
+/** The small uppercase line used for labels across the redesign. */
+const LABEL = "text-sm font-bold uppercase tracking-wide";
+// Without its display, so a caller can hide it at some widths.
+const LINK_LOOK =
+  "items-center gap-1.5 min-h-11 text-base font-medium text-foreground underline decoration-brand " +
+  "decoration-2 underline-offset-4 hover:decoration-[3px]";
+const TEXT_LINK = `inline-flex ${LINK_LOOK}`;
 
-// Odometer-style digit roll — each digit is its own sliding column (10
-// stacked 0-9 rows, translated by -{digit}em), non-digit characters
-// (commas, slashes) render as static text. em-based offset instead of a
-// measured pixel height, so it scales correctly across the different
-// font sizes stat slides use without a ResizeObserver.
-function OdometerDigit({ char }: { char: string }) {
-  if (!/[0-9]/.test(char)) {
-    return <span>{char}</span>;
-  }
-  const n = Number(char);
+interface Frame {
+  label: string;
+  body: React.ReactNode;
+}
+
+/** A roast after its fixed lead-in, the punchline in red. */
+function Roast({ lead, line }: { lead?: string; line?: string | null }) {
+  if (!lead && !line) return null;
   return (
-    <span className="inline-block h-[1em] overflow-hidden align-top">
-      <motion.span
-        className="flex flex-col"
-        initial={{ y: 0 }}
-        animate={{ y: `-${n}em` }}
-        transition={{ type: "spring", stiffness: 180, damping: 22 }}
-      >
-        {Array.from({ length: 10 }, (_, i) => (
-          <span key={i} className="h-[1em] leading-none">
-            {i}
-          </span>
-        ))}
-      </motion.span>
-    </span>
+    <p className="text-lg md:text-xl leading-snug text-foreground max-w-[32ch]">
+      {lead}
+      {lead && line ? " " : ""}
+      {line && <span className="font-semibold text-brand">{line}</span>}
+    </p>
   );
 }
 
-function OdometerNumber({ value }: { value: number }) {
+/** A display number or word, Anton, as big as the frame allows. */
+function Display({ children, size = "lg" }: { children: React.ReactNode; size?: "lg" | "md" }) {
   return (
-    <span className="inline-flex tabular-nums">
-      {value
-        .toLocaleString()
-        .split("")
-        .map((char, i) => (
-          <OdometerDigit key={i} char={char} />
-        ))}
-    </span>
+    <p
+      className={`font-display leading-[0.9] text-foreground break-words ${
+        size === "lg" ? "text-[6rem] md:text-[10rem]" : "text-5xl md:text-7xl"
+      }`}
+    >
+      {children}
+    </p>
   );
 }
 
-function formatShortDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-function formatSpan(startIso: string, endIso: string): string {
-  const start = new Date(`${startIso}T00:00:00`);
-  const end = new Date(`${endIso}T00:00:00`);
-  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
-    return start.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-  }
-  const startStr = start.toLocaleDateString("en-US", { month: "short" });
-  const endStr = end.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-  return `${startStr}–${endStr}`;
-}
-
-function buildSteps(stats: ArcStats): Step[] {
-  const steps: Step[] = [
+function buildFrames(stats: ArcStats): Frame[] {
+  const frames: Frame[] = [
     {
-      kind: "stat",
-      kicker: "01 / VOLUME",
-      big: String(stats.total_memes),
-      numeric: stats.total_memes,
-      cap: <>memes generated this arc. <span className="text-brand">no thoughts, just memes.</span></>,
+      label: "01 Volume",
+      body: (
+        <>
+          <p className="font-display text-2xl md:text-4xl leading-tight text-foreground">
+            {arcSeasonLine(stats.period_label, stats.date_span_start, stats.date_span_end)}
+          </p>
+          <Display>{stats.total_memes.toLocaleString("en-US")}</Display>
+          <Roast lead="memes generated this arc." line={stats.volume_roast} />
+        </>
+      ),
     },
   ];
 
   const top = stats.top_templates[0];
   if (top) {
-    const cap = <>your most-summoned template. <span className="text-brand">{top.roast}</span></>;
-    steps.push(
-      top.image_url
-        ? { kind: "image", kicker: "02 / SIGNATURE", imageUrl: top.image_url, name: top.display_name, cap }
-        : { kind: "stat", kicker: "02 / SIGNATURE", big: top.display_name, small: true, cap },
-    );
-  }
-
-  if (stats.busiest_time_label) {
-    steps.push({
-      kind: "stat",
-      kicker: "03 / WITCHING HOUR",
-      big: stats.busiest_time_label,
-      small: true,
-      cap: (
+    frames.push({
+      label: "02 Signature",
+      body: (
         <>
-          busiest moment{stats.busiest_date ? `, ${formatShortDate(stats.busiest_date)}` : ""}.{" "}
-          {stats.hour_roast && <span className="text-brand">{stats.hour_roast}</span>}
+          {top.image_url && (
+            <figure className="w-fit max-w-full bg-meme-mat border border-meme-edge p-2 md:p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- true ratio, any origin */}
+              <img
+                src={memeImageUrl(top.image_url)}
+                alt={top.display_name}
+                className="block w-auto h-auto max-w-full max-h-[36vh] md:max-h-[32vh] border border-meme-edge"
+              />
+            </figure>
+          )}
+          <div>
+            <p className="font-display text-4xl md:text-5xl leading-none text-foreground break-words">
+              {top.display_name}
+            </p>
+            <p className="mt-2 text-xl font-bold text-foreground">{timesLabel(top.count)}</p>
+          </div>
+          <Roast lead="your most-summoned template." line={top.roast} />
         </>
       ),
     });
   }
 
-  steps.push({
-    kind: "stat",
-    kicker: "04 / THE SPLIT",
-    big: `${stats.chat_count} / ${stats.lore_count} / ${stats.make_count}`,
-    small: true,
-    cap: <>chat / lore / make. {stats.split_roast && <span className="text-brand">{stats.split_roast}</span>}</>,
-  });
+  const hour = stats.busiest_hour_label ?? stats.busiest_time_label;
+  if (hour) {
+    frames.push({
+      label: "03 Witching hour",
+      body: (
+        <>
+          <Display>{hour}</Display>
+          <Roast line={stats.hour_roast} />
+        </>
+      ),
+    });
+  }
 
-  steps.push({
-    kind: "stat",
-    kicker: "05 / STREAK",
-    big: String(stats.longest_streak_days),
-    numeric: stats.longest_streak_days,
-    cap: (
+  frames.push({
+    label: "04 The split",
+    body: (
       <>
-        consecutive days.{" "}
-        <span className="text-brand">{stats.longest_streak_days >= 7 ? "no days off." : "still an arc."}</span>
+        {/* Equal widths, so every label stays readable whatever the counts. */}
+        <dl className="grid grid-cols-3 gap-2 md:gap-3 w-full max-w-2xl">
+          {(
+            [
+              ["Chat", stats.chat_count],
+              ["Lore", stats.lore_count],
+              ["Make", stats.make_count],
+            ] as const
+          ).map(([name, count]) => (
+            <div key={name} className="flex flex-col-reverse justify-between gap-6 bg-brand px-3 py-4 md:px-5 md:py-6">
+              <dt className={`${LABEL} text-primary-foreground`}>{name}</dt>
+              <dd className="font-display text-5xl md:text-7xl leading-none text-primary-foreground">
+                {count.toLocaleString("en-US")}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <Roast lead="chat / lore / make." line={stats.split_roast} />
       </>
     ),
   });
 
-  steps.push({ kind: "finale" });
-  return steps;
+  frames.push({
+    label: "05 Streak",
+    body: (
+      <>
+        <Display>{daysLabel(stats.longest_streak_days)}</Display>
+        <Roast lead="consecutive days." line={stats.streak_roast} />
+      </>
+    ),
+  });
+
+  return frames;
 }
 
-function ArcStatSlide({ step }: { step: Extract<Step, { kind: "stat" }> }) {
+function Finale({
+  stats,
+  onShare,
+  rendering,
+  notice,
+}: {
+  stats: ArcStats;
+  onShare: () => void;
+  rendering: boolean;
+  notice: Notice | null;
+}) {
+  const tiers = stats.tiers ?? [];
+  const { index, next } = ladderPosition(tiers, stats.tier, stats.aura);
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
-      <span className="font-mono text-[10px] tracking-widest uppercase text-muted-foreground mb-3">{step.kicker}</span>
-      <span
-        className={`font-black tracking-tight leading-none text-paper ${
-          step.small ? "text-4xl" : "text-6xl"
-        }`}
-      >
-        {step.numeric !== undefined ? <OdometerNumber value={step.numeric} /> : step.big}
-      </span>
-      <p className="mt-4 font-mono text-sm text-muted-foreground leading-relaxed max-w-[26ch]">{step.cap}</p>
-    </div>
-  );
-}
-
-function ArcImageSlide({ step }: { step: Extract<Step, { kind: "image" }> }) {
-  return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
-      <span className="font-mono text-[10px] tracking-widest uppercase text-muted-foreground mb-3">{step.kicker}</span>
-      <Image
-        src={memeImageUrl(step.imageUrl)}
-        alt={step.name}
-        width={150}
-        height={150}
-        unoptimized
-        className="w-[150px] h-[150px] object-cover rounded-2xl border-2 border-border"
-      />
-      <p className="mt-3 font-extrabold text-lg tracking-tight">{step.name}</p>
-      <p className="mt-2 font-mono text-sm text-muted-foreground leading-relaxed max-w-[26ch]">{step.cap}</p>
-    </div>
-  );
-}
-
-function ArcFinaleSlide({ stats }: { stats: ArcStats }) {
-  const top = stats.top_templates[0];
-  return (
-    <div className="absolute inset-0 px-7 pt-14 pb-7 flex flex-col items-center text-center">
-      <div className="absolute top-6 left-6 font-black text-xs tracking-wide">MEMEGPT ARC.</div>
-      {stats.tier && (
-        <div className="absolute top-5 right-6 font-mono text-[9px] bg-ink-2 border border-border rounded-full px-2.5 py-1 whitespace-nowrap">
-          {stats.tier.toUpperCase()}
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:gap-12 lg:items-start">
+      <div className="flex flex-col gap-4 min-w-0">
+        <div className="w-fit max-w-full bg-brand px-5 py-4 md:px-7 md:py-5 text-primary-foreground">
+          <p className="font-display text-6xl md:text-8xl leading-none break-words">
+            +{stats.aura.toLocaleString("en-US")}
+          </p>
+          <p className="mt-2 font-display text-2xl md:text-3xl leading-none">AURA FARMED</p>
         </div>
-      )}
-      {stats.period_label && (
-        <div className="absolute top-12 left-6 right-6 text-[9.5px] tracking-widest uppercase text-muted-foreground text-left">
-          {stats.period_label.toUpperCase()}
-          {stats.date_span_start && stats.date_span_end && ` · ${formatSpan(stats.date_span_start, stats.date_span_end).toUpperCase()}`}
-        </div>
-      )}
-
-      <div className="mt-6 w-full max-w-[230px]">
-        <Gauge
-          value={Math.min(100, (stats.aura / AURA_GOD_TIER_THRESHOLD) * 100)}
-          centerValue={stats.aura}
-          prefix="+"
-          defaultLabel="AURA FARMED"
-          totalNotches={36}
-          activeFill="var(--accent-color)"
-          inactiveFill="var(--line)"
-          inactiveFillOpacity={0.6}
-          width={230}
-          height={165}
-        />
-      </div>
-
-      <div className="mt-auto w-full font-mono text-[9.5px] text-muted-foreground leading-relaxed border-t border-border pt-2.5 text-left space-y-0.5">
-        <div>&rsaquo; {stats.total_memes} memes generated</div>
-        {top && (
-          <div>
-            &rsaquo; top: {top.display_name} <span className="text-brand">{top.roast}</span>
-          </div>
+        {stats.tier && (
+          <p className="w-fit max-w-full bg-foreground px-4 py-2 text-xl md:text-2xl font-bold text-background">
+            {stats.tier}
+          </p>
         )}
-        {stats.busiest_time_label && (
-          <div>
-            &rsaquo; busiest: {stats.busiest_time_label}{" "}
-            {stats.hour_roast && <span className="text-brand">{stats.hour_roast}</span>}
-          </div>
+        {stats.verdict && (
+          <p className="mt-2 text-3xl md:text-5xl font-extrabold leading-tight text-foreground max-w-[20ch]">
+            {stats.verdict}
+          </p>
         )}
-        <div>&rsaquo; streak: {stats.longest_streak_days} days</div>
+        <div className="mt-2 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              onClick={onShare}
+              disabled={rendering}
+              aria-busy={rendering}
+              className="w-full sm:w-auto min-h-12 px-8 rounded-sm bg-primary text-primary-foreground text-base
+                         font-semibold hover:bg-primary/85 disabled:opacity-40
+                         transition-colors duration-[var(--duration-fast)]"
+            >
+              {SHARE}
+            </button>
+            <p role="status" className="text-base text-foreground">
+              {rendering ? RENDERING : ""}
+            </p>
+          </div>
+          {notice && <NoticeBlock notice={notice} />}
+        </div>
       </div>
 
-      {stats.verdict && (
-        <p className="mt-3 text-[10px] font-extrabold uppercase text-foreground leading-snug">{stats.verdict}</p>
+      {tiers.length > 0 && (
+        <section aria-labelledby="arc-tiers" className="min-w-0">
+          <h3 id="arc-tiers" className={`${LABEL} border-t-2 border-foreground pt-2 text-foreground`}>
+            Tiers
+          </h3>
+          <ol className="mt-2">
+            {tiers.map((t, i) => {
+              const current = i === index;
+              return (
+                <li
+                  key={t.name}
+                  aria-current={current ? "true" : undefined}
+                  className={`flex items-baseline justify-between gap-4 border-b border-border py-2.5 text-base ${
+                    current ? "border-l-4 border-l-brand pl-3 font-bold text-foreground" : "text-muted-foreground"
+                  }`}
+                >
+                  <span className="min-w-0">{t.name}</span>
+                  <span className="shrink-0 tabular-nums">{t.min_aura.toLocaleString("en-US")}</span>
+                </li>
+              );
+            })}
+          </ol>
+          {next && (
+            <p className="mt-3 text-base font-semibold text-brand">
+              {next.distance.toLocaleString("en-US")} to {next.name}
+            </p>
+          )}
+        </section>
       )}
     </div>
   );
 }
 
-function ArcEmptyState({ totalMemes }: { totalMemes: number }) {
-  const pct = Math.min(100, Math.round((totalMemes / 5) * 100));
+function NoticeBlock({ notice, onRetry }: { notice: Notice; onRetry?: () => void }) {
   return (
-    <div className="flex-1 flex items-center justify-center px-6">
-      <div className="arrive-settle relative max-w-sm w-full rounded-[26px] border border-border bg-card px-8 py-14 text-center overflow-hidden">
-        <div className="relative text-4xl mb-4">🔮</div>
-        <h2 className="relative text-xl font-black tracking-tight mb-2">Your arc hasn&apos;t started yet.</h2>
-        <p className="relative text-sm text-muted-foreground leading-relaxed mb-6 max-w-[40ch] mx-auto">
-          Go be unwell somewhere. Five memes minimum before MemeGPT has anything to judge you for.
-        </p>
-        <div className="relative max-w-[220px] mx-auto mb-6">
-          <div className="h-1.5 rounded-full bg-ink-2 overflow-hidden">
-            <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="mt-2 font-mono text-[11px] text-muted-foreground">{totalMemes} / 5 memes toward your first Arc</p>
-        </div>
-        <Link
-          href="/make"
-          className="relative inline-block bg-primary hover:bg-primary/85 transition-colors text-primary-foreground
-                     font-semibold text-sm px-6 py-3 rounded-full"
-        >
-          Go make some memes
-        </Link>
-      </div>
+    <div role="alert" className="border-l-2 border-brand pl-3 max-w-prose">
+      {notice.heading && <p className="text-base font-semibold text-foreground">{notice.heading}</p>}
+      <p className="text-base text-foreground">{notice.text}</p>
+      {onRetry && (
+        <button type="button" onClick={onRetry} className={TEXT_LINK}>
+          Try again
+        </button>
+      )}
     </div>
   );
 }
 
-function ArcShareScreen({ url }: { url: string }) {
+/** A failed card render: a notice the backend named (busy) keeps its
+ * wording, anything else is the deck's general failure. */
+function cardNotice(err: unknown): Notice {
+  if (err instanceof ApiError && err.reason) return { text: err.message };
+  return GENERAL_FAILURE;
+}
+
+function EmptyState({ totalMemes }: { totalMemes: number }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 gap-6">
-      <div className="arrive-settle max-w-sm w-full">
-        <MemeCard url={url} alt="My MemeGPT Arc" large />
-      </div>
-      <Link href="/make" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-        Make another meme
+    <div className="flex flex-col gap-4 max-w-2xl">
+      <h2 className="font-display text-4xl md:text-6xl leading-none text-foreground">{EMPTY_HEADING}</h2>
+      <p className="text-lg text-foreground max-w-prose">{EMPTY_TEXT}</p>
+      <p className="text-sm text-muted-foreground">
+        {Math.min(totalMemes, MIN_MEMES)} of {MIN_MEMES} memes so far.
+      </p>
+      <Link href="/chat" className={`${TEXT_LINK} self-start`}>
+        {START_IN_CHAT}
+        <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
       </Link>
     </div>
   );
@@ -281,152 +284,215 @@ function ArcShareScreen({ url }: { url: string }) {
 
 export function ArcView() {
   const [stats, setStats] = useState<ArcStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [cardResult, setCardResult] = useState<{ meme_id: string; url: string } | null>(null);
-  const [creatingCard, setCreatingCard] = useState(false);
-  const [cardError, setCardError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  // 0..frames.length-1 are the frames; frames.length is the finale.
+  const [position, setPosition] = useState(0);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [card, setCard] = useState<ArcCardResponse | null>(null);
+  const [rendering, setRendering] = useState(false);
+  const [cardNoticeState, setCardNotice] = useState<Notice | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const reduceMotion = useReducedMotion();
 
-  // Resolved once per mount — Intl is a browser API, safe here since this
-  // whole component is "use client" and never runs during SSR.
+  // Resolved once per mount; this component never renders on the server.
   const [tz] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
 
   useEffect(() => {
     let cancelled = false;
+    setLoadFailed(false);
     getArc(tz)
       .then((data) => {
         if (!cancelled) setStats(data);
       })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Couldn't load your Arc.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [tz]);
+  }, [tz, attempt]);
 
-  const steps = useMemo(() => (stats && stats.has_enough ? buildSteps(stats) : []), [stats]);
-  const isFinale = steps.length > 0 && stepIndex === steps.length - 1;
+  const frames = useMemo(() => (stats?.has_enough ? buildFrames(stats) : []), [stats]);
+  const atFinale = frames.length > 0 && position === frames.length;
 
-  // Auto-advance, story-style — stops at the finale (that's the resting
-  // point where the user decides to share, not just another beat to
-  // scroll past) and pauses entirely once the share screen is showing.
+  const go = useCallback(
+    (step: 1 | -1) => {
+      setDirection(step);
+      setPosition((p) => Math.min(frames.length, Math.max(0, p + step)));
+    },
+    [frames.length],
+  );
+
+  // Arrow keys step through the story, except while typing or on the card.
   useEffect(() => {
-    if (steps.length === 0 || isFinale || cardResult) return;
-    setProgress(0);
-    const start = Date.now();
-    const id = setInterval(() => {
-      const p = Math.min(1, (Date.now() - start) / STEP_DURATION_MS);
-      setProgress(p);
-      if (p >= 1) {
-        clearInterval(id);
-        setStepIndex((i) => Math.min(steps.length - 1, i + 1));
-      }
-    }, 60);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepIndex, steps.length, cardResult]);
+    if (frames.length === 0 || card) return;
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable=true]")) return;
+      if (e.key === "ArrowRight") go(1);
+      if (e.key === "ArrowLeft") go(-1);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [frames.length, card, go]);
 
-  async function handleShare() {
-    setCreatingCard(true);
-    setCardError(null);
+  // The card and coming back from it move focus to what's now on screen.
+  const cardShown = card !== null;
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    headingRef.current?.focus();
+  }, [cardShown]);
+
+  async function share() {
+    if (rendering) return;
+    setRendering(true);
+    setCardNotice(null);
     try {
-      const result = await createArcCard(tz);
-      setCardResult(result);
+      setCard(await createArcCard(tz));
     } catch (err) {
-      setCardError(err instanceof Error ? err.message : "Couldn't create your Arc card — try again.");
+      setCardNotice(cardNotice(err));
     } finally {
-      setCreatingCard(false);
+      setRendering(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-sm text-muted-foreground">Calculating your arc…</p>
-      </div>
+  let content: React.ReactNode;
+  if (loadFailed) {
+    content = <NoticeBlock notice={GENERAL_FAILURE} onRetry={() => setAttempt((n) => n + 1)} />;
+  } else if (!stats) {
+    content = (
+      <p role="status" className="text-base text-muted-foreground">
+        {LOADING}
+      </p>
     );
-  }
-
-  if (error || !stats) {
-    return (
-      <div className="flex-1 flex items-center justify-center px-6">
-        <p className="text-sm text-destructive">{error ?? "Couldn't load your Arc — try again."}</p>
-      </div>
-    );
-  }
-
-  if (!stats.has_enough) {
-    return <ArcEmptyState totalMemes={stats.total_memes} />;
-  }
-
-  if (cardResult) {
-    return <ArcShareScreen url={cardResult.url} />;
-  }
-
-  const step = steps[stepIndex];
-
-  return (
-    <div className="flex-1 overflow-y-auto px-4 py-6 chat-scroll flex flex-col items-center">
-      <div className="arrive-settle relative w-full max-w-[380px] aspect-[3.6/5] rounded-[28px] overflow-hidden border border-border bg-card select-none">
-        <div className="absolute top-3 left-3 right-3 z-20 flex gap-1">
-          {steps.map((_, i) => (
-            <div key={i} className="flex-1 h-[3px] rounded-full bg-ink-2 overflow-hidden">
-              <div
-                className="h-full bg-paper rounded-full"
-                style={{ width: i < stepIndex ? "100%" : i === stepIndex ? `${progress * 100}%` : "0%" }}
-              />
-            </div>
-          ))}
+  } else if (!stats.has_enough) {
+    content = <EmptyState totalMemes={stats.total_memes} />;
+  } else if (card) {
+    content = (
+      <div className="flex flex-col gap-4">
+        <h2 ref={headingRef} tabIndex={-1} className="sr-only">
+          {SHARE}
+        </h2>
+        <div className="w-full lg:w-fit max-w-full">
+          <MemeDisplay
+            url={card.url}
+            alt="Your MemeGPT Arc"
+            className="flex justify-start"
+            maxHeightClassName="max-h-[60vh] lg:max-h-[min(72vh,760px)]"
+          />
+          <div className="mt-1">
+            <MemeActions
+              url={card.url}
+              memeId={card.meme_id}
+              leadInline
+              lead={
+                <button type="button" onClick={() => setCard(null)} className={MEME_ACTION}>
+                  <ArrowLeft size={16} strokeWidth={2} aria-hidden="true" />
+                  {BACK_TO_ARC}
+                </button>
+              }
+            />
+          </div>
         </div>
-
-        <div className="absolute top-6 left-4 right-4 z-20 flex items-center justify-between">
-          <span className="text-[10px] font-mono text-muted-foreground tracking-wide">YOUR ARC</span>
-          <Link href="/chat" className="text-muted-foreground text-base leading-none" title="Exit" aria-label="Exit to Chat">
-            ✕
+      </div>
+    );
+  } else {
+    const label = atFinale ? null : frames[position].label;
+    content = (
+      <section aria-roledescription="story" aria-label="Your Arc" className="flex flex-col gap-6">
+        <div className="flex items-center gap-4">
+          {/* Progress, not a timer: a segment fills once its frame is reached. */}
+          <ol className="flex-1 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${frames.length}, minmax(0, 1fr))` }}>
+            {frames.map((f, i) => (
+              <li key={f.label} className={`h-1.5 ${i <= position ? "bg-brand" : "bg-border"}`}>
+                <span className="sr-only">
+                  {f.label}
+                  {i === position ? ", current" : i < position ? ", seen" : ""}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <Link href="/chat" className={`hidden md:inline-flex ${LINK_LOOK} no-underline hover:underline`}>
+            <X size={18} strokeWidth={2} aria-hidden="true" />
+            Close
           </Link>
         </div>
 
-        <button
-          aria-label="Previous"
-          onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
-          className="absolute inset-y-0 left-0 w-1/3 z-10"
-        />
-        <button
-          aria-label="Next"
-          onClick={() => setStepIndex((i) => Math.min(steps.length - 1, i + 1))}
-          className="absolute inset-y-0 right-0 w-1/3 z-10"
-        />
+        <div
+          // Tapping either half of the frame steps back or on, story-style.
+          // The Back and Next buttons below do the same for every input.
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            go(e.clientX - r.left < r.width / 2 ? -1 : 1);
+          }}
+          className="relative min-h-[60vh] md:min-h-[56vh] overflow-hidden select-none cursor-pointer"
+        >
+          <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+            <motion.div
+              key={position}
+              custom={direction}
+              initial={reduceMotion ? false : { opacity: 0, x: 32 * direction }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={reduceMotion ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: -32 * direction }}
+              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              className="flex flex-col items-start gap-5 md:gap-6"
+            >
+              {label ? (
+                <>
+                  <h2 className={`${LABEL} text-foreground`}>{label}</h2>
+                  {frames[position].body}
+                </>
+              ) : (
+                <>
+                  <h2 className="sr-only">{stats.period_label ?? "Your Arc"}</h2>
+                  <div className="w-full cursor-auto" onClick={(e) => e.stopPropagation()}>
+                    <Finale stats={stats} onShare={share} rendering={rendering} notice={cardNoticeState} />
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
 
-        {step.kind === "finale" ? (
-          <ArcFinaleSlide stats={stats} />
-        ) : step.kind === "image" ? (
-          <ArcImageSlide step={step} />
-        ) : (
-          <ArcStatSlide step={step} />
-        )}
-      </div>
-
-      {isFinale ? (
-        <div className="mt-6 w-full max-w-[380px] flex flex-col items-center gap-2">
-          {cardError && <p className="text-xs text-destructive">{cardError}</p>}
+        <div className="flex items-center justify-between gap-4 border-t border-border pt-2">
           <button
-            onClick={handleShare}
-            disabled={creatingCard}
-            className="w-full py-3 rounded-xl bg-primary hover:bg-primary/85 disabled:opacity-50
-                       text-primary-foreground font-semibold text-sm transition-colors"
+            type="button"
+            onClick={() => go(-1)}
+            disabled={position === 0}
+            className={`${TEXT_LINK} no-underline disabled:opacity-40 disabled:cursor-not-allowed px-1`}
           >
-            {creatingCard ? "Rendering your Arc…" : "Share your Arc"}
+            <ArrowLeft size={16} strokeWidth={2} aria-hidden="true" />
+            Back
+          </button>
+          <p aria-live="polite" className="sr-only">
+            {label ?? ""}
+          </p>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            disabled={atFinale}
+            className={`${TEXT_LINK} no-underline disabled:opacity-40 disabled:cursor-not-allowed px-1`}
+          >
+            Next
+            <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
           </button>
         </div>
-      ) : (
-        <p className="mt-4 text-[11px] text-muted-foreground">tap right to advance &middot; tap left to go back</p>
-      )}
+      </section>
+    );
+  }
+
+  return (
+    <div className="flex-1 overflow-y-auto chat-scroll">
+      <div className="mx-auto max-w-5xl px-4 md:px-8 pt-6 md:pt-8 pb-12">
+        <h1 className="sr-only">Arc</h1>
+        {content}
+      </div>
     </div>
   );
 }
+

@@ -314,7 +314,7 @@ Reserve the bottom-right 75px for the backend watermark. The footer **memegpt.ap
 
 #### Empty state
 
-Until five meme records exist, show no story segments. For the sample empty state, show **2 / 5 memes toward your first Arc.** Explain how to start in the product's dry voice and offer a route to Chat. Do not invent extra stats.
+Until five meme records exist, show no story segments. Show **Your arc hasn't started yet.** in Anton, then **Go be unwell somewhere. Five memes minimum before MemeGPT has anything to judge you for.**, then the count as a small line, **2 of 5 memes so far.** in the sample, then **Start in Chat**. Do not invent extra stats.
 
 ### 4.6 Shared meme page
 
@@ -630,7 +630,13 @@ These are the sample outputs; the live strings come from backend/arc/copy.py.
 - Share card facts: **47 memes • 14 different templates**
 - Signature art label: **Empty Meeting Room • 9 times**
 - Share card footer: **memegpt.app/arc**
-- Empty state count: **2 / 5 memes toward your first Arc.**
+- Loading: **Calculating your Arc…**
+- Empty state heading: **Your arc hasn't started yet.**
+- Empty state text: **Go be unwell somewhere. Five memes minimum before MemeGPT has anything to judge you for.**
+- Empty state count: **2 of 5 memes so far.**
+- Empty state link: **Start in Chat**
+- Rendering the card: **Rendering…**
+- Under the rendered card: **Back to your Arc**, beside Share and Download
 
 ### 7.8 Shared meme, 404, error, maintenance
 

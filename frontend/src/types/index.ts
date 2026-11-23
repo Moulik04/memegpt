@@ -165,23 +165,38 @@ export interface ArcTemplate {
   image_url: string | null;
 }
 
+/** One rung of the tier ladder: a tier and the lowest aura that earns it. */
+export interface ArcTier {
+  name: string;
+  min_aura: number;
+}
+
 export interface ArcStats {
   has_enough: boolean;
   total_memes: number;
+  distinct_templates?: number;
   date_span_start: string | null;
   date_span_end: string | null;
   period_label: string | null;
   aura: number;
   tier: string | null;
+  /** Every tier, top first, from the thresholds that grade the score.
+   * Missing from a backend older than the ladder. */
+  tiers?: ArcTier[];
   top_templates: ArcTemplate[];
   busiest_date: string | null;
   busiest_time_label: string | null;
+  /** The same moment's hour, e.g. "2 AM". */
+  busiest_hour_label?: string | null;
   hour_roast: string | null;
   chat_count: number;
   lore_count: number;
   make_count: number;
   split_roast: string | null;
   longest_streak_days: number;
+  /** The punchlines after "memes generated this arc." and "consecutive days.". */
+  volume_roast?: string | null;
+  streak_roast?: string | null;
   verdict: string | null;
 }
 

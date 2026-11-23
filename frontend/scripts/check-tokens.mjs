@@ -14,7 +14,7 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SRC = join(ROOT, "src");
 
 // Arc is the one place solid red blocks are allowed.
-const ARC_FILES = [/^components\/ArcView\.tsx$/, /^app\/arc\//, /^components\/charts\//];
+const ARC_FILES = [/^components\/ArcView\.tsx$/, /^app\/arc\//];
 
 const RULES = [
   {
@@ -42,7 +42,6 @@ const RULES = [
 // replace. Each must be gone by launch.
 const LATER = [
   { item: "step 7 (landing): thinking orb", pattern: /thinking-orb/ },
-  { item: "step 6 (Arc): gauge colors", pattern: /#10b981|#bef264/ },
   { item: "step 7 (landing): pixel reveal", pattern: /PixelRevealImage/ },
   { item: "pill-shaped controls (rounded-full); the handoff avoids pills", pattern: /(?<![\w-])rounded-full(?![\w-])/ },
   // Comment lines are skipped below, so this only flags code and copy.

@@ -332,22 +332,18 @@ export async function getArc(tz: string): Promise<ArcStats> {
   const res = await fetch(`${BASE}/arc?tz=${encodeURIComponent(tz)}`, {
     headers: await authHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
-  }
+  if (!res.ok) throw await _apiError(res);
   return res.json() as Promise<ArcStats>;
 }
 
+/** Renders the share card. "frontpage" is the redesign's card; the backend
+ * still draws its original card for a request that doesn't ask. */
 export async function createArcCard(tz: string): Promise<ArcCardResponse> {
-  const res = await fetch(`${BASE}/arc/card?tz=${encodeURIComponent(tz)}`, {
+  const res = await fetch(`${BASE}/arc/card?tz=${encodeURIComponent(tz)}&style=frontpage`, {
     method: "POST",
     headers: await authHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
-  }
+  if (!res.ok) throw await _apiError(res);
   return res.json() as Promise<ArcCardResponse>;
 }
 
