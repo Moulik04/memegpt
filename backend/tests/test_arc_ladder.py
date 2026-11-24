@@ -109,3 +109,51 @@ def test_the_streak_line_and_the_verdict_agree_on_dedication():
         raw = _raw(total_memes=40, longest_streak_days=days)
         for seed in ("a", "b", "c"):
             assert (_verdict(raw, seed) in dedicated) == (days >= _DEDICATED_STREAK_DAYS)
+
+
+class _RoutingPool:
+    """Answers each Arc query by what it groups on, so a test can tell the
+    busiest day's row from the busiest hour's."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, tuple]] = []
+
+    async def fetchrow(self, query, *args):
+        self.calls.append((query, args))
+        if "COUNT(*) AS total" in query:
+            return {"total": 47, "distinct_templates": 14, "chat_count": 26, "lore_count": 15,
+                    "make_count": 6, "first_date": date(2026, 9, 3), "last_date": date(2026, 11, 17)}
+        if "EXTRACT(HOUR" in query:
+            return {"h": 23, "cnt": 9, "last_ts": datetime(2026, 11, 4, 23, 51, tzinfo=UTC)}
+        return {"d": date(2026, 10, 2), "cnt": 6}
+
+    async def fetch(self, query, *args):
+        self.calls.append((query, args))
+        return []
+
+
+async def test_the_busiest_hour_comes_from_every_day_not_the_busiest_one(monkeypatch):
+    import db
+
+    pool = _RoutingPool()
+
+    async def get_pool():
+        return pool
+
+    monkeypatch.setattr(db, "get_pool", get_pool)
+    raw = await db.fetch_raw_arc_stats("anon-1", tz="America/New_York")
+
+    hour_query, hour_args = next(c for c in pool.calls if "EXTRACT(HOUR" in c[0])
+    assert "AT TIME ZONE $2" in hour_query and "GROUP BY h" in hour_query
+    assert hour_args == ("anon-1", "America/New_York")
+    assert raw.busiest_date == date(2026, 10, 2)
+    assert raw.busiest_sample_ts == datetime(2026, 11, 4, 23, 51, tzinfo=UTC)
+
+
+def test_the_hour_label_roast_and_bonus_share_one_hour():
+    late = build_arc_stats(_raw(busiest_sample_ts=datetime(2026, 11, 4, 3, 40, tzinfo=UTC)), tz="UTC")
+    noon = build_arc_stats(_raw(busiest_sample_ts=datetime(2026, 11, 4, 12, 40, tzinfo=UTC)), tz="UTC")
+    assert (late.busiest_hour_label, noon.busiest_hour_label) == ("3 AM", "12 PM")
+    assert late.aura - noon.aura == 400
+    assert late.hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
+    assert noon.hour_roast not in ("we're not asking questions.", "certified insomniac behavior.")
