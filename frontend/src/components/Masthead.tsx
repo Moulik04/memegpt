@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { forgetMe } from "@/lib/api";
-import { forgetAnonId } from "@/lib/identity";
+import { useState } from "react";
 import { AuthControl } from "@/components/AuthControl";
+import { ForgetMeDialog } from "@/components/ForgetMeDialog";
 import { navigateWithTransition } from "@/lib/viewTransition";
 import { APP_TABS, type AppTab } from "@/lib/appTabs";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,29 +16,9 @@ type Props =
   | { variant: "app"; active: AppTab; history?: boolean }
   /** The landing page: tabs shown, none active. */
   | { variant: "landing" }
-  /** Shared meme, privacy, 404, error, sign-in redirect: wordmark only. */
-  | { variant: "system" };
-
-async function handleForgetMe() {
-  if (
-    !window.confirm(
-      "Forget your MemeGPT identity and history? Your memes are deleted too, so share links to them will stop working. This can't be undone.",
-    )
-  ) {
-    return;
-  }
-  try {
-    await forgetMe();
-  } catch (err) {
-    // The erase did not complete. Keep this browser's identity exactly as
-    // it is, so the page doesn't reload looking fresh while data is still
-    // there, and so a retry reaches the same rows.
-    window.alert(err instanceof Error ? err.message : "MemeGPT couldn't erase your data. Please try again.");
-    return;
-  }
-  forgetAnonId();
-  window.location.reload();
-}
+  /** Shared meme, privacy, 404, error, sign-in redirect: wordmark only.
+   * `unlinked` drops the wordmark's link, for the maintenance page. */
+  | { variant: "system"; unlinked?: boolean };
 
 /**
  * The site masthead: the MemeGPT wordmark, then (outside system pages) the
@@ -52,13 +32,21 @@ export function Masthead(props: Props) {
   const { user } = useAuth();
   const { setHistoryOpen } = useConversation();
   const showHistory = props.variant === "app" && props.history && !!user;
+  const [forgetOpen, setForgetOpen] = useState(false);
+  const [signInOpen, setSignInOpen] = useState(false);
+  const unlinked = props.variant === "system" && props.unlinked;
+  const wordmark = "font-display text-2xl md:text-[2rem] leading-none text-foreground py-2.5";
 
   return (
     <header className="shrink-0 bg-background border-b-2 border-brand">
       <div className="flex items-center gap-4 md:gap-10 px-4 md:px-8 min-h-14 md:min-h-[72px]">
-        <Link href="/" className="font-display text-2xl md:text-[2rem] leading-none text-foreground py-2.5">
-          MemeGPT
-        </Link>
+        {unlinked ? (
+          <span className={wordmark}>MemeGPT</span>
+        ) : (
+          <Link href="/" className={wordmark}>
+            MemeGPT
+          </Link>
+        )}
 
         {props.variant !== "system" && (
           <>
@@ -97,16 +85,25 @@ export function Masthead(props: Props) {
                   History
                 </button>
               )}
-              <AuthControl onHistory={showHistory ? () => setHistoryOpen(true) : undefined} />
-              <button
-                type="button"
-                onClick={handleForgetMe}
-                title="Erase your MemeGPT identity, memory, and history from this device"
-                className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground transition-colors
-                           duration-[var(--duration-fast)]"
-              >
-                Forget me
-              </button>
+              <AuthControl
+                onHistory={showHistory ? () => setHistoryOpen(true) : undefined}
+                signInOpen={signInOpen}
+                onSignInOpenChange={setSignInOpen}
+              />
+              <ForgetMeDialog
+                open={forgetOpen}
+                onOpenChange={setForgetOpen}
+                onSignIn={() => setSignInOpen(true)}
+                trigger={
+                  <button
+                    type="button"
+                    className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground transition-colors
+                               duration-[var(--duration-fast)]"
+                  >
+                    Forget me
+                  </button>
+                }
+              />
             </div>
           </>
         )}

@@ -41,12 +41,9 @@ const RULES = [
 // Not failures: dark-theme pieces and other leftovers that later steps
 // replace. Each must be gone by launch.
 const LATER = [
-  { item: "step 7 (landing): thinking orb", pattern: /thinking-orb/ },
-  { item: "step 7 (landing): pixel reveal", pattern: /PixelRevealImage/ },
   { item: "pill-shaped controls (rounded-full); the handoff avoids pills", pattern: /(?<![\w-])rounded-full(?![\w-])/ },
   // Comment lines are skipped below, so this only flags code and copy.
   { item: "em dash in a UI string", pattern: /\u2014/, code: true },
-  { item: "step 7: 404 and error memes outside the shared meme frame", pattern: /(?:404|500)_example\.png/ },
 ];
 
 const COMMENT = /^\s*(?:\/\/|\/\*|\*|\{\/\*)/;

@@ -483,6 +483,13 @@ Text below is the source for UI copy. Interface copy uses no em dash. Keep the u
 - Starter prompts: **the meeting that could've been an email**, **day 1 of the gym vs day 2**, **starting the essay the night before it's due**, **when the flight gets delayed for the third time**.
 - Empty Chat line: **Something happened. We can work with that.** (the line approved in R2-3)
 - Empty Arc: **Your arc hasn't started yet. Go be unwell somewhere. Five memes minimum before MemeGPT has anything to judge you for.**
+- Mode stories, each with its kicker, title, line and link:
+  - **Chat**: **Talk to MemeGPT like any chatbot.** / **Type a thought, attach a photo if you want, and get a meme back. MemeGPT never breaks character. Every reply comes back as a meme.** / **Open Chat**. Example prompt: **day 1 of the gym vs day 2**, with its real render.
+  - **Lore**: **Drop in the whole story.** / **Paste a whole group chat or upload a stack of screenshots. Get back several memes, one for every moment worth remembering.** / **Open Lore**
+  - **Make**: **Pick the template yourself.** / **Skip the AI's judgment entirely. Search the full template library, write your own captions box by box, and render it exactly your way.** / **Open Make**. Example: Drake, box 1 **letting the AI pick**, box 2 **picking it yourself**.
+  - **Arc**: **See your meme era.** / **Your most-summoned template, your longest streak, an aura score that goes up whether you like it or not. Roast copy included, free of charge.** / **Open Arc**. The card is labeled **Example** and uses the sample counts scored by the real formula.
+- In brief heading: **In brief**; FAQ heading: **Questions, answered**
+- Footer: **Privacy**, **View source on GitHub**, **MemeGPT. Built for fun, not for profit.**
 
 ### 7.2 FAQ
 
@@ -594,7 +601,9 @@ The budget meme is not personalized. It is one of ten fixed memes, unrelated to 
 - Sign-in intro: **Every part works without an account. Signing in only adds saved chat history across devices.**
 - Google button: **Continue with Google**
 - Signed-in menu: signed-in email, **History**, **Sign out**
+- Sign-in failures, under the Google button: **Google sign-in didn't load. A content blocker may be stopping it.** and **That sign-in didn't go through. Try again.**
 - Header link: **Forget me**
+- Forget me dialog title and main (black) button: **Forget me**; while it works: **Erasing…**; other action: **Cancel**
 - Signed-out confirmation: **This erases your memes, ratings and remembered lore from this browser.** Share links to those memes stop working. Your Arc starts over. This can't be undone. Chats saved to an account are only erased while you're signed in to it.
 - Signed-in confirmation: **This erases your chats, memes, ratings and remembered lore.** Share links to those memes stop working. Your Arc starts over. This can't be undone. Your account itself stays. To delete it, email support.memegpt@gmail.com.
 - Erase failure: **MemeGPT couldn't finish erasing your data. Please try again.** Actions: **Try again**, **Cancel**.

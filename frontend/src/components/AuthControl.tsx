@@ -9,7 +9,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { googleButtonEnabled } from "@/lib/googleIdentity";
 
@@ -18,6 +17,9 @@ import { googleButtonEnabled } from "@/lib/googleIdentity";
 // render narrower than its label needs (209px for "Continue with Google"
 // in English, more in some languages), so leave it room.
 const GOOGLE_BUTTON_WIDTH = 236;
+
+/** The copy deck, section 7.6. */
+const SIGN_IN_INTRO = "Every part works without an account. Signing in only adds saved chat history across devices.";
 
 const MENU_ITEM =
   "w-full min-h-11 px-2 text-left text-base font-medium text-foreground hover:bg-muted " +
@@ -30,9 +32,20 @@ const MENU_ITEM =
  * beside "Forget me". Signed in, the letter avatar opens the account menu:
  * the signed-in email, History where the page has it, and Sign out.
  */
-export function AuthControl({ onHistory }: { onHistory?: () => void }) {
+export function AuthControl({
+  onHistory,
+  signInOpen,
+  onSignInOpenChange,
+}: {
+  onHistory?: () => void;
+  /** The sign-in popover's state, held by the masthead so Forget me can
+   * open it after a sign-in the server couldn't confirm. */
+  signInOpen: boolean;
+  onSignInOpenChange: (open: boolean) => void;
+}) {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
-  const [open, setOpen] = useState(false);
+  const open = signInOpen;
+  const setOpen = onSignInOpenChange;
   const [menuOpen, setMenuOpen] = useState(false);
 
   if (!authEnabled || loading) return null;
@@ -88,21 +101,22 @@ export function AuthControl({ onHistory }: { onHistory?: () => void }) {
           Sign in
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" collisionPadding={8} className="w-64">
+      <PopoverContent align="end" collisionPadding={8} className="w-64 flex flex-col gap-3">
+        <p className="text-base text-foreground">{SIGN_IN_INTRO}</p>
         {googleButtonEnabled ? (
           <GoogleSignInButton width={GOOGLE_BUTTON_WIDTH} />
         ) : (
-          <Button
+          <button
             type="button"
-            variant="secondary"
-            className="w-full"
+            className="w-full min-h-11 px-4 rounded-sm bg-primary text-primary-foreground text-base font-semibold
+                       hover:bg-primary/85 transition-colors duration-[var(--duration-fast)]"
             onClick={() => {
               setOpen(false);
               signInWithGoogle();
             }}
           >
             Continue with Google
-          </Button>
+          </button>
         )}
       </PopoverContent>
     </Popover>

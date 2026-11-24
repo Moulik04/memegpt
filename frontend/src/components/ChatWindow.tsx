@@ -17,6 +17,7 @@ import {
 import { MemeDisplay } from "./MemeDisplay";
 import { MemeActions } from "./MemeActions";
 import BudgetNotice from "./BudgetNotice";
+import { takeLandingHandoff } from "@/lib/landingHandoff";
 import type { MemeItem, PersistedMessage } from "@/types";
 
 /** The copy deck's empty state and its four starter prompts. */
@@ -103,7 +104,7 @@ export function ChatWindow() {
   const pendingImagesRef = useRef<PendingImage[]>([]);
   const reduceMotion = useReducedMotion();
 
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { conversationRowId, setConversationRowId, bumpRefresh } = useConversation();
   const { loading, stages, conversationId, submitText, submitImages } = useMemeStream("chat", conversationRowId);
 
@@ -180,9 +181,8 @@ export function ChatWindow() {
     setPickError(null);
   }
 
-  async function submit(raw: string) {
+  async function submit(raw: string, images: PendingImage[] = pendingImages) {
     const text = raw.trim();
-    const images = pendingImages;
     if ((!text && images.length === 0) || loading) return;
 
     const id = newTurnId();
@@ -235,6 +235,22 @@ export function ChatWindow() {
 
     if (activeConversationRowId) bumpRefresh();
   }
+
+  // What the landing page's composer sent: the first message, as if it had
+  // been typed here. Taken once, so a second mount finds nothing. Waits for
+  // sign-in to settle, so a signed-in visitor's first message starts a
+  // saved conversation like any other.
+  useEffect(() => {
+    if (authLoading) return;
+    const handoff = takeLandingHandoff();
+    if (!handoff) return;
+    submit(
+      handoff.text,
+      handoff.files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) })),
+    );
+    // Runs once sign-in has settled after arriving from the landing page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

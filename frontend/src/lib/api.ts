@@ -264,8 +264,20 @@ export async function postFeedback(req: FeedbackRequest): Promise<void> {
 // slash — Next normalizes one away before the rewrite even runs, and
 // backend/routers/me.py is registered at "" for the same reason — so
 // requesting it directly skips two avoidable redirect hops.
+export const ERASE_FAILED = "MemeGPT couldn't finish erasing your data. Please try again.";
+
+// Throws an ApiError with the response's status, so the Forget me dialog can
+// tell a sign-in the server couldn't confirm (401) and the rate limit (429)
+// from an erase that failed. A lost connection is an erase failure too.
 export async function forgetMe(): Promise<void> {
-  await deleteOrThrow(`${BASE}/me`, "MemeGPT couldn't finish erasing your data. Please try again.");
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/me`, { method: "DELETE", headers: await authHeaders() });
+  } catch {
+    throw new ApiError(ERASE_FAILED);
+  }
+  if (res.ok) return;
+  throw await _apiError(res);
 }
 
 // For the two requests that erase a user's data. fetch() resolves normally
@@ -317,7 +329,10 @@ export async function listTemplates(): Promise<ExplainResponse[]> {
   return get<ExplainResponse[]>("/explain/");
 }
 
+// The backend serves its images under /static/. Any other path, such as
+// /landing/..., is one of the site's own files and stays as it is.
 export function memeImageUrl(relativeUrl: string): string {
+  if (!relativeUrl.startsWith("/static/")) return relativeUrl;
   const base = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
   return `${base}${relativeUrl}`;
 }

@@ -199,21 +199,3 @@ html:has([data-fixed-tabs]) {
 @media (prefers-reduced-motion: reduce) {
   .arrive-settle { animation: none; }
 }
-
-/* Thinking indicator — a single breathing orb (scale + opacity only, no
-   color bloom) instead of a flat 3-dot bounce or a glow effect. */
-@keyframes breathe {
-  0%, 100% { transform: scale(0.85); opacity: 0.55; }
-  50%      { transform: scale(1); opacity: 1; }
-}
-.thinking-orb {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  animation: breathe 1.6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .thinking-orb { animation: none; opacity: 0.9; }
-}

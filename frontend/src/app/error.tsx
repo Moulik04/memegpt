@@ -1,10 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
-import { Masthead } from "@/components/Masthead";
 import { useEffect } from "react";
+import { Masthead } from "@/components/Masthead";
+import { MemeDisplay } from "@/components/MemeDisplay";
 
+/** The copy deck, section 7.8. */
 export default function GlobalError({
   error,
   reset,
@@ -17,46 +18,35 @@ export default function GlobalError({
   }, [error]);
 
   return (
-    <div className="min-h-dvh flex flex-col">
+    <div className="min-h-dvh flex flex-col bg-background">
       <Masthead variant="system" />
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 gap-8 text-center">
-
-        <div className="w-full max-w-lg rounded-2xl bg-card border border-border p-3">
-          <Image
-            src="/landing/500_example.png"
-            alt="This Is Fine meme: a dog sitting in a burning room, captioned 'the server, right now'"
-            width={1200}
-            height={600}
-            className="w-full h-auto rounded-xl"
-            priority
-          />
-        </div>
-
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Something broke.</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Not you — us. Try again in a moment.
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+      <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-8 py-8 md:py-12 flex flex-col items-start gap-5">
+        <h1 className="font-display text-[length:var(--text-title)] leading-[0.95] text-foreground">Something broke.</h1>
+        <p className="text-lg text-foreground">Not you. Us. Try again in a moment.</p>
+        <MemeDisplay
+          url="/landing/500_example.png"
+          alt="This Is Fine meme: a dog sitting in a burning room, captioned 'the server, right now'"
+          className="flex justify-start max-w-full"
+          maxHeightClassName="max-h-[50vh]"
+        />
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <button
             type="button"
             onClick={reset}
-            className="bg-primary hover:bg-primary/85 transition-colors text-primary-foreground font-semibold
-                       rounded-full px-8 py-3.5 text-base"
+            className="min-h-12 px-6 rounded-sm bg-primary text-primary-foreground text-base font-semibold
+                       hover:bg-primary/85 transition-colors duration-[var(--duration-fast)]"
           >
             Try again
           </button>
           <Link
             href="/"
-            className="bg-muted hover:bg-ink-2 border border-border hover:border-input
-                       transition-colors text-foreground font-semibold rounded-full px-8 py-3.5 text-base"
+            className="inline-flex items-center min-h-11 text-base font-medium text-foreground underline decoration-brand
+                       decoration-2 underline-offset-4"
           >
             Back home
           </Link>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
