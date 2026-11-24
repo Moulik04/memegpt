@@ -187,6 +187,12 @@ USE_WHEN: dict[str, str] = {
     "grim_reaper_knocking_door": "CASUAL MENACE, NEXT VICTIM: A bloody trail out of the last door, then a calm, polite knock on the next one — moving on to repeat something bad with total composure, like nothing just happened. E.g. calmly opening a new incident channel right after the last outage's retro. NOT for sitting inside ongoing chaos and denying it (this_is_fine) or a plan backfiring on its own author (grus_plan).",
     "c_mon_do_something": "SILENT ACCUSATORY POINTING: A crude, masked, deadpan figure stands off to the side pointing wordlessly at a specific action or event just offscreen — no argument, no dialogue, just damning silence. E.g. calling out a coworker who reopened the same bug three sprints in a row. NOT for two people arguing (woman_yelling_at_cat) and NOT for a generic shocked reaction (surprised_pikachu).",
 
+    # --- Trend pipeline additions ---
+    "bernie_sanders_once_again_asking": "PROGRESSIVE ZOOM-OUT: A single subject is shown in a tight, intense close-up that gradually pulls back to reveal the mundane, unimpressive, or context-less reality of the situation. NOT for a single static image with top/bottom text (change_my_mind) or a multi-panel narrative (panik_kalm_panik).",
+    "bad_luck_brian": "UNCANNY VALLEY ZOOM: A single, static image of a person who looks like they are frozen in a state of forced, uncomfortable, or deeply awkward happiness — the joke is the uncanny, almost robotic stillness of the smile. NOT for active, escalating panic (panik_kalm_panik), active denial of chaos (this_is_fine), or a genuine, relaxed chill (chill_guy).",
+    "a_second_plane_has_just_hit": "WHISPERED CONFESSION: One person leans in close to whisper a secret, urgent, or embarrassing admission directly into the other person's ear, while the listener stares blankly or with mild concern. NOT for a loud public argument (woman_yelling_at_cat), a two-person debate (epic_handshake), or a solo inner conflict (evil_kermit).",
+    "look_at_me": "SNEAKY BACKSTAB: A quiet, sly gesture (the 'V' sign) implying you are plotting to undermine, betray, or secretly mock someone in front of them. NOT for open, loud confrontation (woman_yelling_at_cat), a smug settled preference (drake), or a forced, pained smile (hide_the_pain_harold).",
+
 }
 
 
