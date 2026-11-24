@@ -162,6 +162,9 @@ function Cover() {
   const [position, setPosition] = useState<number | null>(null);
   const reduceMotion = useReducedMotion();
   const slotRef = useRef<HTMLDivElement>(null);
+  // The lead meme waits for the slot's first measurement, so it never
+  // shows at a stand-in size and then jumps.
+  const [measured, setMeasured] = useState(false);
 
   useEffect(() => {
     setPosition(leadPosition);
@@ -175,6 +178,7 @@ function Cover() {
     if (!slot) return;
     const observer = new ResizeObserver(([entry]) => {
       slot.style.setProperty("--slot-h", `${Math.floor(entry.contentRect.height)}px`);
+      setMeasured(true);
     });
     observer.observe(slot);
     return () => observer.disconnect();
@@ -232,12 +236,14 @@ function Cover() {
         </div>
         {/* The slot's height is set by the space left, between 12rem and
             30rem; the meme fits inside its measured height. */}
-        <div ref={slotRef} className="relative flex-1 min-h-48 max-h-[30rem] [--slot-h:12rem]">
+        <div ref={slotRef} className="relative flex-1 min-h-48 max-h-[30rem]">
+          {/* Nothing is inside on the first render, so the first story fades
+              in the same way Next story's do. */}
           <AnimatePresence initial={false}>
-            {story && (
+            {story && measured && (
               <motion.div
                 key={story.image}
-                initial={{ opacity: 0 }}
+                initial={reduceMotion ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: reduceMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] }}

@@ -788,11 +788,12 @@ Create a 1200×630 (1.91:1) site-wide social preview for links to the website. U
 - **The group chat has a front page.**
 - **A chatbot that only replies in memes.**
 
-Do not use the Lore headline. Do not use a 3:1 layout or the old square Drake meme. Shared meme URLs continue to preview the actual shared meme.
+Put one real lead meme on the grey mat to the right of the type, as on the cover: the Chat story, "day 1 of the gym vs day 2". Do not use the Lore headline. Do not use a 3:1 layout or the old square Drake meme. Shared meme URLs continue to preview the actual shared meme.
 
 ### Metadata and manifest
 
 - HTML title: **MemeGPT: a chatbot that only replies in memes**
+- Page titles: the page's name, a middle dot, then MemeGPT, as in **Chat · MemeGPT**. A shared meme's title already names MemeGPT (**Drake, made with MemeGPT**) and stands alone.
 - Meta description: **A chatbot that only replies in memes.**
 - App manifest description: **A chatbot that only replies in memes.**
 - Manifest background color: **#FFFFFF**

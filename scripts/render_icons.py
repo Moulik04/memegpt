@@ -1,20 +1,20 @@
 """
 Renders MemeGPT's icon set into frontend/public/.
 
-One mark at every size: an accent tile, a white Anton "M", and the black
-caption stroke from globals.css (.caption puts 0.08em on the outline, so
-0.04em shows outside the letter).
+One mark at every size: full-bleed white, an ink Anton "M" and one red
+rule under it, the masthead's rule. No tile, frame or rounded corners. The
+M and the rule always sit inside the centred circle 80% of the icon's
+width, so Android's mask and iOS's corner rounding never reach them, and
+the standard and maskable files come from the same drawing.
 
-  favicon.ico                 16, 32, 48   rounded tile
-  icon-192.png, icon-512.png               rounded tile, web manifest "any"
-  apple-touch-icon.png        180          plain square, iOS rounds it itself
+  favicon.ico                 16, 32, 48   16 is drawn on the pixel grid
+  icon-192.png, icon-512.png               web manifest "any"
+  apple-touch-icon.png        180          iOS rounds the corners itself
   icon-maskable-192.png, icon-maskable-512.png
-                                           full bleed, letter inside the
-                                           safe zone Android may crop to
+                                           web manifest "maskable"
 
 Run from the repo root: python scripts/render_icons.py
-Needs Pillow and backend/fonts/Anton-Regular.ttf (the backend's build
-downloads the font, see backend/Dockerfile).
+Needs Pillow and the committed backend/fonts/Anton-Regular.ttf.
 """
 
 from __future__ import annotations
@@ -29,117 +29,124 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FONT_PATH = REPO_ROOT / "backend" / "fonts" / "Anton-Regular.ttf"
 OUT_DIR = REPO_ROOT / "frontend" / "public"
 
-ACCENT = (0xF5, 0x4F, 0x1B, 255)  # --accent-color
-WHITE = (255, 255, 255, 255)
-BLACK = (0, 0, 0, 255)  # --stroke
-CLEAR = (0, 0, 0, 0)
+# globals.css: --ink-0, --paper and --accent-color.
+WHITE = (0xFF, 0xFF, 0xFF)
+INK = (0x11, 0x11, 0x11)
+RED = (0xCD, 0x1F, 0x35)
 
 LETTER = "M"
 SUPERSAMPLE = 8
 
-TILE_RADIUS = 0.22  # of the icon's width
-STROKE_EM = 0.04
-# A 0.04em stroke is under a pixel below 48px and disappears into the
-# tile, so the favicon sizes get a slightly heavier one.
-FAVICON_STROKE_EM = 0.055
-
-# Letter height as a share of the icon's width.
-TILE_LETTER = 0.56
-MASKABLE_LETTER = 0.40
-
-# Android crops a maskable icon to whatever shape the launcher uses. Only a
-# centred circle 80% of the icon's width is guaranteed to survive.
+# Only a centred circle 80% of the icon's width is sure to survive a mask.
 SAFE_ZONE_RADIUS = 0.40
+# The mark's corners stop short of it, so the rule's ends keep some white
+# around them after a circular mask.
+MARK_REACH = 0.36
 
-# At 16px a scaled-down letter is a grey smudge, so this size is drawn on
-# the pixel grid. "#" is the letter. The stroke is added around it the way
-# the compositor does it, one pixel in each of the eight directions.
-LETTER_16 = (
-    "##......##",
-    "###....###",
-    "####..####",
-    "##.####.##",
-    "##..##..##",
-    "##......##",
-    "##......##",
-    "##......##",
-    "##......##",
+# The rule and the gap above it, as shares of the letter's height.
+RULE_SHARE = 0.11
+GAP_SHARE = 0.09
+
+# At 16px a scaled-down letter turns grey, so this size is drawn on the
+# pixel grid: "#" is ink, "r" is the red rule.
+MARK_16 = (
+    "##....##",
+    "###..###",
+    "########",
+    "##.##.##",
+    "##....##",
+    "##....##",
+    "##....##",
+    "........",
+    ".rrrrrr.",
 )
-LETTER_16_ORIGIN = (3, 3)
+# Nine rows can't centre on sixteen; the rule is a pixel shorter at each
+# end so its corners stay inside the safe zone.
+MARK_16_ORIGIN = (4, 4)
 
 
-def _tile(size: int, rounded: bool) -> Image.Image:
-    img = Image.new("RGBA", (size, size), CLEAR if rounded else ACCENT)
-    if rounded:
-        ImageDraw.Draw(img).rounded_rectangle(
-            (0, 0, size - 1, size - 1), radius=round(size * TILE_RADIUS), fill=ACCENT
-        )
-    return img
-
-
-def _font_for_height(height: float) -> ImageFont.FreeTypeFont:
+def _glyph(height: int) -> Image.Image:
+    """The letter's ink alone, as a mask exactly `height` pixels tall.
+    Measured from the drawn pixels: Pillow's bounding box includes the
+    letter's side bearings, which would leave the rule wider than the M."""
     probe = ImageFont.truetype(str(FONT_PATH), 1000)
     _, top, _, bottom = probe.getbbox(LETTER)
-    return ImageFont.truetype(str(FONT_PATH), round(1000 * height / (bottom - top)))
+    font = ImageFont.truetype(str(FONT_PATH), round(1000 * height / (bottom - top)))
+    _, _, right, bottom = font.getbbox(LETTER)
+    canvas = Image.new("L", (right + height, bottom + height), 0)
+    ImageDraw.Draw(canvas).text((height // 2, height // 2), LETTER, font=font, fill=255)
+    return canvas.crop(canvas.getbbox())
 
 
-def _draw_letter(img: Image.Image, letter_share: float, stroke_em: float) -> float:
-    """Centres the letter on the image. Returns how far its stroked corner
-    sits from the centre, as a share of the image's width."""
-    size = img.width
-    font = _font_for_height(size * letter_share)
-    stroke = max(1, round(font.size * stroke_em))
-    left, top, right, bottom = font.getbbox(LETTER)
-    width, height = right - left, bottom - top
-    ImageDraw.Draw(img).text(
-        ((size - width) / 2 - left, (size - height) / 2 - top),
-        LETTER,
-        font=font,
-        fill=WHITE,
-        stroke_width=stroke,
-        stroke_fill=BLACK,
+def render(size: int) -> tuple[Image.Image, float]:
+    """The mark at one size. Returns it and how far its corner sits from the
+    centre, as a share of the icon's width.
+
+    The layout is worked out in the icon's own pixels and snapped to them,
+    so the rule and the letter's edges land on whole pixels and stay crisp
+    at 32 and 48. The drawing is made 8 times larger and averaged down,
+    which softens only the diagonals."""
+    aspect_glyph = _glyph(1000)
+    aspect = aspect_glyph.width / aspect_glyph.height
+    stack = 1 + GAP_SHARE + RULE_SHARE
+    # The mark is aspect*h wide and h*stack tall; its corner may reach
+    # MARK_REACH of the width.
+    letter_h = math.floor(MARK_REACH * size / math.hypot(aspect / 2, stack / 2))
+    letter_w = round(aspect * letter_h)
+    gap = max(1, round(letter_h * GAP_SHARE))
+    rule = max(1, round(letter_h * RULE_SHARE))
+    mark_h = letter_h + gap + rule
+    top = round((size - mark_h) / 2)
+    side = round((size - letter_w) / 2)
+
+    big = size * SUPERSAMPLE
+    img = Image.new("RGB", (big, big), WHITE)
+    glyph = _glyph(letter_h * SUPERSAMPLE).resize((letter_w * SUPERSAMPLE, letter_h * SUPERSAMPLE), Image.LANCZOS)
+    img.paste(Image.new("RGB", glyph.size, INK), (side * SUPERSAMPLE, top * SUPERSAMPLE), glyph)
+    rule_top = (top + letter_h + gap) * SUPERSAMPLE
+    ImageDraw.Draw(img).rectangle(
+        (side * SUPERSAMPLE, rule_top, (side + letter_w) * SUPERSAMPLE - 1, rule_top + rule * SUPERSAMPLE - 1),
+        fill=RED,
     )
-    return math.hypot(width / 2 + stroke, height / 2 + stroke) / size
+
+    corner_x = max(size / 2 - side, side + letter_w - size / 2)
+    corner_y = max(size / 2 - top, top + mark_h - size / 2)
+    reach = math.hypot(corner_x, corner_y) / size
+    return img.resize((size, size), Image.BOX), reach
 
 
-def render(size: int, *, rounded: bool, letter_share: float = TILE_LETTER,
-           stroke_em: float = STROKE_EM) -> tuple[Image.Image, float]:
-    big = _tile(size * SUPERSAMPLE, rounded)
-    reach = _draw_letter(big, letter_share, stroke_em)
-    return big.resize((size, size), Image.LANCZOS), reach
+def render_16() -> tuple[Image.Image, float]:
+    img = Image.new("RGB", (16, 16), WHITE)
+    ox, oy = MARK_16_ORIGIN
+    colors = {"#": INK, "r": RED}
+    far = 0.0
+    for y, row in enumerate(MARK_16):
+        for x, cell in enumerate(row):
+            if cell in colors:
+                img.putpixel((ox + x, oy + y), colors[cell])
+                # The pixel's far corner, from the icon's centre.
+                dx = max(abs(ox + x - 8), abs(ox + x + 1 - 8))
+                dy = max(abs(oy + y - 8), abs(oy + y + 1 - 8))
+                far = max(far, math.hypot(dx, dy))
+    return img, far / 16
 
 
-def render_16() -> Image.Image:
-    img = _tile(16 * SUPERSAMPLE, rounded=True).resize((16, 16), Image.LANCZOS)
-    ox, oy = LETTER_16_ORIGIN
-    letter = {
-        (ox + x, oy + y)
-        for y, row in enumerate(LETTER_16)
-        for x, cell in enumerate(row)
-        if cell == "#"
-    }
-    stroke = {
-        (x + dx, y + dy)
-        for x, y in letter
-        for dx in (-1, 0, 1)
-        for dy in (-1, 0, 1)
-    } - letter
-    for xy in stroke:
-        img.putpixel(xy, BLACK)
-    for xy in letter:
-        img.putpixel(xy, WHITE)
-    return img
+def _check(name: str, reach: float) -> None:
+    if reach > SAFE_ZONE_RADIUS:
+        raise SystemExit(f"{name}: the mark reaches {reach:.3f} of the width, outside the safe zone.")
+    print(f"{name}: mark reaches {reach:.3f}, safe zone ends at {SAFE_ZONE_RADIUS}")
 
 
 def main() -> None:
     if not FONT_PATH.exists():
-        raise SystemExit(f"Missing {FONT_PATH}. The backend's build downloads it.")
+        raise SystemExit(f"Missing {FONT_PATH}.")
 
-    favicon = {
-        16: render_16(),
-        32: render(32, rounded=True, stroke_em=FAVICON_STROKE_EM)[0],
-        48: render(48, rounded=True, stroke_em=FAVICON_STROKE_EM)[0],
-    }
+    sixteen, reach = render_16()
+    _check("favicon 16", reach)
+    favicon = {16: sixteen}
+    for size in (32, 48):
+        favicon[size], reach = render(size)
+        _check(f"favicon {size}", reach)
     favicon[48].save(
         OUT_DIR / "favicon.ico",
         format="ICO",
@@ -148,20 +155,16 @@ def main() -> None:
     )
 
     for size in (192, 512):
-        render(size, rounded=True)[0].save(OUT_DIR / f"icon-{size}.png", optimize=True)
+        icon, reach = render(size)
+        _check(f"icon-{size}.png", reach)
+        icon.save(OUT_DIR / f"icon-{size}.png", optimize=True)
+        icon.save(OUT_DIR / f"icon-maskable-{size}.png", optimize=True)
 
-    # No alpha channel: iOS paints transparent pixels black.
-    apple, _ = render(180, rounded=False)
-    apple.convert("RGB").save(OUT_DIR / "apple-touch-icon.png", optimize=True)
+    apple, reach = render(180)
+    _check("apple-touch-icon.png", reach)
+    apple.save(OUT_DIR / "apple-touch-icon.png", optimize=True)
     # Older iOS versions and some crawlers ask for this name instead.
     shutil.copyfile(OUT_DIR / "apple-touch-icon.png", OUT_DIR / "apple-touch-icon-precomposed.png")
-
-    for size in (192, 512):
-        icon, reach = render(size, rounded=False, letter_share=MASKABLE_LETTER)
-        if reach > SAFE_ZONE_RADIUS:
-            raise SystemExit(f"The letter reaches {reach:.3f} of the width, outside the safe zone.")
-        icon.convert("RGB").save(OUT_DIR / f"icon-maskable-{size}.png", optimize=True)
-        print(f"icon-maskable-{size}.png: letter reaches {reach:.3f}, safe zone ends at {SAFE_ZONE_RADIUS}")
 
     print(f"Wrote the icon set to {OUT_DIR}")
 

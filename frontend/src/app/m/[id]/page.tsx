@@ -51,7 +51,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const imageUrl = publicMemeUrl(meme.url);
 
   return {
-    title,
+    // The title already names MemeGPT, so it skips the site's template.
+    title: { absolute: title },
     description,
     openGraph: {
       title,

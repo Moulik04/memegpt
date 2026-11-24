@@ -21,29 +21,41 @@ const archivo = localFont({
   fallback: ["Arial", "sans-serif"],
 });
 
-const DESCRIPTION = "A chatbot that speaks exclusively in memes.";
+// The copy deck, sections 7.1 and 8.
+const TITLE = "MemeGPT: a chatbot that only replies in memes";
+const DESCRIPTION = "A chatbot that only replies in memes.";
 
-// Every route below gets this as its default og:image/twitter:image unless
-// it sets its own (the way /m/[id] already does with the actual meme being
-// shared) — a real rendered caption-on-template, not a screenshot or logo.
-const DEFAULT_SHARE_IMAGE = "/landing/drake_example.png";
+// Links to the site preview the Front Page card, rendered by
+// scripts/render_link_preview.py. Shared meme pages (/m/[id]) set their
+// own preview: the meme itself.
+const LINK_PREVIEW = {
+  url: "/link-preview.png",
+  width: 1200,
+  height: 630,
+  alt: "The group chat has a front page. A chatbot that only replies in memes.",
+};
+
+// Icons keep their names; the query makes browsers that cached the old
+// dark set fetch these. Bump it whenever scripts/render_icons.py changes
+// the files, here and in manifest.json.
+const ICON_VERSION = "?v=2";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://memegpt.app"),
   title: {
-    default: "MemeGPT — A chatbot that only speaks meme.",
-    template: "%s — MemeGPT",
+    default: TITLE,
+    template: "%s · MemeGPT",
   },
   description: DESCRIPTION,
-  manifest: "/manifest.json",
+  manifest: `/manifest.json${ICON_VERSION}`,
   // Rendered by scripts/render_icons.py. The installed app's icons are in
   // manifest.json.
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "48x48" },
-      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: `/favicon.ico${ICON_VERSION}`, sizes: "16x16 32x32 48x48" },
+      { url: `/icon-192.png${ICON_VERSION}`, type: "image/png", sizes: "192x192" },
     ],
-    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+    apple: [{ url: `/apple-touch-icon.png${ICON_VERSION}`, sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,
@@ -51,16 +63,17 @@ export const metadata: Metadata = {
     title: "MemeGPT",
   },
   openGraph: {
-    title: "MemeGPT — A chatbot that only speaks meme.",
+    title: TITLE,
     description: DESCRIPTION,
-    images: [{ url: DEFAULT_SHARE_IMAGE }],
+    images: [LINK_PREVIEW],
     type: "website",
+    siteName: "MemeGPT",
   },
   twitter: {
     card: "summary_large_image",
-    title: "MemeGPT — A chatbot that only speaks meme.",
+    title: TITLE,
     description: DESCRIPTION,
-    images: [DEFAULT_SHARE_IMAGE],
+    images: [LINK_PREVIEW],
   },
 };
 
