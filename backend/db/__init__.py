@@ -523,7 +523,10 @@ class RawArcStats:
     first_date: date | None = None
     last_date: date | None = None
     busiest_date: date | None = None
-    busiest_sample_ts: datetime | None = None  # a real created_at from the busiest date
+    busiest_sample_ts: datetime | None = None  # the busiest date's last created_at
+    # The latest created_at in the busiest local hour of day across every
+    # date, so its hour is that busiest hour once converted to the same zone.
+    busiest_hour_ts: datetime | None = None
     longest_streak_days: int = 0
 
 
@@ -564,7 +567,7 @@ async def fetch_raw_arc_stats(
         return RawArcStats()
     column, value = key
 
-    totals_row, top_rows, busiest_row, date_rows = await asyncio.gather(
+    totals_row, top_rows, busiest_row, hour_row, date_rows = await asyncio.gather(
         pool.fetchrow(
             f"""
             SELECT COUNT(*) AS total,
@@ -605,6 +608,22 @@ async def fetch_raw_arc_stats(
             """,
             value, tz,
         ),
+        # Hour of day across every date, ties to the hour used most recently.
+        pool.fetchrow(
+            f"""
+            SELECT h, cnt, last_ts FROM (
+                SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE $2)::int AS h,
+                       COUNT(*) AS cnt,
+                       MAX(created_at) AS last_ts
+                FROM memes
+                WHERE {column} = $1 AND mode NOT IN ('wrapped', 'arc')
+                GROUP BY h
+            ) sub
+            ORDER BY cnt DESC, last_ts DESC
+            LIMIT 1
+            """,
+            value, tz,
+        ),
         pool.fetch(
             f"""
             SELECT DISTINCT (created_at AT TIME ZONE $2)::date AS d
@@ -630,6 +649,7 @@ async def fetch_raw_arc_stats(
         last_date=totals_row["last_date"],
         busiest_date=busiest_row["d"] if busiest_row else None,
         busiest_sample_ts=busiest_row["last_ts"] if busiest_row else None,
+        busiest_hour_ts=hour_row["last_ts"] if hour_row else None,
         longest_streak_days=_longest_streak([row["d"] for row in date_rows]),
     )
 
