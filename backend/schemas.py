@@ -358,6 +358,14 @@ class ArcTemplate(BaseModel):
     image_url: str | None = None
 
 
+class ArcTier(BaseModel):
+    """One rung of ArcStats.tiers: a tier name and the lowest aura that
+    earns it."""
+
+    name: str
+    min_aura: int
+
+
 class ArcStats(BaseModel):
     """GET /arc/'s response. has_enough=False means every other field is at
     its default (0 / None / []) — the frontend shows the empty state rather
@@ -372,15 +380,21 @@ class ArcStats(BaseModel):
     period_label: str | None = None  # e.g. "Summer Arc" or "Your Arc"
     aura: int = 0
     tier: str | None = None  # e.g. "main character (unwell)"
+    # Every tier, top first, with the aura that earns it: the same
+    # thresholds that pick `tier`.
+    tiers: list[ArcTier] = []
     top_templates: list[ArcTemplate] = []
     busiest_date: str | None = None  # ISO date
     busiest_time_label: str | None = None  # e.g. "2:14 AM", in the caller's tz
+    busiest_hour_label: str | None = None  # the same moment's hour, e.g. "2 AM"
     hour_roast: str | None = None
     chat_count: int = 0
     lore_count: int = 0
     make_count: int = 0
     split_roast: str | None = None
     longest_streak_days: int = 0
+    volume_roast: str | None = None  # after "memes generated this arc."
+    streak_roast: str | None = None  # after "consecutive days."
     verdict: str | None = None  # the closing line, e.g. "Character development: none detected. Arc continues."
 
 
