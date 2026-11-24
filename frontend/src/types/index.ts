@@ -188,7 +188,10 @@ export interface ArcStats {
   busiest_time_label: string | null;
   /** The same moment's hour, e.g. "2 AM". */
   busiest_hour_label?: string | null;
+  /** About busiest_time_label's moment. */
   hour_roast: string | null;
+  /** About busiest_hour_label's hour. */
+  busiest_hour_roast?: string | null;
   chat_count: number;
   lore_count: number;
   make_count: number;

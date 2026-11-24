@@ -161,9 +161,23 @@ function Cover() {
   // it during render would disagree with the server's HTML.
   const [position, setPosition] = useState<number | null>(null);
   const reduceMotion = useReducedMotion();
+  const slotRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setPosition(leadPosition);
+  }, []);
+
+  // The slot's height comes from flex, which container units can't read
+  // (Chrome resolves 100cqh to 0 inside a flexed size container), so the
+  // meme's height limit is the slot's measured height, kept current here.
+  useEffect(() => {
+    const slot = slotRef.current;
+    if (!slot) return;
+    const observer = new ResizeObserver(([entry]) => {
+      slot.style.setProperty("--slot-h", `${Math.floor(entry.contentRect.height)}px`);
+    });
+    observer.observe(slot);
+    return () => observer.disconnect();
   }, []);
 
   const order = position === null ? null : visitOrder();
@@ -185,7 +199,14 @@ function Cover() {
   }
 
   return (
-    <section aria-labelledby="landing-headline" className="mx-auto max-w-6xl px-4 md:px-8 pt-4 md:pt-8 pb-10 md:pb-14">
+    // One screen tall below the masthead (and above the phone's tab bar), so
+    // the lead slot takes whatever the headline and composer leave and the
+    // composer stays above the fold at any window height.
+    <section
+      aria-labelledby="landing-headline"
+      className="mx-auto max-w-6xl px-4 md:px-8 pt-4 md:pt-8 pb-6 md:pb-8 flex flex-col
+                 min-h-[calc(100svh-3.5rem-2px-3rem-1px-env(safe-area-inset-bottom))] md:min-h-[calc(100svh-74px)]"
+    >
       <h1
         id="landing-headline"
         className="font-display text-[length:var(--text-display)] leading-[0.95] text-foreground text-balance"
@@ -194,7 +215,7 @@ function Cover() {
       </h1>
       <p className="mt-3 md:mt-4 max-w-2xl text-lg md:text-xl text-foreground">{SUBLINE}</p>
 
-      <article aria-label="Lead story" className="mt-4 md:mt-6">
+      <article aria-label="Lead story" className="mt-4 md:mt-6 flex-1 flex flex-col min-h-0">
         <div className="flex items-start justify-between gap-4 min-h-11">
           <p className="py-2.5 text-base font-medium text-foreground" aria-live="polite">
             {story?.prompt}
@@ -209,7 +230,9 @@ function Cover() {
             {NEXT_STORY}
           </button>
         </div>
-        <div className="relative h-[30vh] md:h-[34vh] lg:h-[40vh] max-h-[30rem]">
+        {/* The slot's height is set by the space left, between 12rem and
+            30rem; the meme fits inside its measured height. */}
+        <div ref={slotRef} className="relative flex-1 min-h-48 max-h-[30rem] [--slot-h:12rem]">
           <AnimatePresence initial={false}>
             {story && (
               <motion.div
@@ -224,7 +247,7 @@ function Cover() {
                   url={story.image}
                   alt={`A meme MemeGPT made for: ${story.prompt}`}
                   className="flex justify-center max-w-full max-h-full"
-                  maxHeightClassName="max-h-[calc(30vh-1rem)] md:max-h-[calc(min(34vh,30rem)-1.5rem)] lg:max-h-[calc(min(40vh,30rem)-1.5rem)]"
+                  maxHeightClassName="max-h-[calc(var(--slot-h)-1rem-4px)] md:max-h-[calc(var(--slot-h)-1.5rem-4px)]"
                 />
               </motion.div>
             )}

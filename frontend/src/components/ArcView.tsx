@@ -107,14 +107,17 @@ function buildFrames(stats: ArcStats): Frame[] {
     });
   }
 
+  // The busiest hour and the roast written for it. A backend without the
+  // hour's own roast sends both fields about one moment, so hour_roast fits.
   const hour = stats.busiest_hour_label ?? stats.busiest_time_label;
+  const hourRoast = stats.busiest_hour_label ? (stats.busiest_hour_roast ?? stats.hour_roast) : stats.hour_roast;
   if (hour) {
     frames.push({
       label: "03 Witching hour",
       body: (
         <>
           <Display>{hour}</Display>
-          <Roast line={stats.hour_roast} />
+          <Roast line={hourRoast} />
         </>
       ),
     });
