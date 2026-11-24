@@ -263,12 +263,14 @@ def build_arc_stats(raw: RawArcStats | None, tz: str = "UTC") -> ArcStats:
     busiest_hour_label: str | None = None
     hour_roast: str | None = None
     if raw.busiest_sample_ts is not None:
-        busiest_local = raw.busiest_sample_ts.astimezone(ZoneInfo(tz))
-        busiest_local_hour = busiest_local.hour
-        busiest_time_label = busiest_local.strftime("%-I:%M %p")
-        # The same moment as the time label and hour_roast, so the hour shown
-        # and the line about it always agree.
-        busiest_hour_label = busiest_local.strftime("%-I %p")
+        # A real moment on the busiest date, shown beside that date.
+        busiest_time_label = raw.busiest_sample_ts.astimezone(ZoneInfo(tz)).strftime("%-I:%M %p")
+    if raw.busiest_hour_ts is not None:
+        # The busiest hour of day. Its label, roast and late-night bonus all
+        # read this one moment, so they always describe the same hour.
+        busiest_hour = raw.busiest_hour_ts.astimezone(ZoneInfo(tz))
+        busiest_local_hour = busiest_hour.hour
+        busiest_hour_label = busiest_hour.strftime("%-I %p")
         hour_roast = _hour_roast(busiest_local_hour, seed)
 
     aura = _compute_aura(raw, busiest_local_hour)

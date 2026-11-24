@@ -35,6 +35,7 @@ def _raw(**overrides) -> RawArcStats:
         last_date=date(2026, 11, 17),
         busiest_date=date(2026, 10, 2),
         busiest_sample_ts=datetime(2026, 10, 2, 2, 14, tzinfo=UTC),
+        busiest_hour_ts=datetime(2026, 10, 2, 2, 14, tzinfo=UTC),
         longest_streak_days=6,
     )
     base.update(overrides)
@@ -83,7 +84,8 @@ def test_stats_carry_the_ladder_and_the_new_lines():
 
 
 def test_the_hour_follows_the_callers_time_zone():
-    stats = build_arc_stats(_raw(busiest_sample_ts=datetime(2026, 10, 2, 18, 5, tzinfo=UTC)), tz="America/New_York")
+    moment = datetime(2026, 10, 2, 18, 5, tzinfo=UTC)
+    stats = build_arc_stats(_raw(busiest_sample_ts=moment, busiest_hour_ts=moment), tz="America/New_York")
     assert (stats.busiest_time_label, stats.busiest_hour_label) == ("2:05 PM", "2 PM")
 
 
@@ -125,7 +127,7 @@ class _RoutingPool:
                     "make_count": 6, "first_date": date(2026, 9, 3), "last_date": date(2026, 11, 17)}
         if "EXTRACT(HOUR" in query:
             return {"h": 23, "cnt": 9, "last_ts": datetime(2026, 11, 4, 23, 51, tzinfo=UTC)}
-        return {"d": date(2026, 10, 2), "cnt": 6}
+        return {"d": date(2026, 10, 2), "cnt": 6, "last_ts": datetime(2026, 10, 3, 1, 30, tzinfo=UTC)}
 
     async def fetch(self, query, *args):
         self.calls.append((query, args))
@@ -147,13 +149,38 @@ async def test_the_busiest_hour_comes_from_every_day_not_the_busiest_one(monkeyp
     assert "AT TIME ZONE $2" in hour_query and "GROUP BY h" in hour_query
     assert hour_args == ("anon-1", "America/New_York")
     assert raw.busiest_date == date(2026, 10, 2)
-    assert raw.busiest_sample_ts == datetime(2026, 11, 4, 23, 51, tzinfo=UTC)
+    assert raw.busiest_sample_ts == datetime(2026, 10, 3, 1, 30, tzinfo=UTC)
+    assert raw.busiest_hour_ts == datetime(2026, 11, 4, 23, 51, tzinfo=UTC)
 
 
 def test_the_hour_label_roast_and_bonus_share_one_hour():
-    late = build_arc_stats(_raw(busiest_sample_ts=datetime(2026, 11, 4, 3, 40, tzinfo=UTC)), tz="UTC")
-    noon = build_arc_stats(_raw(busiest_sample_ts=datetime(2026, 11, 4, 12, 40, tzinfo=UTC)), tz="UTC")
+    late = build_arc_stats(_raw(busiest_hour_ts=datetime(2026, 11, 4, 3, 40, tzinfo=UTC)), tz="UTC")
+    noon = build_arc_stats(_raw(busiest_hour_ts=datetime(2026, 11, 4, 12, 40, tzinfo=UTC)), tz="UTC")
     assert (late.busiest_hour_label, noon.busiest_hour_label) == ("3 AM", "12 PM")
     assert late.aura - noon.aura == 400
     assert late.hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
     assert noon.hour_roast not in ("we're not asking questions.", "certified insomniac behavior.")
+
+
+def test_the_time_stays_on_its_day_while_the_hour_counts_every_day():
+    """The busiest day's last meme was at 9:30 PM, but 2 AM is the busiest
+    hour overall. The time printed beside the busiest date stays that date's
+    own; the hour, its roast and the late-night bonus follow 2 AM."""
+    stats = build_arc_stats(
+        _raw(
+            busiest_sample_ts=datetime(2026, 10, 2, 21, 30, tzinfo=UTC),
+            busiest_hour_ts=datetime(2026, 11, 4, 2, 51, tzinfo=UTC),
+        ),
+        tz="UTC",
+    )
+    assert (stats.busiest_date, stats.busiest_time_label) == ("2026-10-02", "9:30 PM")
+    assert stats.busiest_hour_label == "2 AM"
+    assert stats.hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
+    no_bonus = build_arc_stats(
+        _raw(
+            busiest_sample_ts=datetime(2026, 10, 2, 21, 30, tzinfo=UTC),
+            busiest_hour_ts=datetime(2026, 11, 4, 21, 51, tzinfo=UTC),
+        ),
+        tz="UTC",
+    )
+    assert stats.aura - no_bonus.aura == 400

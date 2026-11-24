@@ -523,9 +523,10 @@ class RawArcStats:
     first_date: date | None = None
     last_date: date | None = None
     busiest_date: date | None = None
-    # The latest created_at in the busiest local hour of day, so its hour is
-    # that busiest hour once converted to the same time zone.
-    busiest_sample_ts: datetime | None = None
+    busiest_sample_ts: datetime | None = None  # the busiest date's last created_at
+    # The latest created_at in the busiest local hour of day across every
+    # date, so its hour is that busiest hour once converted to the same zone.
+    busiest_hour_ts: datetime | None = None
     longest_streak_days: int = 0
 
 
@@ -594,9 +595,10 @@ async def fetch_raw_arc_stats(
         ),
         pool.fetchrow(
             f"""
-            SELECT d, cnt FROM (
+            SELECT d, cnt, last_ts FROM (
                 SELECT (created_at AT TIME ZONE $2)::date AS d,
-                       COUNT(*) AS cnt
+                       COUNT(*) AS cnt,
+                       MAX(created_at) AS last_ts
                 FROM memes
                 WHERE {column} = $1 AND mode NOT IN ('wrapped', 'arc')
                 GROUP BY d
@@ -646,7 +648,8 @@ async def fetch_raw_arc_stats(
         first_date=totals_row["first_date"],
         last_date=totals_row["last_date"],
         busiest_date=busiest_row["d"] if busiest_row else None,
-        busiest_sample_ts=hour_row["last_ts"] if hour_row else None,
+        busiest_sample_ts=busiest_row["last_ts"] if busiest_row else None,
+        busiest_hour_ts=hour_row["last_ts"] if hour_row else None,
         longest_streak_days=_longest_streak([row["d"] for row in date_rows]),
     )
 
