@@ -386,8 +386,9 @@ class ArcStats(BaseModel):
     top_templates: list[ArcTemplate] = []
     busiest_date: str | None = None  # ISO date
     busiest_time_label: str | None = None  # the busiest date's last meme, e.g. "2:14 AM", caller's tz
-    busiest_hour_label: str | None = None  # the busiest hour of day, e.g. "2 AM"; hour_roast is about it
-    hour_roast: str | None = None
+    busiest_hour_label: str | None = None  # the busiest hour of day, e.g. "2 AM"
+    hour_roast: str | None = None  # about busiest_time_label's moment
+    busiest_hour_roast: str | None = None  # about busiest_hour_label's hour
     chat_count: int = 0
     lore_count: int = 0
     make_count: int = 0

@@ -78,9 +78,10 @@ def test_stats_carry_the_ladder_and_the_new_lines():
     assert stats.volume_roast == "no thoughts, just memes."
     assert stats.streak_roast == "still an arc."
     assert stats.busiest_hour_label == "2 AM"
-    # The hour and its roast describe the same moment.
     assert stats.busiest_time_label == "2:14 AM"
+    # Here the busiest day's moment and the busiest hour coincide.
     assert stats.hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
+    assert stats.busiest_hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
 
 
 def test_the_hour_follows_the_callers_time_zone():
@@ -158,14 +159,15 @@ def test_the_hour_label_roast_and_bonus_share_one_hour():
     noon = build_arc_stats(_raw(busiest_hour_ts=datetime(2026, 11, 4, 12, 40, tzinfo=UTC)), tz="UTC")
     assert (late.busiest_hour_label, noon.busiest_hour_label) == ("3 AM", "12 PM")
     assert late.aura - noon.aura == 400
-    assert late.hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
-    assert noon.hour_roast not in ("we're not asking questions.", "certified insomniac behavior.")
+    assert late.busiest_hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
+    assert noon.busiest_hour_roast not in ("we're not asking questions.", "certified insomniac behavior.")
 
 
 def test_the_time_stays_on_its_day_while_the_hour_counts_every_day():
     """The busiest day's last meme was at 9:30 PM, but 2 AM is the busiest
     hour overall. The time printed beside the busiest date stays that date's
-    own; the hour, its roast and the late-night bonus follow 2 AM."""
+    own, and so does the roast printed after it; the hour label, its own
+    roast and the late-night bonus follow 2 AM."""
     stats = build_arc_stats(
         _raw(
             busiest_sample_ts=datetime(2026, 10, 2, 21, 30, tzinfo=UTC),
@@ -173,9 +175,11 @@ def test_the_time_stays_on_its_day_while_the_hour_counts_every_day():
         ),
         tz="UTC",
     )
+    late_night = ("we're not asking questions.", "certified insomniac behavior.")
     assert (stats.busiest_date, stats.busiest_time_label) == ("2026-10-02", "9:30 PM")
+    assert stats.hour_roast in ("peak hours, peak chaos.", "prime-time behavior.")
     assert stats.busiest_hour_label == "2 AM"
-    assert stats.hour_roast in ("we're not asking questions.", "certified insomniac behavior.")
+    assert stats.busiest_hour_roast in late_night
     no_bonus = build_arc_stats(
         _raw(
             busiest_sample_ts=datetime(2026, 10, 2, 21, 30, tzinfo=UTC),
