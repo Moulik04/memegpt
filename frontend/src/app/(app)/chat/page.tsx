@@ -5,7 +5,7 @@ import { MobileNav } from "@/components/MobileNav";
 
 export const metadata: Metadata = {
   title: "Chat",
-  description: "Talk to MemeGPT like any chatbot. It only replies in memes.",
+  description: "Talk to MemeGPT like any chatbot. Every reply comes back as a meme.",
 };
 
 export default function ChatPage() {
