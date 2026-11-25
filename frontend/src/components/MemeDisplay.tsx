@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useReducedMotion } from "motion/react";
 import { memeImageUrl } from "@/lib/api";
+import { StillImage } from "@/components/StillImage";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 interface Props {
@@ -21,6 +23,10 @@ interface Props {
 
 type LoadState = "loading" | "ready" | "broken";
 
+/** The copy deck, section 7.4: an animated meme with reduced motion. */
+const PLAY = "Play";
+const PAUSE = "Pause";
+
 // Images this page has already shown. A meme that moves to a new place,
 // as Chat's lead does into Earlier, mounts again: starting it as ready
 // keeps the loading box from flashing, and gives a layout animation the
@@ -33,6 +39,8 @@ const loadedSources = new Set<string>();
  * stretched: the image only scales down to fit the caller's width and
  * maxHeightClassName. Captions and the watermark are part of the image.
  * Meme images don't animate in. Activating the image opens it full size.
+ * With reduced motion, an animated GIF shows its first frame and a Play
+ * control, which turns to Pause while it plays.
  */
 export function MemeDisplay({
   url,
@@ -49,6 +57,15 @@ export function MemeDisplay({
   const [state, setState] = useState<LoadState>(() => (loadedSources.has(src) ? "ready" : "loading"));
   const [open, setOpen] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const reduceMotion = useReducedMotion();
+  const [playing, setPlaying] = useState(false);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  // The server can't know the reader's motion setting, and hydration keeps
+  // the server's classes, so the still only takes over after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const gifControl = mounted && !!reduceMotion && /\.gif(?:$|\?)/i.test(base);
+  const still = gifControl && !playing;
 
   useEffect(() => {
     // An image already in the cache can finish before React attaches
@@ -57,6 +74,7 @@ export function MemeDisplay({
     if (img?.complete) {
       if (img.naturalWidth > 0) {
         loadedSources.add(src);
+        setNatural({ w: img.naturalWidth, h: img.naturalHeight });
         onSize?.(img.naturalWidth, img.naturalHeight);
       }
       setState(img.naturalWidth > 0 ? "ready" : "broken");
@@ -67,6 +85,17 @@ export function MemeDisplay({
     // not re-run this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
+
+  const playToggle = (
+    <button
+      type="button"
+      onClick={() => setPlaying((p) => !p)}
+      className="mt-2 min-h-11 px-1 text-base font-medium text-foreground underline decoration-brand
+                 decoration-2 underline-offset-4 hover:decoration-[3px]"
+    >
+      {playing ? PAUSE : PLAY}
+    </button>
+  );
 
   return (
     <div className={className}>
@@ -109,12 +138,23 @@ export function MemeDisplay({
               onLoad={(e) => {
                 loadedSources.add(src);
                 setState("ready");
+                setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight });
                 onSize?.(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight);
               }}
               onError={() => setState("broken")}
-              className={`block w-auto h-auto max-w-full ${maxHeightClassName} border border-meme-edge`}
+              className={`${still ? "hidden" : "block"} w-auto h-auto max-w-full ${maxHeightClassName} border border-meme-edge`}
             />
+            {still && state === "ready" && natural && (
+              <StillImage
+                src={src}
+                alt={alt}
+                width={natural.w}
+                height={natural.h}
+                className={`block w-auto h-auto max-w-full ${maxHeightClassName} border border-meme-edge`}
+              />
+            )}
           </button>
+          {gifControl && state === "ready" && playToggle}
         </figure>
       )}
 
@@ -130,14 +170,27 @@ export function MemeDisplay({
           <DialogTitle className="sr-only">{alt}</DialogTitle>
           {heading}
           <div className="bg-meme-mat border border-meme-edge p-2 md:p-3 justify-self-center">
-            {/* eslint-disable-next-line @next/next/no-img-element -- natural size, any origin */}
-            <img
-              src={src}
-              alt={alt}
-              className={`block w-auto h-auto max-w-full border border-meme-edge ${
-                heading || footer ? "max-h-[calc(100dvh-14rem)]" : "max-h-[calc(100dvh-8rem)]"
-              }`}
-            />
+            {still && natural ? (
+              <StillImage
+                src={src}
+                alt={alt}
+                width={natural.w}
+                height={natural.h}
+                className={`block w-auto h-auto max-w-full border border-meme-edge ${
+                  heading || footer ? "max-h-[calc(100dvh-14rem)]" : "max-h-[calc(100dvh-8rem)]"
+                }`}
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- natural size, any origin
+              <img
+                src={src}
+                alt={alt}
+                className={`block w-auto h-auto max-w-full border border-meme-edge ${
+                  heading || footer ? "max-h-[calc(100dvh-14rem)]" : "max-h-[calc(100dvh-8rem)]"
+                }`}
+              />
+            )}
+            {gifControl && playToggle}
           </div>
           {footer}
           <DialogClose className="justify-self-end min-h-11 px-3 text-base font-medium text-foreground">

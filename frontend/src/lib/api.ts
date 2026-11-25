@@ -238,15 +238,12 @@ export async function sendImageStream(
       body: form,
     });
   } catch {
-    throw new Error(
-      "Couldn't reach the server to upload those photos — check your connection and try again."
-    );
+    // A photo upload that never arrived shows the deck's upload line
+    // (lib/notices.ts), the same as any other failed upload.
+    throw new ApiError("upload failed");
   }
 
   if (!res.ok) {
-    if (res.status === 413) {
-      throw new Error("Those photos are too large to upload together — try fewer or smaller images.");
-    }
     throw await _apiError(res);
   }
 

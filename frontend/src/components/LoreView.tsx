@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
+import { FAST_OUT, FAST_SETTLE, INSTANT, SETTLE } from "@/lib/motion";
 import { LoaderCircle, RefreshCw } from "lucide-react";
 import { createConversation, getConversationMessages, memeImageUrl, postFeedback } from "@/lib/api";
 import { useMemeStream, type PlanState, type StreamFailure } from "@/hooks/useMemeStream";
@@ -184,7 +185,6 @@ interface TakeState {
   note?: string;
 }
 
-const SETTLE = { duration: 0.24, ease: [0.16, 1, 0.3, 1] as const };
 
 /**
  * Lore: paste a whole group chat or drop in screenshots, get one meme per
@@ -490,7 +490,7 @@ export function LoreView() {
 
   return (
     <MotionConfig reducedMotion="user" transition={SETTLE}>
-      <div className="flex-1 overflow-y-auto chat-scroll">
+      <main className="flex-1 overflow-y-auto chat-scroll">
         <div className="mx-auto max-w-6xl px-4 md:px-8 pt-6 md:pt-8 pb-12">
           <h1 className="sr-only">Lore</h1>
 
@@ -556,38 +556,36 @@ export function LoreView() {
 
             {isOverCut(text.trim()) && <p className="text-base text-muted-foreground">{OVER_CUT}</p>}
 
-            {pendingImages.length > 0 && (
-              <ul aria-label="Attached screenshots" className="flex flex-wrap gap-x-3 gap-y-1">
-                <AnimatePresence initial={false}>
-                  {pendingImages.map((p, i) => (
-                    <motion.li
-                      key={p.previewUrl}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9 }}
-                      transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                      className="flex items-center gap-1"
+            <ul aria-label="Attached screenshots" className="flex flex-wrap gap-x-3 gap-y-1 empty:hidden">
+              <AnimatePresence initial={false}>
+                {pendingImages.map((p, i) => (
+                  <motion.li
+                    key={p.previewUrl}
+                    initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={reduceMotion ? INSTANT : FAST_SETTLE}
+                    className="flex items-center gap-1"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- local preview */}
+                    <img
+                      src={p.previewUrl}
+                      alt={`Attached screenshot ${i + 1}`}
+                      className="w-12 h-12 object-cover border border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removePendingImage(i)}
+                      aria-label={`Remove screenshot ${i + 1}`}
+                      className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground
+                                 underline underline-offset-4 transition-colors duration-[var(--duration-fast)]"
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- local preview */}
-                      <img
-                        src={p.previewUrl}
-                        alt={`Attached screenshot ${i + 1}`}
-                        className="w-12 h-12 object-cover border border-border"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removePendingImage(i)}
-                        aria-label={`Remove screenshot ${i + 1}`}
-                        className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground
-                                   underline underline-offset-4 transition-colors duration-[var(--duration-fast)]"
-                      >
-                        Remove
-                      </button>
-                    </motion.li>
-                  ))}
-                </AnimatePresence>
-              </ul>
-            )}
+                      Remove
+                    </button>
+                  </motion.li>
+                ))}
+              </AnimatePresence>
+            </ul>
 
             <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-6">
               <fieldset className="flex items-center">
@@ -719,7 +717,7 @@ export function LoreView() {
             ))}
           </div>
         </div>
-      </div>
+      </main>
     </MotionConfig>
   );
 }
@@ -740,6 +738,7 @@ function TranscriptLines({ lines, className = "" }: { lines: QuotedLine[]; class
 /** The sent paste, collapsed to three lines with the rest a tap away. */
 function SentTranscript({ sent }: { sent: string }) {
   const [open, setOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
   const { lines, more } = previewLines(sent);
   const all = sent
     .split("\n")
@@ -751,10 +750,10 @@ function SentTranscript({ sent }: { sent: string }) {
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
+            initial={reduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            transition={reduceMotion ? INSTANT : FAST_OUT}
             className="overflow-hidden"
           >
             <TranscriptLines lines={all.slice(lines.length)} className="text-muted-foreground" />
@@ -1027,7 +1026,7 @@ function ResultMeme({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+            transition={reduceMotion ? INSTANT : SETTLE}
           >
             <MemeDisplay
               url={meme.url}

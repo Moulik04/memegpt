@@ -38,9 +38,9 @@ const RULES = [
   },
 ];
 
-// Not failures: dark-theme pieces and other leftovers that later steps
-// replace. Each must be gone by launch.
-const LATER = [
+// Text rules: checked on code and copy only, with comments stripped, and
+// not in tests, whose fixtures may hold these characters on purpose.
+const TEXT_RULES = [
   { item: "pill-shaped controls (rounded-full); the handoff avoids pills", pattern: /(?<![\w-])rounded-full(?![\w-])/ },
   // Comment lines are skipped below, so this only flags code and copy.
   { item: "em dash in a UI string", pattern: /\u2014/, code: true },
@@ -57,7 +57,6 @@ function files(dir) {
 }
 
 const failures = [];
-const later = new Map();
 for (const path of files(SRC)) {
   const file = relative(SRC, path).split(sep).join("/");
   const lines = readFileSync(path, "utf8").split("\n");
@@ -68,20 +67,15 @@ for (const path of files(SRC)) {
         failures.push(`  src/${file}:${i + 1}  ${match[0]}  (${rule.name})`);
       }
     }
-    for (const { item, pattern, code } of LATER) {
+    if (/\.test\.tsx?$/.test(file)) return;
+    for (const { item, pattern, code } of TEXT_RULES) {
       if (code && file.endsWith(".css")) continue;
       const text = code ? (COMMENT.test(line) ? "" : line.replace(/\/\*.*?\*\//g, "").replace(/\s\/\/.*$/, "")) : line;
-      if (!pattern.test(text)) continue;
-      if (!later.has(item)) later.set(item, new Set());
-      later.get(item).add(`src/${file}`);
+      if (pattern.test(text)) failures.push(`  src/${file}:${i + 1}  (${item})`);
     }
   });
 }
 
-if (later.size) {
-  console.log("check-tokens: leftovers for later redesign steps (not failures):");
-  for (const [item, where] of later) console.log(`  ${item}\n    ${[...where].join("\n    ")}`);
-}
 if (failures.length) {
   console.error(`check-tokens: ${failures.length} violation(s):\n${failures.join("\n")}`);
   process.exit(1);

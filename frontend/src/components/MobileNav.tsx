@@ -26,7 +26,7 @@ export function MobileNav({ active, fixed = false }: Props) {
     <nav
       aria-label="MemeGPT"
       data-fixed-tabs={fixed ? "" : undefined}
-      className={`md:hidden flex items-stretch border-t border-border bg-background
+      className={`md:hidden flex items-stretch border-t border-border bg-background [view-transition-name:site-tabs]
                   pb-[env(safe-area-inset-bottom)] ${fixed ? "fixed bottom-0 inset-x-0 z-30" : "shrink-0"}`}
     >
       {APP_TABS.map(({ key, href, label }) => {

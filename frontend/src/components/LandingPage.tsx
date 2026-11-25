@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { FAST_OUT, FAST_SETTLE, INSTANT, SETTLE } from "@/lib/motion";
 import { Masthead } from "@/components/Masthead";
 import { MobileNav } from "@/components/MobileNav";
 import { MemeDisplay } from "@/components/MemeDisplay";
@@ -246,7 +247,7 @@ function Cover() {
                 initial={reduceMotion ? false : { opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: reduceMotion ? 0 : 0.24, ease: [0.16, 1, 0.3, 1] }}
+                transition={reduceMotion ? INSTANT : SETTLE}
                 className="absolute inset-0 flex items-center justify-center"
               >
                 <MemeDisplay
@@ -280,6 +281,7 @@ interface PickedPhoto {
  */
 function Composer() {
   const router = useRouter();
+  const reduceMotion = useReducedMotion();
   const fieldId = useId();
   const [text, setText] = useState("");
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
@@ -331,10 +333,17 @@ function Composer() {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 max-w-3xl">
-      {photos.length > 0 && (
-        <ul aria-label="Attached photos" className="flex flex-wrap gap-x-3 gap-y-1">
+      <ul aria-label="Attached photos" className="flex flex-wrap gap-x-3 gap-y-1 empty:hidden">
+        <AnimatePresence initial={false}>
           {photos.map((p, i) => (
-            <li key={p.previewUrl} className="flex items-center gap-1">
+            <motion.li
+              key={p.previewUrl}
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={reduceMotion ? INSTANT : FAST_SETTLE}
+              className="flex items-center gap-1"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element -- local preview */}
               <img src={p.previewUrl} alt={`Attached photo ${i + 1}`} className="w-12 h-12 object-cover border border-border" />
               <button
@@ -346,10 +355,10 @@ function Composer() {
               >
                 Remove
               </button>
-            </li>
+            </motion.li>
           ))}
-        </ul>
-      )}
+        </AnimatePresence>
+      </ul>
       <div className="flex flex-col md:flex-row gap-2">
         <label htmlFor={fieldId} className="sr-only">
           Message
@@ -614,10 +623,10 @@ function Faq({ q, a }: { q: string; a: string }) {
         {open && (
           <motion.div
             id={answerId}
-            initial={{ height: 0, opacity: 0 }}
+            initial={reduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.15, ease: "easeOut" }}
+            transition={reduceMotion ? INSTANT : FAST_OUT}
             className="overflow-hidden"
           >
             <p className="pb-3 text-base text-foreground max-w-prose">{a}</p>

@@ -139,14 +139,18 @@ export function MemeActions({ url, memeId, onFeedback, rating: given, lead, lead
           })}
         </>
       )}
-      <button type="button" onClick={handleShare} className={MEME_ACTION}>
-        <Share size={16} strokeWidth={2} aria-hidden="true" />
-        Share
-      </button>
-      <button type="button" onClick={handleDownload} aria-busy={downloading} className={MEME_ACTION}>
-        <Download size={16} strokeWidth={2} aria-hidden="true" />
-        Download
-      </button>
+      {/* Share and Download wrap as a pair, so on the narrowest phones an
+          inline lead keeps its own line and neither sits alone. */}
+      <div className="flex">
+        <button type="button" onClick={handleShare} className={MEME_ACTION}>
+          <Share size={16} strokeWidth={2} aria-hidden="true" />
+          Share
+        </button>
+        <button type="button" onClick={handleDownload} aria-busy={downloading} className={MEME_ACTION}>
+          <Download size={16} strokeWidth={2} aria-hidden="true" />
+          Download
+        </button>
+      </div>
       <span role="status" className="text-sm text-muted-foreground px-2">
         {note === "copied" ? "Link copied" : note === "failed" ? "Couldn't share. Try Download." : ""}
       </span>

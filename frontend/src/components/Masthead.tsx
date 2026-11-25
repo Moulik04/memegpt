@@ -38,7 +38,7 @@ export function Masthead(props: Props) {
   const wordmark = "font-display text-2xl md:text-[2rem] leading-none text-foreground py-2.5";
 
   return (
-    <header className="shrink-0 bg-background border-b-2 border-brand">
+    <header className="shrink-0 bg-background border-b-2 border-brand [view-transition-name:site-masthead]">
       <div className="flex items-center gap-4 md:gap-10 px-4 md:px-8 min-h-14 md:min-h-[72px]">
         {unlinked ? (
           <span className={wordmark}>MemeGPT</span>

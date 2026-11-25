@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup, MotionConfig, motion, useReducedMotion } from "motion/react";
+import { ARRIVE, FAST_OUT, FAST_SETTLE, INSTANT } from "@/lib/motion";
 import { createConversation, getConversationMessages, postFeedback } from "@/lib/api";
 import { useMemeStream, type StreamFailure, type ThinkingStage } from "@/hooks/useMemeStream";
 import { useConversation } from "@/lib/ConversationContext";
@@ -88,7 +89,6 @@ function failureNotice(failure: StreamFailure, sentPhotos: boolean): Turn["notic
   };
 }
 
-const SETTLE = { duration: 0.32, ease: [0.16, 1, 0.3, 1] as const };
 
 export function ChatWindow() {
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -267,8 +267,8 @@ export function ChatWindow() {
   const canSend = !loading && (input.trim().length > 0 || pendingImages.length > 0);
 
   return (
-    <MotionConfig reducedMotion="user" transition={SETTLE}>
-      <div className="flex flex-col flex-1 min-h-0">
+    <MotionConfig reducedMotion="user" transition={ARRIVE}>
+      <main className="flex flex-col flex-1 min-h-0">
         <h1 className="sr-only">Chat</h1>
 
         {/* The composer: on top from 768px up, where the next lead story
@@ -276,38 +276,36 @@ export function ChatWindow() {
         <div className="order-last md:order-first shrink-0 border-t md:border-t-0 md:border-b border-border bg-background">
           <div className="mx-auto max-w-6xl px-4 md:px-8 py-3 md:py-5 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-12">
             <form onSubmit={handleSubmit} className="flex flex-col gap-2">
-              {pendingImages.length > 0 && (
-                <ul aria-label="Attached photos" className="flex flex-wrap gap-x-3 gap-y-1">
-                  <AnimatePresence initial={false}>
-                    {pendingImages.map((p, i) => (
-                      <motion.li
-                        key={p.previewUrl}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.9 }}
-                        transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
-                        className="flex items-center gap-1"
+              <ul aria-label="Attached photos" className="flex flex-wrap gap-x-3 gap-y-1 empty:hidden">
+                <AnimatePresence initial={false}>
+                  {pendingImages.map((p, i) => (
+                    <motion.li
+                      key={p.previewUrl}
+                      initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={reduceMotion ? INSTANT : FAST_SETTLE}
+                      className="flex items-center gap-1"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- local preview */}
+                      <img
+                        src={p.previewUrl}
+                        alt={`Attached photo ${i + 1}`}
+                        className="w-12 h-12 object-cover border border-border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePendingImage(i)}
+                        aria-label={`Remove photo ${i + 1}`}
+                        className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground
+                                   underline underline-offset-4 transition-colors duration-[var(--duration-fast)]"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- local preview */}
-                        <img
-                          src={p.previewUrl}
-                          alt={`Attached photo ${i + 1}`}
-                          className="w-12 h-12 object-cover border border-border"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removePendingImage(i)}
-                          aria-label={`Remove photo ${i + 1}`}
-                          className="min-h-11 px-2 text-base text-muted-foreground hover:text-foreground
-                                     underline underline-offset-4 transition-colors duration-[var(--duration-fast)]"
-                        >
-                          Remove
-                        </button>
-                      </motion.li>
-                    ))}
-                  </AnimatePresence>
-                </ul>
-              )}
+                        Remove
+                      </button>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
 
               <div className="flex flex-col md:flex-row gap-2">
                 <input
@@ -405,7 +403,7 @@ export function ChatWindow() {
             </div>
           </LayoutGroup>
         </div>
-      </div>
+      </main>
     </MotionConfig>
   );
 }
@@ -443,6 +441,7 @@ function UserLine({ turn, size }: { turn: Turn; size: "lead" | "earlier" }) {
 }
 
 function Stages({ stages }: { stages: ThinkingStage[] }) {
+  const reduceMotion = useReducedMotion();
   return (
     <ol aria-live="polite" className="mt-4 flex flex-col gap-1 text-base">
       {stages.map((stage, i) => {
@@ -450,9 +449,9 @@ function Stages({ stages }: { stages: ThinkingStage[] }) {
         return (
           <motion.li
             key={`${stage.key}-${stage.label}`}
-            initial={{ opacity: 0 }}
+            initial={reduceMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            transition={reduceMotion ? INSTANT : FAST_OUT}
             className={current ? "text-foreground font-medium" : "text-muted-foreground"}
             aria-current={current ? "step" : undefined}
           >

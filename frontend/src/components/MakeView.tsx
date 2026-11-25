@@ -7,6 +7,7 @@ import { GENERAL_FAILURE } from "@/lib/notices";
 import { templateLabel } from "@/lib/templateLabel";
 import BudgetNotice from "./BudgetNotice";
 import { MemeDisplay } from "./MemeDisplay";
+import { StillImage } from "./StillImage";
 import { MEME_ACTION, MemeActions } from "./MemeActions";
 import type { ExplainResponse, TextBoxInfo } from "@/types";
 
@@ -171,7 +172,7 @@ export function MakeView() {
   }
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto chat-scroll">
+    <main ref={scrollRef} className="flex-1 overflow-y-auto chat-scroll">
       <div className="mx-auto max-w-6xl px-4 md:px-8 pt-6 md:pt-8 pb-12">
         <h1 className="sr-only">Make</h1>
 
@@ -278,7 +279,7 @@ export function MakeView() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -307,27 +308,6 @@ function Marker({ n, className = "", style }: { n: number; className?: string; s
       {n}
     </span>
   );
-}
-
-/**
- * An animated template's first frame, drawn once to a canvas so nothing in
- * the library or the caption screen moves. Sized like an <img>: the
- * caller's classes decide how far it scales down.
- */
-function StillImage({ src, alt, className }: { src: string; alt: string; className: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      canvas.getContext("2d")?.drawImage(img, 0, 0);
-    };
-    img.src = src;
-  }, [src]);
-  return <canvas ref={canvasRef} role="img" aria-label={alt} className={className} />;
 }
 
 function TemplateImage({ template, className }: { template: ExplainResponse; className: string }) {

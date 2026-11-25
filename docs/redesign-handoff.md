@@ -81,7 +81,7 @@ Map the existing token names below to the Front Page palette. The existing names
   --ease-settle: cubic-bezier(0.16, 1, 0.3, 1); /* existing name, retained for short editorial moves */
   --duration-fast: 150ms; /* existing family name, for small state changes */
   --duration-settle: 240ms; /* existing family name, for drawers and swaps */
-  --duration-arrive: 320ms; /* new: signature story move and route transitions */
+  --duration-arrive: 320ms; /* new: the signature story move; tab changes use --duration-settle */
 }
 ~~~
 
@@ -573,6 +573,7 @@ Collapsed preview shows two or three real lines plus **more messages**. Credit e
 - No matches: **No templates found. Try another search.**
 - Generic render error: **That didn't render. Your captions are still here. Try again.**
 - Caption refused: **That caption couldn't be used. Try different text.**
+- An animated meme with reduced motion shows its first frame with **Play**, which reads **Pause** while it plays. Everywhere a meme appears: Chat, Lore, Make, the shared meme page and the full-size view.
 - Chat messages have no visible You or MemeGPT speaker labels. The user's text is the small Archivo line above the meme.
 - If a sent photo includes text, it is blank or a moment caption such as **opening the doc at 11:58**. Never caption it as a request to the bot, such as “can you use this photo?” or “here's the photo”.
 

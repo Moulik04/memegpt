@@ -91,18 +91,19 @@ export function HistoryDrawer() {
   return (
     <DialogPrimitive.Root open={historyOpen} onOpenChange={setHistoryOpen}>
       <DialogPrimitive.Portal>
+        {/* data-slot: globals.css stops both with reduced motion. */}
         <DialogPrimitive.Overlay
+          data-slot="sheet-overlay"
           className="fixed inset-0 z-40 bg-paper/20 data-open:animate-in data-open:fade-in-0
-                     data-closed:animate-out data-closed:fade-out-0 duration-[var(--duration-settle)]
-                     motion-reduce:animate-none"
+                     data-closed:animate-out data-closed:fade-out-0 duration-[var(--duration-settle)]"
         />
         <DialogPrimitive.Content
+          data-slot="sheet-content"
           className="fixed inset-y-0 left-0 z-40 w-[min(24rem,calc(100vw-3rem))] flex flex-col
                      bg-background border-r border-border shadow-overlay outline-none
                      pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]
                      data-open:animate-in data-open:slide-in-from-left data-closed:animate-out
-                     data-closed:slide-out-to-left duration-[var(--duration-settle)] ease-[var(--ease-settle)]
-                     motion-reduce:animate-none"
+                     data-closed:slide-out-to-left duration-[var(--duration-settle)] ease-[var(--ease-settle)]"
         >
           <div className="flex items-center justify-between gap-4 px-4 md:px-6 min-h-14 md:min-h-[72px]
                           border-b-2 border-brand">

@@ -62,7 +62,7 @@ export function AuthControl({
             <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" collisionPadding={8} className="w-64 p-2 flex flex-col gap-1">
+        <PopoverContent aria-label="Account" align="end" collisionPadding={8} className="w-64 p-2 flex flex-col gap-1">
           <p className="px-2 py-2 text-sm text-muted-foreground break-all">{user.email ?? "Signed in"}</p>
           {onHistory && (
             <button
@@ -101,7 +101,7 @@ export function AuthControl({
           Sign in
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" collisionPadding={8} className="w-64 flex flex-col gap-3">
+      <PopoverContent aria-label="Sign in" align="end" collisionPadding={8} className="w-64 flex flex-col gap-3">
         <p className="text-base text-foreground">{SIGN_IN_INTRO}</p>
         {googleButtonEnabled ? (
           <GoogleSignInButton width={GOOGLE_BUTTON_WIDTH} />

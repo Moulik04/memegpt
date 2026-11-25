@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { INSTANT, SETTLE } from "@/lib/motion";
 import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import { ApiError, createArcCard, getArc, memeImageUrl } from "@/lib/api";
 import { arcSeasonLine, daysLabel, ladderPosition, timesLabel } from "@/lib/arcFormat";
@@ -441,8 +442,8 @@ export function ArcView() {
               custom={direction}
               initial={reduceMotion ? false : { opacity: 0, x: 32 * direction }}
               animate={{ opacity: 1, x: 0 }}
-              exit={reduceMotion ? { opacity: 0, transition: { duration: 0 } } : { opacity: 0, x: -32 * direction }}
-              transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+              exit={reduceMotion ? { opacity: 0, transition: INSTANT } : { opacity: 0, x: -32 * direction }}
+              transition={SETTLE}
               className="flex flex-col items-start gap-5 md:gap-6"
             >
               {label ? (
@@ -490,12 +491,12 @@ export function ArcView() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto chat-scroll">
+    <main className="flex-1 overflow-y-auto chat-scroll">
       <div className="mx-auto max-w-5xl px-4 md:px-8 pt-6 md:pt-8 pb-12">
         <h1 className="sr-only">Arc</h1>
         {content}
       </div>
-    </div>
+    </main>
   );
 }
 
