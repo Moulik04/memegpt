@@ -3,8 +3,8 @@
 // Vercel preview build fails on a violation. See docs/redesign-handoff.md,
 // sections 2 and 10.
 //
-// It also lists, without failing, the dark-theme leftovers that later
-// redesign steps replace, so none of them is forgotten.
+// It also fails on pill-shaped controls and on em dashes in UI strings
+// (TEXT_RULES below), which the handoff rules out.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";

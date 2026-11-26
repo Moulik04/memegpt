@@ -77,6 +77,9 @@
 }
 
 @theme inline {
+  /* Hover and focus color changes (transition-colors) ease out, per the
+     motion table, on the same curve as the ease-out class. */
+  --default-transition-timing-function: var(--ease-out);
   --color-ink-0: var(--ink-0);
   --color-ink-1: var(--ink-1);
   --color-ink-2: var(--ink-2);

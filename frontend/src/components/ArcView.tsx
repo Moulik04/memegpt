@@ -10,6 +10,7 @@ import { arcSeasonLine, daysLabel, ladderPosition, timesLabel } from "@/lib/arcF
 import { GENERAL_FAILURE, type Notice } from "@/lib/notices";
 import { MemeDisplay } from "./MemeDisplay";
 import { MEME_ACTION, MemeActions } from "./MemeActions";
+import { MotionSafeImg } from "./StillImage";
 import type { ArcCardResponse, ArcStats } from "@/types";
 
 // Arc: a tap-through story staged like a sports back page. Five frames,
@@ -88,8 +89,7 @@ function buildFrames(stats: ArcStats): Frame[] {
         <>
           {top.image_url && (
             <figure className="w-fit max-w-full bg-meme-mat border border-meme-edge p-2 md:p-3">
-              {/* eslint-disable-next-line @next/next/no-img-element -- true ratio, any origin */}
-              <img
+              <MotionSafeImg
                 src={memeImageUrl(top.image_url)}
                 alt={top.display_name}
                 className="block w-auto h-auto max-w-full max-h-[36vh] md:max-h-[32vh] border border-meme-edge"

@@ -141,7 +141,7 @@ export function MemeActions({ url, memeId, onFeedback, rating: given, lead, lead
       )}
       {/* Share and Download wrap as a pair, so on the narrowest phones an
           inline lead keeps its own line and neither sits alone. */}
-      <div className="flex">
+      <div className="flex gap-x-1">
         <button type="button" onClick={handleShare} className={MEME_ACTION}>
           <Share size={16} strokeWidth={2} aria-hidden="true" />
           Share

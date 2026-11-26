@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { MotionSafeImg } from "./StillImage";
 import type { ConversationSummary } from "@/types";
 
 const DELETE_FAILED = "MemeGPT couldn't delete that chat. Please try again.";
@@ -95,7 +96,7 @@ export function HistoryDrawer() {
         <DialogPrimitive.Overlay
           data-slot="sheet-overlay"
           className="fixed inset-0 z-40 bg-paper/20 data-open:animate-in data-open:fade-in-0
-                     data-closed:animate-out data-closed:fade-out-0 duration-[var(--duration-settle)]"
+                     data-closed:animate-out data-closed:fade-out-0 duration-[var(--duration-settle)] ease-[var(--ease-settle)]"
         />
         <DialogPrimitive.Content
           data-slot="sheet-content"
@@ -147,8 +148,7 @@ export function HistoryDrawer() {
                   >
                     <span className="w-10 h-10 shrink-0 bg-meme-mat border border-meme-edge flex items-center justify-center">
                       {c.thumbnail_url && (
-                        // eslint-disable-next-line @next/next/no-img-element -- natural ratio, any origin
-                        <img
+                        <MotionSafeImg
                           src={memeImageUrl(c.thumbnail_url)}
                           alt=""
                           className="max-w-full max-h-full w-auto h-auto"
