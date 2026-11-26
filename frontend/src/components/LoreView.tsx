@@ -15,11 +15,11 @@ import {
   MAX_IMAGES_PER_MESSAGE,
   PICK_TOO_LARGE,
   PICK_TOO_MANY,
-  PICK_UNSUPPORTED,
+  PICK_FORMAT_NOTICE,
   noticeFor,
   type Notice,
 } from "@/lib/notices";
-import { allSupportedImages } from "@/lib/imageFormat";
+import { checkPickFormat } from "@/lib/imageFormat";
 import {
   isOverCut,
   linesForEntry,
@@ -324,8 +324,9 @@ export function LoreView() {
       setPickError(PICK_TOO_MANY);
       return;
     }
-    if (!(await allSupportedImages(files))) {
-      setPickError(PICK_UNSUPPORTED);
+    const format = await checkPickFormat(files);
+    if (format !== "ok") {
+      setPickError(PICK_FORMAT_NOTICE[format]);
       return;
     }
     setPendingImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);

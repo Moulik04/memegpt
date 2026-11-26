@@ -9,13 +9,16 @@ export const MAX_IMAGES_PER_MESSAGE = 6;
 export const PICK_TOO_LARGE = "That image is over 10MB. Try a smaller one.";
 export const PICK_TOO_MANY = "Up to 6 photos per message. Remove some before adding more.";
 export const PICK_UNSUPPORTED = "That file isn't a supported image format. Try a JPEG, PNG, or WEBP.";
+export const PICK_UNREADABLE = "That file couldn't be read as an image. It may be corrupted.";
+/** The notice for a pick the format check turned away. */
+export const PICK_FORMAT_NOTICE = { unsupported: PICK_UNSUPPORTED, unreadable: PICK_UNREADABLE } as const;
 
 const UPLOAD_ERRORS: Record<UploadErrorCode, string> = {
   image_refused: "MemeGPT can't use this image. Try describing it in words instead.",
   file_too_large: PICK_TOO_LARGE,
   unrecognized_file_type: PICK_UNSUPPORTED,
   dimensions_too_large: "That image's dimensions are too large to process. Try a smaller one.",
-  invalid_image: "That file couldn't be read as an image. It may be corrupted.",
+  invalid_image: PICK_UNREADABLE,
   upload_failed: "Upload failed. The one engineer is still the whole department. Try a different photo.",
 };
 

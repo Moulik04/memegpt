@@ -1,7 +1,7 @@
 // Run by `npm test` and by prebuild: node --test, no test framework.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { allSupportedImages, isSupportedImageHead } from "./imageFormat.ts";
+import { checkPickFormat, isSupportedImageHead } from "./imageFormat.ts";
 
 const bytes = (...parts: (number[] | string)[]) =>
   new Uint8Array(parts.flatMap((p) => (typeof p === "string" ? [...p].map((c) => c.charCodeAt(0)) : p)));
@@ -24,9 +24,19 @@ test("GIF, other RIFF files and short or empty files are refused", () => {
   assert.equal(isSupportedImageHead(new Uint8Array()), false);
 });
 
+const file = (b: Uint8Array, name: string) => new File([b.buffer as ArrayBuffer], name, { type: "image/jpeg" });
+// A picked file the browser can no longer read: its bytes reject.
+const unreadable = (name: string) =>
+  ({ name, size: 1, slice: () => ({ arrayBuffer: () => Promise.reject(new Error("NotReadableError")) }) }) as unknown as File;
+
 test("a pick passes only when every file is supported", async () => {
-  const file = (b: Uint8Array, name: string) => new File([b.buffer as ArrayBuffer], name, { type: "image/jpeg" });
-  assert.equal(await allSupportedImages([file(JPEG, "a.jpg"), file(PNG, "b.png")]), true);
+  assert.equal(await checkPickFormat([file(JPEG, "a.jpg"), file(PNG, "b.png"), file(WEBP, "c.webp")]), "ok");
   // The name and the reported type say JPEG; the bytes say GIF.
-  assert.equal(await allSupportedImages([file(JPEG, "a.jpg"), file(GIF, "b.jpg")]), false);
+  assert.equal(await checkPickFormat([file(JPEG, "a.jpg"), file(GIF, "b.jpg")]), "unsupported");
+});
+
+test("a file that can't be read makes the whole pick unreadable, without throwing", async () => {
+  assert.equal(await checkPickFormat([file(JPEG, "a.jpg"), unreadable("b.jpg")]), "unreadable");
+  // Its format can't be known, so it wins over a readable GIF in the same pick.
+  assert.equal(await checkPickFormat([file(GIF, "a.gif"), unreadable("b.jpg")]), "unreadable");
 });

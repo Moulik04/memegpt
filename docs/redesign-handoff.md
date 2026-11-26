@@ -593,7 +593,7 @@ These occur on ordinary requests such as **Day 1 of the gym vs day 2**, never on
 - Safety refusal after Send, with the sent photo thumbnail: **MemeGPT can't use this image. Try describing it in words instead.**
 - General post-send failure: **Upload failed. The one engineer is still the whole department. Try a different photo.**
 
-Size, count and format checks happen as images are picked. The format check reads each file's first bytes, as the backend does, and accepts only JPEG, PNG and WEBP, so a GIF is refused at the pick with the unsupported-format line. The file picker still offers every image type. Reject the entire attempted pick if it breaches a limit. Existing attached images remain. Every attached thumbnail in Chat and Lore has a separate 44px Remove target. The one-guy joke appears only on the maintenance page and this upload error.
+Size, count and format checks happen as images are picked. The format check reads each file's first bytes, as the backend does, and accepts only JPEG, PNG and WEBP, so a GIF is refused at the pick with the unsupported-format line. If a file's bytes can't be read, the pick gets the unreadable-image line instead. The file picker still offers every image type. Reject the entire attempted pick if it breaches a limit. Existing attached images remain. Every attached thumbnail in Chat and Lore has a separate 44px Remove target. The one-guy joke appears only on the maintenance page and this upload error.
 
 The budget meme is not personalized. It is one of ten fixed memes, unrelated to the request, with no action row and no share page.
 

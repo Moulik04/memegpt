@@ -9,8 +9,8 @@ import { Masthead } from "@/components/Masthead";
 import { MobileNav } from "@/components/MobileNav";
 import { MemeDisplay } from "@/components/MemeDisplay";
 import { handToChat } from "@/lib/landingHandoff";
-import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_MESSAGE, PICK_TOO_LARGE, PICK_TOO_MANY, PICK_UNSUPPORTED } from "@/lib/notices";
-import { allSupportedImages } from "@/lib/imageFormat";
+import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_MESSAGE, PICK_TOO_LARGE, PICK_TOO_MANY, PICK_FORMAT_NOTICE } from "@/lib/notices";
+import { checkPickFormat } from "@/lib/imageFormat";
 
 /** The copy deck, section 7.1. */
 const HEADLINE = "The group chat has a front page.";
@@ -310,8 +310,9 @@ function Composer() {
       setPickError(PICK_TOO_MANY);
       return;
     }
-    if (!(await allSupportedImages(files))) {
-      setPickError(PICK_UNSUPPORTED);
+    const format = await checkPickFormat(files);
+    if (format !== "ok") {
+      setPickError(PICK_FORMAT_NOTICE[format]);
       return;
     }
     setPhotos((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
