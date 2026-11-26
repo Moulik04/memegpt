@@ -12,9 +12,11 @@ import {
   MAX_IMAGES_PER_MESSAGE,
   PICK_TOO_LARGE,
   PICK_TOO_MANY,
+  PICK_UNSUPPORTED,
   noticeFor,
   type Notice,
 } from "@/lib/notices";
+import { allSupportedImages } from "@/lib/imageFormat";
 import { MemeDisplay } from "./MemeDisplay";
 import { MemeActions } from "./MemeActions";
 import BudgetNotice from "./BudgetNotice";
@@ -165,7 +167,7 @@ export function ChatWindow() {
 
   // A pick that breaks a limit is turned away whole; photos already
   // attached stay.
-  function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFilesSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
@@ -175,6 +177,10 @@ export function ChatWindow() {
     }
     if (pendingImages.length + files.length > MAX_IMAGES_PER_MESSAGE) {
       setPickError(PICK_TOO_MANY);
+      return;
+    }
+    if (!(await allSupportedImages(files))) {
+      setPickError(PICK_UNSUPPORTED);
       return;
     }
     setPendingImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);

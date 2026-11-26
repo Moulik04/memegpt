@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Masthead } from "@/components/Masthead";
 import { notFound } from "next/navigation";
 import { MemeDisplay } from "@/components/MemeDisplay";
+import { correctTemplateName } from "@/lib/templateNames";
 
 // Server-side backend calls use BACKEND_URL (matches the existing route.ts
 // convention — may be a Docker-internal/localhost address). The image URL
@@ -26,7 +27,9 @@ async function fetchMeme(id: string): Promise<SharedMeme | null> {
   try {
     const res = await fetch(`${BACKEND_URL}/memes/${id}`, { cache: "no-store" });
     if (!res.ok) return null;
-    return res.json();
+    const meme: SharedMeme = await res.json();
+    // The backend sends only the name, so it is corrected by name.
+    return { ...meme, template_name: meme.template_name && correctTemplateName(meme.template_name) };
   } catch {
     return null;
   }

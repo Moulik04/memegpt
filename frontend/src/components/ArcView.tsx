@@ -11,6 +11,7 @@ import { GENERAL_FAILURE, type Notice } from "@/lib/notices";
 import { MemeDisplay } from "./MemeDisplay";
 import { MEME_ACTION, MemeActions } from "./MemeActions";
 import { MotionSafeImg } from "./StillImage";
+import { templateDisplayName } from "@/lib/templateNames";
 import type { ArcCardResponse, ArcStats } from "@/types";
 
 // Arc: a tap-through story staged like a sports back page. Five frames,
@@ -83,6 +84,7 @@ function buildFrames(stats: ArcStats): Frame[] {
 
   const top = stats.top_templates[0];
   if (top) {
+    const topName = templateDisplayName(top.template_id, top.display_name);
     frames.push({
       label: "02 Signature",
       body: (
@@ -91,14 +93,14 @@ function buildFrames(stats: ArcStats): Frame[] {
             <figure className="w-fit max-w-full bg-meme-mat border border-meme-edge p-2 md:p-3">
               <MotionSafeImg
                 src={memeImageUrl(top.image_url)}
-                alt={top.display_name}
+                alt={topName}
                 className="block w-auto h-auto max-w-full max-h-[36vh] md:max-h-[32vh] border border-meme-edge"
               />
             </figure>
           )}
           <div>
             <p className="font-display text-4xl md:text-5xl leading-none text-foreground break-words">
-              {top.display_name}
+              {topName}
             </p>
             <p className="mt-2 text-xl font-bold text-foreground">{timesLabel(top.count)}</p>
           </div>

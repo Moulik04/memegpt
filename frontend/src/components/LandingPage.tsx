@@ -9,7 +9,8 @@ import { Masthead } from "@/components/Masthead";
 import { MobileNav } from "@/components/MobileNav";
 import { MemeDisplay } from "@/components/MemeDisplay";
 import { handToChat } from "@/lib/landingHandoff";
-import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_MESSAGE, PICK_TOO_LARGE, PICK_TOO_MANY } from "@/lib/notices";
+import { MAX_IMAGE_BYTES, MAX_IMAGES_PER_MESSAGE, PICK_TOO_LARGE, PICK_TOO_MANY, PICK_UNSUPPORTED } from "@/lib/notices";
+import { allSupportedImages } from "@/lib/imageFormat";
 
 /** The copy deck, section 7.1. */
 const HEADLINE = "The group chat has a front page.";
@@ -297,7 +298,7 @@ function Composer() {
     return () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl));
   }, []);
 
-  function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (files.length === 0) return;
@@ -307,6 +308,10 @@ function Composer() {
     }
     if (photos.length + files.length > MAX_IMAGES_PER_MESSAGE) {
       setPickError(PICK_TOO_MANY);
+      return;
+    }
+    if (!(await allSupportedImages(files))) {
+      setPickError(PICK_UNSUPPORTED);
       return;
     }
     setPhotos((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);

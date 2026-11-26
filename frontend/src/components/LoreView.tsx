@@ -15,9 +15,11 @@ import {
   MAX_IMAGES_PER_MESSAGE,
   PICK_TOO_LARGE,
   PICK_TOO_MANY,
+  PICK_UNSUPPORTED,
   noticeFor,
   type Notice,
 } from "@/lib/notices";
+import { allSupportedImages } from "@/lib/imageFormat";
 import {
   isOverCut,
   linesForEntry,
@@ -312,7 +314,7 @@ export function LoreView() {
 
   // A pick that breaks a limit is turned away whole; images already
   // attached stay.
-  function addFiles(files: File[]) {
+  async function addFiles(files: File[]) {
     if (files.length === 0) return;
     if (files.some((f) => f.size > MAX_IMAGE_BYTES)) {
       setPickError(PICK_TOO_LARGE);
@@ -320,6 +322,10 @@ export function LoreView() {
     }
     if (pendingImages.length + files.length > MAX_IMAGES_PER_MESSAGE) {
       setPickError(PICK_TOO_MANY);
+      return;
+    }
+    if (!(await allSupportedImages(files))) {
+      setPickError(PICK_UNSUPPORTED);
       return;
     }
     setPendingImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);

@@ -593,7 +593,7 @@ These occur on ordinary requests such as **Day 1 of the gym vs day 2**, never on
 - Safety refusal after Send, with the sent photo thumbnail: **MemeGPT can't use this image. Try describing it in words instead.**
 - General post-send failure: **Upload failed. The one engineer is still the whole department. Try a different photo.**
 
-Size and count checks happen as images are picked. Reject the entire attempted pick if it breaches the limit. Existing attached images remain. Every attached thumbnail in Chat and Lore has a separate 44px Remove target. The one-guy joke appears only on the maintenance page and this upload error.
+Size, count and format checks happen as images are picked. The format check reads each file's first bytes, as the backend does, and accepts only JPEG, PNG and WEBP, so a GIF is refused at the pick with the unsupported-format line. The file picker still offers every image type. Reject the entire attempted pick if it breaches a limit. Existing attached images remain. Every attached thumbnail in Chat and Lore has a separate 44px Remove target. The one-guy joke appears only on the maintenance page and this upload error.
 
 The budget meme is not personalized. It is one of ten fixed memes, unrelated to the request, with no action row and no share page.
 
@@ -836,6 +836,7 @@ Before implementation is called complete, check these states at 390×844, 768px,
 - Every control and field can be reached and activated by keyboard. Focus is obvious against white, black, red, and gray.
 - Text and icon labels meet WCAG AA contrast. Red used for text and underlines remains readable on white. Do not use pale gray for required instructions.
 - Every tap target is at least 44×44px, including Photo, Send, Remove, action-row items, section links, bottom tabs, dialog buttons, and progress navigation.
+  The one exception is a link inside a sentence of running text, such as the support links in the privacy page's text, which WCAG's target-size criteria (2.5.5 and 2.5.8) exempt. It keeps the text's own line height.
 - Text fields use at least 16px. Long headlines, group chat lines, consent copy, captions, and actions do not clip.
 - Phone screens show only the bottom app navigation, never a second tab row in the header.
 - Landing has no active app tab. Chat, Lore, Make, and Arc show exactly one active tab. Arc never changes the navigation styling.

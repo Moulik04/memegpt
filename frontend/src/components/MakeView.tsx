@@ -5,6 +5,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { ApiError, generateMeme, listTemplates, memeImageUrl } from "@/lib/api";
 import { GENERAL_FAILURE } from "@/lib/notices";
 import { templateLabel } from "@/lib/templateLabel";
+import { templateDisplayName } from "@/lib/templateNames";
 import BudgetNotice from "./BudgetNotice";
 import { MemeDisplay } from "./MemeDisplay";
 import { StillImage } from "./StillImage";
@@ -85,7 +86,9 @@ export function MakeView() {
     listTemplates()
       .then((data) => {
         if (cancelled) return;
-        visitOrder = shuffle(data);
+        // Names are corrected once here, so search, listings and the
+        // selected template all show the same one.
+        visitOrder = shuffle(data.map((t) => ({ ...t, name: templateDisplayName(t.template_id, t.name) })));
         setTemplates(visitOrder);
       })
       .catch(() => {
