@@ -1,43 +1,34 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
+import { Masthead } from "@/components/Masthead";
+import { MemeDisplay } from "@/components/MemeDisplay";
 
 export const metadata: Metadata = {
   title: "Page not found",
 };
 
+/** The copy deck, section 7.8. */
 export default function NotFound() {
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-12 gap-8 text-center">
-      <Link href="/" className="caption caption-mark text-xl">
-        MemeGPT
-      </Link>
-
-      <div className="w-full max-w-sm rounded-2xl bg-card border border-border p-3 shadow-2xl shadow-black/50">
-        <Image
-          src="/landing/404_example.png"
+    <div className="min-h-dvh flex flex-col bg-background">
+      <Masthead variant="system" />
+      <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-8 py-8 md:py-12 flex flex-col items-start gap-5">
+        <h1 className="font-display text-[length:var(--text-title)] leading-[0.95] text-foreground">404: not a page.</h1>
+        <p className="text-lg text-foreground">Whatever you were looking for isn&apos;t here. The chatbot is, though.</p>
+        <MemeDisplay
+          url="/landing/404_example.png"
           alt="Is This a Pigeon meme: a confused man asking 'is this a page?'"
-          width={600}
-          height={600}
-          className="w-full h-auto rounded-xl"
-          priority
+          className="flex justify-start max-w-full"
+          maxHeightClassName="max-h-[50vh]"
         />
-      </div>
-
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">404: not a page.</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Whatever you were looking for isn&apos;t here. The chatbot is, though.
-        </p>
-      </div>
-
-      <Link
-        href="/chat"
-        className="bg-accent hover:bg-accent/90 transition-colors text-white font-semibold
-                   rounded-full px-8 py-3.5 text-base shadow-lg"
-      >
-        Open MemeGPT
-      </Link>
+        <Link
+          href="/chat"
+          className="inline-flex items-center min-h-12 px-6 rounded-sm bg-primary text-primary-foreground text-base
+                     font-semibold hover:bg-primary/85 transition-colors duration-[var(--duration-fast)]"
+        >
+          Open MemeGPT
+        </Link>
+      </main>
     </div>
   );
 }

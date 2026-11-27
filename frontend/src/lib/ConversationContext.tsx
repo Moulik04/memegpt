@@ -14,6 +14,9 @@ interface ConversationContextValue {
   // sidebar exists at all.
   refreshToken: number;
   bumpRefresh: () => void;
+  /** The History drawer, opened from the masthead. */
+  historyOpen: boolean;
+  setHistoryOpen: (open: boolean) => void;
 }
 
 const ConversationContext = createContext<ConversationContextValue>({
@@ -21,10 +24,13 @@ const ConversationContext = createContext<ConversationContextValue>({
   setConversationRowId: () => {},
   refreshToken: 0,
   bumpRefresh: () => {},
+  historyOpen: false,
+  setHistoryOpen: () => {},
 });
 
 /**
- * Shared between ConversationSidebar (lists/creates/selects conversations)
+ * Shared between HistoryDrawer (lists/selects/deletes conversations), the
+ * masthead's History button,
  * and ChatWindow/LoreView (submit against + hydrate from the selected one) —
  * siblings under app/(app)/layout.tsx with no other shared parent state.
  * A no-op default context (rendered when there's no provider, e.g. /arc)
@@ -34,10 +40,11 @@ export function ConversationProvider({ children }: { children: React.ReactNode }
   const [conversationRowId, setConversationRowId] = useState<string | undefined>(undefined);
   const [refreshToken, setRefreshToken] = useState(0);
   const bumpRefresh = useCallback(() => setRefreshToken((t) => t + 1), []);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   return (
     <ConversationContext.Provider
-      value={{ conversationRowId, setConversationRowId, refreshToken, bumpRefresh }}
+      value={{ conversationRowId, setConversationRowId, refreshToken, bumpRefresh, historyOpen, setHistoryOpen }}
     >
       {children}
     </ConversationContext.Provider>

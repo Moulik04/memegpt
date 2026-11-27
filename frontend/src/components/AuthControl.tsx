@@ -9,7 +9,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 import { googleButtonEnabled } from "@/lib/googleIdentity";
 
@@ -19,37 +18,76 @@ import { googleButtonEnabled } from "@/lib/googleIdentity";
 // in English, more in some languages), so leave it room.
 const GOOGLE_BUTTON_WIDTH = 236;
 
-function truncateEmail(email: string): string {
-  return email.length > 22 ? `${email.slice(0, 19)}…` : email;
-}
+/** The copy deck, section 7.6. */
+const SIGN_IN_INTRO = "Every part works without an account. Signing in only adds saved chat history across devices.";
+
+const MENU_ITEM =
+  "w-full min-h-11 px-2 text-left text-base font-medium text-foreground hover:bg-muted " +
+  "transition-colors duration-[var(--duration-fast)]";
 
 /**
  * Renders null when Supabase Auth isn't configured (empty env vars) —
  * signed-out visitors and every existing test/screenshot of the app are
- * completely unaffected. Slots into ModeTabs.tsx's right-hand chrome
- * alongside "Forget me", and into LandingPage.tsx.
+ * completely unaffected. Slots into Masthead.tsx's account actions,
+ * beside "Forget me". Signed in, the letter avatar opens the account menu:
+ * the signed-in email, History where the page has it, and Sign out.
  */
-export function AuthControl() {
+export function AuthControl({
+  onHistory,
+  signInOpen,
+  onSignInOpenChange,
+}: {
+  onHistory?: () => void;
+  /** The sign-in popover's state, held by the masthead so Forget me can
+   * open it after a sign-in the server couldn't confirm. */
+  signInOpen: boolean;
+  onSignInOpenChange: (open: boolean) => void;
+}) {
   const { user, loading, signInWithGoogle, signOut } = useAuth();
-  const [open, setOpen] = useState(false);
+  const open = signInOpen;
+  const setOpen = onSignInOpenChange;
+  const [menuOpen, setMenuOpen] = useState(false);
 
   if (!authEnabled || loading) return null;
 
   if (user) {
     return (
-      <div className="flex items-center gap-2">
-        <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
-        <span className="text-[11px] text-gray-500" title={user.email ?? undefined}>
-          {user.email ? truncateEmail(user.email) : "Signed in"}
-        </span>
-        <button
-          type="button"
-          onClick={() => signOut()}
-          className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
-        >
-          Sign out
-        </button>
-      </div>
+      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Account"
+            className="min-h-11 min-w-11 flex items-center justify-center"
+          >
+            <Avatar seed={user.id} label={user.email ?? "Signed in"} size="sm" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent aria-label="Account" align="end" collisionPadding={8} className="w-64 p-2 flex flex-col gap-1">
+          <p className="px-2 py-2 text-sm text-muted-foreground break-all">{user.email ?? "Signed in"}</p>
+          {onHistory && (
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                onHistory();
+              }}
+              className={MENU_ITEM}
+            >
+              History
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              signOut();
+            }}
+            className={MENU_ITEM}
+          >
+            Sign out
+          </button>
+        </PopoverContent>
+      </Popover>
     );
   }
 
@@ -58,26 +96,27 @@ export function AuthControl() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+          className="min-h-11 px-2 text-base font-medium text-foreground hover:text-muted-foreground transition-colors"
         >
           Sign in
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" collisionPadding={8} className="w-64">
+      <PopoverContent aria-label="Sign in" align="end" collisionPadding={8} className="w-64 flex flex-col gap-3">
+        <p className="text-base text-foreground">{SIGN_IN_INTRO}</p>
         {googleButtonEnabled ? (
           <GoogleSignInButton width={GOOGLE_BUTTON_WIDTH} />
         ) : (
-          <Button
+          <button
             type="button"
-            variant="secondary"
-            className="w-full"
+            className="w-full min-h-11 px-4 rounded-sm bg-primary text-primary-foreground text-base font-semibold
+                       hover:bg-primary/85 transition-colors duration-[var(--duration-fast)]"
             onClick={() => {
               setOpen(false);
               signInWithGoogle();
             }}
           >
             Continue with Google
-          </Button>
+          </button>
         )}
       </PopoverContent>
     </Popover>

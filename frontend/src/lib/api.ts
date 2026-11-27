@@ -5,6 +5,7 @@ import type {
   ExplainResponse,
   FeedbackRequest,
   ImageChatOptions,
+  LoreTextOptions,
   MemeGenerationRequest,
   MemeGenerationResponse,
   NoticeReason,
@@ -70,11 +71,14 @@ async function authHeaders(): Promise<Record<string, string>> {
 // failure and show the budget meme with it.
 export class ApiError extends Error {
   reason?: NoticeReason;
+  /** The response's HTTP status, when there was a response. */
+  status?: number;
 
-  constructor(message: string, reason?: NoticeReason) {
+  constructor(message: string, reason?: NoticeReason, status?: number) {
     super(message);
     this.name = "ApiError";
     this.reason = reason;
+    this.status = status;
   }
 }
 
@@ -82,11 +86,11 @@ async function _apiError(res: Response): Promise<ApiError> {
   const raw = await res.text();
   try {
     const parsed = JSON.parse(raw);
-    if (typeof parsed?.detail === "string") return new ApiError(parsed.detail, parsed.reason);
+    if (typeof parsed?.detail === "string") return new ApiError(parsed.detail, parsed.reason, res.status);
   } catch {
     // Not JSON — fall through to the raw body below.
   }
-  return new ApiError(`${res.status} ${res.statusText}: ${raw}`);
+  return new ApiError(`${res.status} ${res.statusText}: ${raw}`, undefined, res.status);
 }
 
 const VISIT_HEADER = "X-MemeGPT-Visit";
@@ -171,7 +175,8 @@ export async function sendStream(
   onEvent: (event: SSEEvent) => void,
   memeCount?: number,
   rememberLore?: boolean,
-  conversationRowId?: string
+  conversationRowId?: string,
+  lore: LoreTextOptions = {}
 ): Promise<void> {
   const body: Record<string, unknown> = {
     message,
@@ -181,6 +186,9 @@ export async function sendStream(
   if (surface === "lore") {
     body.meme_count = memeCount;
     body.remember_lore = rememberLore ?? false;
+    // The plan then says which pasted lines each moment drew on.
+    body.include_source_lines = lore.includeSourceLines ?? true;
+    if (lore.excludeTemplates?.length) body.exclude_templates = lore.excludeTemplates;
   }
 
   const res = await fetch(`${BASE}/${surface}/`, {
@@ -217,6 +225,9 @@ export async function sendImageStream(
   if (surface === "lore") {
     if (options.memeCount) form.append("meme_count", String(options.memeCount));
     if (options.rememberLore) form.append("remember_lore", "true");
+    // Screenshots have no pasted lines, but the flag also sends the plan
+    // for a single moment, which Lore's progress rows are built from.
+    form.append("include_source_lines", "true");
   }
 
   let res: Response;
@@ -227,15 +238,12 @@ export async function sendImageStream(
       body: form,
     });
   } catch {
-    throw new Error(
-      "Couldn't reach the server to upload those photos — check your connection and try again."
-    );
+    // A photo upload that never arrived shows the deck's upload line
+    // (lib/notices.ts), the same as any other failed upload.
+    throw new ApiError("upload failed");
   }
 
   if (!res.ok) {
-    if (res.status === 413) {
-      throw new Error("Those photos are too large to upload together — try fewer or smaller images.");
-    }
     throw await _apiError(res);
   }
 
@@ -253,8 +261,20 @@ export async function postFeedback(req: FeedbackRequest): Promise<void> {
 // slash — Next normalizes one away before the rewrite even runs, and
 // backend/routers/me.py is registered at "" for the same reason — so
 // requesting it directly skips two avoidable redirect hops.
+export const ERASE_FAILED = "MemeGPT couldn't finish erasing your data. Please try again.";
+
+// Throws an ApiError with the response's status, so the Forget me dialog can
+// tell a sign-in the server couldn't confirm (401) and the rate limit (429)
+// from an erase that failed. A lost connection is an erase failure too.
 export async function forgetMe(): Promise<void> {
-  await deleteOrThrow(`${BASE}/me`, "MemeGPT couldn't finish erasing your data. Please try again.");
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/me`, { method: "DELETE", headers: await authHeaders() });
+  } catch {
+    throw new ApiError(ERASE_FAILED);
+  }
+  if (res.ok) return;
+  throw await _apiError(res);
 }
 
 // For the two requests that erase a user's data. fetch() resolves normally
@@ -306,7 +326,10 @@ export async function listTemplates(): Promise<ExplainResponse[]> {
   return get<ExplainResponse[]>("/explain/");
 }
 
+// The backend serves its images under /static/. Any other path, such as
+// /landing/..., is one of the site's own files and stays as it is.
 export function memeImageUrl(relativeUrl: string): string {
+  if (!relativeUrl.startsWith("/static/")) return relativeUrl;
   const base = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
   return `${base}${relativeUrl}`;
 }
@@ -321,22 +344,18 @@ export async function getArc(tz: string): Promise<ArcStats> {
   const res = await fetch(`${BASE}/arc?tz=${encodeURIComponent(tz)}`, {
     headers: await authHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
-  }
+  if (!res.ok) throw await _apiError(res);
   return res.json() as Promise<ArcStats>;
 }
 
+/** Renders the share card. "frontpage" is the redesign's card; the backend
+ * still draws its original card for a request that doesn't ask. */
 export async function createArcCard(tz: string): Promise<ArcCardResponse> {
-  const res = await fetch(`${BASE}/arc/card?tz=${encodeURIComponent(tz)}`, {
+  const res = await fetch(`${BASE}/arc/card?tz=${encodeURIComponent(tz)}&style=frontpage`, {
     method: "POST",
     headers: await authHeaders(),
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${err}`);
-  }
+  if (!res.ok) throw await _apiError(res);
   return res.json() as Promise<ArcCardResponse>;
 }
 

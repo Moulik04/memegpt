@@ -14,21 +14,6 @@ export interface MemeItem {
   takeOf?: number;
 }
 
-// Client-side rendering type for the `messages` list. A user turn never
-// has `memes`; an assistant turn accumulates ALL memes from one submission
-// here — length 1 renders exactly like a single-meme reply always has,
-// length 2+ renders as a swipeable carousel (see MessageBubble.tsx).
-export interface ChatMessage {
-  role: "user" | "assistant";
-  content: string;
-  memes?: MemeItem[];
-  // Preview URLs (blob:) for photos the user attached to this turn — kept
-  // alive for the life of the conversation, not revoked after sending, so
-  // the sent bubble can keep showing the actual photo (see ChatWindow.tsx).
-  userImages?: string[];
-  timestamp: string;
-}
-
 export interface MemeGenerationRequest {
   template_id: string;
   texts: Record<string, string>;
@@ -38,11 +23,20 @@ export interface MemeGenerationResponse {
   meme_url: string;
   template_id: string;
   texts: Record<string, string>;
+  // The saved meme's id, for its /m/{id} share page. Absent from an older
+  // backend.
+  meme_id?: string;
 }
 
 export interface TextBoxInfo {
   label: string;
   description: string;
+  // Where the compositor draws this caption, as percentages of the
+  // template image. Absent from an older backend.
+  x_pct?: number;
+  y_pct?: number;
+  w_pct?: number;
+  h_pct?: number;
 }
 
 export interface ExplainResponse {
@@ -74,6 +68,10 @@ export interface PlanEvent {
   // distinct moments: one entry per situation, the index of the moment it
   // is another take on, or null for a moment of its own.
   take_of?: (number | null)[];
+  // Sent only to a request with include_source_lines (the redesign's Lore):
+  // one entry per situation, the sorted numbers of the pasted lines it drew
+  // on, or null to show the summary instead. See lib/sourceLines.ts.
+  source_lines?: (number[] | null)[];
 }
 
 export interface ThinkingEvent {
@@ -117,12 +115,27 @@ export interface BatchDoneEvent {
 //   visitor_limit this visitor's own daily allowance
 export type NoticeReason = "busy" | "site_budget" | "visitor_limit";
 
+// Set on an upload refusal, so the frontend words it (lib/notices.ts). An
+// older backend sends none, and the message is shown as is.
+export type UploadErrorCode =
+  | "image_refused"
+  | "file_too_large"
+  | "unrecognized_file_type"
+  | "dimensions_too_large"
+  | "invalid_image"
+  | "upload_failed";
+
+// Set when another take on a Lore moment found no template it may use. The
+// meme already shown stays.
+export type TakeErrorCode = "no_fresh_template";
+
 export interface ErrorEvent {
   type: "error";
   index?: number;
   total?: number;
   message: string;
   reason?: NoticeReason;
+  code?: UploadErrorCode | TakeErrorCode;
 }
 
 export type SSEEvent = PlanEvent | ThinkingEvent | DoneEvent | BatchDoneEvent | ErrorEvent;
@@ -135,6 +148,14 @@ export interface ImageChatOptions {
   conversationRowId?: string;
 }
 
+// Lore-only options for a text request.
+export interface LoreTextOptions {
+  // Templates no meme in this request may use, for another take.
+  excludeTemplates?: string[];
+  // False only for another take, which needs no plan.
+  includeSourceLines?: boolean;
+}
+
 // Growth Phase D — Arc. Mirrors backend/schemas.py's ArcTemplate/ArcStats.
 export interface ArcTemplate {
   template_id: string;
@@ -144,23 +165,41 @@ export interface ArcTemplate {
   image_url: string | null;
 }
 
+/** One rung of the tier ladder: a tier and the lowest aura that earns it. */
+export interface ArcTier {
+  name: string;
+  min_aura: number;
+}
+
 export interface ArcStats {
   has_enough: boolean;
   total_memes: number;
+  distinct_templates?: number;
   date_span_start: string | null;
   date_span_end: string | null;
   period_label: string | null;
   aura: number;
   tier: string | null;
+  /** Every tier, top first, from the thresholds that grade the score.
+   * Missing from a backend older than the ladder. */
+  tiers?: ArcTier[];
   top_templates: ArcTemplate[];
   busiest_date: string | null;
   busiest_time_label: string | null;
+  /** The same moment's hour, e.g. "2 AM". */
+  busiest_hour_label?: string | null;
+  /** About busiest_time_label's moment. */
   hour_roast: string | null;
+  /** About busiest_hour_label's hour. */
+  busiest_hour_roast?: string | null;
   chat_count: number;
   lore_count: number;
   make_count: number;
   split_roast: string | null;
   longest_streak_days: number;
+  /** The punchlines after "memes generated this arc." and "consecutive days.". */
+  volume_roast?: string | null;
+  streak_roast?: string | null;
   verdict: string | null;
 }
 

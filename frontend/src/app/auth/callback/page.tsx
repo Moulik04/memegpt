@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { Masthead } from "@/components/Masthead";
 
 /**
  * Redirect target for the Google OAuth redirect flow (AuthProvider.tsx's
@@ -27,8 +28,11 @@ export default function AuthCallbackPage() {
   }, [router]);
 
   return (
-    <div className="flex h-dvh items-center justify-center bg-gray-950 text-gray-400 text-sm">
-      Signing you in…
+    <div className="flex flex-col h-dvh bg-background">
+      <Masthead variant="system" />
+      <div className="flex-1 flex items-center justify-center text-muted-foreground text-base">
+        Signing you in…
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { LoreView } from "@/components/LoreView";
-import { ModeTabs } from "@/components/ModeTabs";
+import { Masthead } from "@/components/Masthead";
 import { MobileNav } from "@/components/MobileNav";
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function LorePage() {
   return (
     <div className="flex flex-col h-full">
-      <ModeTabs active="lore" />
+      <Masthead variant="app" active="lore" history />
       <LoreView />
       <MobileNav active="lore" />
     </div>

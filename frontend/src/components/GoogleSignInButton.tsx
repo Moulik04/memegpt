@@ -88,7 +88,7 @@ export function GoogleSignInButton({ width }: { width: number }) {
           button's height so the popover doesn't jump when it arrives. */}
       <div ref={slot} className="h-10 scheme-light" />
       {problem && (
-        <p role="alert" className="text-[11px] text-muted-foreground">
+        <p role="alert" className="text-sm text-foreground">
           {PROBLEM_COPY[problem]}
         </p>
       )}

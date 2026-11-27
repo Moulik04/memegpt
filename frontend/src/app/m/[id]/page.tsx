@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Masthead } from "@/components/Masthead";
 import { notFound } from "next/navigation";
-import { MemeCard } from "@/components/MemeCard";
+import { MemeDisplay } from "@/components/MemeDisplay";
+import { correctTemplateName } from "@/lib/templateNames";
 
 // Server-side backend calls use BACKEND_URL (matches the existing route.ts
 // convention — may be a Docker-internal/localhost address). The image URL
@@ -12,6 +14,10 @@ import { MemeCard } from "@/components/MemeCard";
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
 const PUBLIC_API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
+/** The copy deck, section 7.8. */
+const MADE_WITH = "Made with MemeGPT. It only replies in memes.";
+const MAKE_YOUR_OWN = "Make your own";
+
 interface SharedMeme {
   url: string;
   template_name: string | null;
@@ -21,7 +27,9 @@ async function fetchMeme(id: string): Promise<SharedMeme | null> {
   try {
     const res = await fetch(`${BACKEND_URL}/memes/${id}`, { cache: "no-store" });
     if (!res.ok) return null;
-    return res.json();
+    const meme: SharedMeme = await res.json();
+    // The backend sends only the name, so it is corrected by name.
+    return { ...meme, template_name: meme.template_name && correctTemplateName(meme.template_name) };
   } catch {
     return null;
   }
@@ -38,15 +46,16 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const meme = await fetchMeme(params.id);
   if (!meme) {
-    return { title: "Meme not found — MemeGPT" };
+    return { title: "Meme not found" };
   }
 
   const title = meme.template_name ? `${meme.template_name}, made with MemeGPT` : "A meme, made with MemeGPT";
-  const description = "MemeGPT is a chatbot that only replies in memes. Make your own.";
+  const description = MADE_WITH;
   const imageUrl = publicMemeUrl(meme.url);
 
   return {
-    title,
+    // The title already names MemeGPT, so it skips the site's template.
+    title: { absolute: title },
     description,
     openGraph: {
       title,
@@ -72,25 +81,27 @@ export default async function SharedMemePage({ params }: Props) {
   const imageUrl = publicMemeUrl(meme.url);
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 py-12 gap-8">
-      <Link href="/" className="caption caption-mark text-xl">
-        MemeGPT
-      </Link>
-
-      <div className="max-w-md w-full">
-        <MemeCard url={imageUrl} alt={meme.template_name ?? "A meme made with MemeGPT"} large />
-      </div>
-
-      <div className="text-center">
-        <p className="text-sm text-gray-500 mb-4">Made with MemeGPT. It only replies in memes.</p>
-        <Link
-          href="/chat"
-          className="inline-block bg-accent hover:bg-accent/90 transition-colors text-white
-                     font-semibold rounded-full px-8 py-3.5 text-base shadow-lg"
-        >
-          Make your own
-        </Link>
-      </div>
+    <div className="min-h-dvh flex flex-col bg-background">
+      <Masthead variant="system" />
+      <main className="flex-1 mx-auto w-full max-w-6xl px-4 md:px-8 py-8 md:py-12 flex flex-col items-center gap-6">
+        <h1 className="sr-only">{meme.template_name ? `${meme.template_name}, made with MemeGPT` : "A meme made with MemeGPT"}</h1>
+        <MemeDisplay
+          url={imageUrl}
+          alt={meme.template_name ?? "A meme made with MemeGPT"}
+          className="flex justify-center max-w-full"
+          maxHeightClassName="max-h-[70vh]"
+        />
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-lg text-foreground">{MADE_WITH}</p>
+          <Link
+            href="/chat"
+            className="inline-flex items-center min-h-12 px-6 rounded-sm bg-primary text-primary-foreground text-base
+                       font-semibold hover:bg-primary/85 transition-colors duration-[var(--duration-fast)]"
+          >
+            {MAKE_YOUR_OWN}
+          </Link>
+        </div>
+      </main>
     </div>
   );
 }

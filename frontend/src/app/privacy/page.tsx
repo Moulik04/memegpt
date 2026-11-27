@@ -1,37 +1,61 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Masthead } from "@/components/Masthead";
+import { PrivacyNav } from "@/components/PrivacyNav";
 
 export const metadata: Metadata = {
   title: "Privacy",
   description: "What MemeGPT collects, what it doesn't, and how to erase it.",
 };
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** The twelve sections, in order, with their anchors. */
+const SECTIONS = [
+  { id: "without-signing-in", title: "Without signing in" },
+  { id: "your-memes", title: "Your memes" },
+  { id: "photos-and-screenshots", title: "Photos and screenshots" },
+  { id: "remember-lore", title: "Lore's \"remember lore\" toggle" },
+  { id: "if-you-sign-in", title: "If you sign in" },
+  { id: "what-memegpt-doesnt-keep", title: "What MemeGPT doesn't keep" },
+  { id: "daily-limits", title: "Daily limits" },
+  { id: "analytics", title: "Analytics" },
+  { id: "who-else-touches-this", title: "Who else touches this" },
+  { id: "forget-me", title: "Forget me" },
+  { id: "kids", title: "Kids" },
+  { id: "changes", title: "Changes" },
+] as const;
+
+type SectionId = (typeof SECTIONS)[number]["id"];
+
+function Section({ id, children }: { id: SectionId; children: React.ReactNode }) {
+  const title = SECTIONS.find((section) => section.id === id)!.title;
   return (
-    <section className="mt-10">
-      <h2 className="text-lg font-bold text-gray-100">{title}</h2>
-      <div className="mt-3 text-sm text-gray-400 leading-relaxed space-y-3">{children}</div>
+    <section id={id} aria-labelledby={`${id}-heading`} className="mt-10 scroll-mt-4">
+      <h2 id={`${id}-heading`} className="border-t-2 border-foreground pt-2 text-xl font-bold text-foreground">
+        {title}
+      </h2>
+      <div className="mt-3 text-base text-foreground leading-relaxed space-y-3">{children}</div>
     </section>
   );
 }
 
+const TEXT_LINK = "underline decoration-brand decoration-2 underline-offset-4";
+
 export default function PrivacyPage() {
   return (
-    <div className="min-h-dvh px-6 py-12">
-      <div className="max-w-2xl mx-auto">
-        <Link href="/" className="caption caption-mark text-xl">
-          MemeGPT
-        </Link>
-
-        <h1 className="mt-8 text-3xl font-bold tracking-tight">Privacy</h1>
-        <p className="mt-3 text-sm text-gray-500 leading-relaxed">
+    <div className="min-h-dvh bg-background">
+      <Masthead variant="system" />
+      <main className="max-w-2xl mx-auto px-4 md:px-8 py-8 md:py-12">
+        <h1 className="font-display text-[length:var(--text-title)] leading-[0.95] text-foreground">Privacy</h1>
+        <p className="mt-4 text-lg text-foreground leading-relaxed">
           MemeGPT is a small, self-funded side project, not a company with a
           data team. This page says exactly what happens to what you send,
           in plain language, because that&apos;s more useful than a legal
           document nobody reads.
         </p>
+        <p className="mt-3 text-base font-semibold text-foreground">Last updated October 8, 2026</p>
 
-        <Section title="Without signing in">
+        <PrivacyNav sections={SECTIONS} />
+
+        <Section id="without-signing-in">
           <p>
             The first time you use MemeGPT, your browser makes up a random
             id and saves it on your device. That id is sent with your
@@ -53,7 +77,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="Your memes">
+        <Section id="your-memes">
           <p>
             Every meme MemeGPT makes is saved as an image so it can be
             shown and shared. Each one gets a link with a random address
@@ -63,7 +87,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="Photos and screenshots">
+        <Section id="photos-and-screenshots">
           <p>
             Every image goes through the same safety steps before anything
             else touches it: size and type checks, all metadata (like your
@@ -96,7 +120,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="Lore's 'remember lore' toggle">
+        <Section id="remember-lore">
           <p>
             Off by default. When you turn it on, MemeGPT pulls short
             recurring names and running jokes out of what you paste, never
@@ -106,7 +130,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="If you sign in">
+        <Section id="if-you-sign-in">
           <p>
             Sign-in is through Google, handled for MemeGPT by Supabase.
             Your Google name, email address and profile picture are stored
@@ -136,7 +160,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="What MemeGPT doesn't keep">
+        <Section id="what-memegpt-doesnt-keep">
           <p>
             Signed out, the text you send is not saved, and neither are
             your original photos. The one exception is remembered lore,
@@ -146,7 +170,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="Daily limits">
+        <Section id="daily-limits">
           <p>
             MemeGPT runs on a free daily AI budget, so each browser and each
             network can make a limited number of memes a day. To count them,
@@ -162,7 +186,7 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="Analytics">
+        <Section id="analytics">
           <p>
             MemeGPT uses Google Analytics to see aggregate things like which
             pages get visited and roughly how much traffic the app gets,
@@ -172,33 +196,47 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="Who else touches this">
+        <Section id="who-else-touches-this">
           <p>
             MemeGPT runs on other companies&apos; services. Each one gets only
             what its job needs.
           </p>
-          <ul className="list-disc pl-5 space-y-1.5">
-            <li>Vercel serves the website and passes your Chat and Lore messages on to the backend.</li>
-            <li>Render runs the backend that makes the memes.</li>
-            <li>Groq runs the AI model. It receives your messages, and your photos when you upload them.</li>
+          <ul className="flex flex-col gap-2 list-none">
             <li>
-              Google&apos;s Gemini turns your message into a search of the
+              <strong>Vercel:</strong> Vercel serves the website and passes your Chat and Lore messages on to the backend.
+            </li>
+            <li>
+              <strong>Render:</strong> Render runs the backend that makes the memes.
+            </li>
+            <li>
+              <strong>Groq:</strong> Groq runs the AI model. It receives your messages, and your photos when you upload them.
+            </li>
+            <li>
+              <strong>Gemini:</strong> Google&apos;s Gemini turns your message into a search of the
               template library, so it receives your message text too. For a
               photo, it receives MemeGPT&apos;s description of the photo, not
               the photo. MemeGPT uses Gemini&apos;s free tier. Under
               Google&apos;s terms for that tier, Google may use what it
               receives to improve its products, and people at Google may read
-              it. Please don&apos;t put anything in a message that you
-              wouldn&apos;t want a stranger to read.
+              it.
+              <blockquote className="mt-3 border-l-4 border-brand pl-4 text-xl font-bold leading-snug text-foreground">
+                Please don&apos;t put anything in a message that you wouldn&apos;t want a stranger to read.
+              </blockquote>
             </li>
-            <li>Cloudflare stores the finished meme images.</li>
-            <li>Supabase runs sign-in and hosts the database that holds everything described on this page.</li>
-            <li>Google provides the sign-in button and Analytics.</li>
+            <li>
+              <strong>Cloudflare:</strong> Cloudflare stores the finished meme images.
+            </li>
+            <li>
+              <strong>Supabase:</strong> Supabase runs sign-in and hosts the database that holds everything described on this page.
+            </li>
+            <li>
+              <strong>Google:</strong> Google provides the sign-in button and Analytics.
+            </li>
           </ul>
           <p>MemeGPT doesn&apos;t sell your data.</p>
         </Section>
 
-        <Section title="Forget me">
+        <Section id="forget-me">
           <p>
             The &quot;Forget me&quot; link in the header erases what MemeGPT
             holds about you and clears the id from your device.
@@ -223,7 +261,7 @@ export default function PrivacyPage() {
             want that gone too, email{" "}
             <a
               href="mailto:support.memegpt@gmail.com"
-              className="underline hover:text-gray-200 transition-colors"
+              className={TEXT_LINK}
             >
               support.memegpt@gmail.com
             </a>{" "}
@@ -231,33 +269,37 @@ export default function PrivacyPage() {
           </p>
         </Section>
 
-        <Section title="Kids">
+        <Section id="kids">
           <p>
             MemeGPT isn&apos;t directed at children under 13, and knowingly
             doesn&apos;t collect data from them.
           </p>
         </Section>
 
-        <Section title="Changes">
+        <Section id="changes">
           <p>
             If what MemeGPT collects changes in a way that matters, this
             page changes first. No silent updates.
           </p>
         </Section>
 
-        <p className="mt-12 text-xs text-gray-600">
-          Questions?{" "}
+        <footer className="mt-12 border-t border-border pt-4 text-base text-foreground">
+          Questions? Email{" "}
+          <a href="mailto:support.memegpt@gmail.com" className={TEXT_LINK}>
+            support.memegpt@gmail.com
+          </a>{" "}
+          or{" "}
           <a
             href="https://github.com/Moulik04/memegpt/issues"
             target="_blank"
             rel="noopener noreferrer"
-            className="underline hover:text-gray-400 transition-colors"
+            className={TEXT_LINK}
           >
-            Open an issue on GitHub
+            open an issue on GitHub
           </a>
           .
-        </p>
-      </div>
+        </footer>
+      </main>
     </div>
   );
 }

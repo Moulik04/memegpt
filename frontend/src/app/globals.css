@@ -3,68 +3,83 @@
 @import "shadcn/tailwind.css";
 
 :root {
-  --scrollbar-thumb: #2d2d3d;
+  /* Front Page palette (docs/redesign-handoff.md, section 2). The names
+     predate it: the --ink-* tokens are now light surfaces and --paper is
+     the dark text. */
+  --ink-0: #FFFFFF;        /* page canvas */
+  --ink-1: #F7F7F7;        /* quiet surface for drawers and secondary regions */
+  --ink-2: #E7E8EA;        /* restrained neutral surface */
+  --line: #C9C9C9;         /* decorative rules only, too light to outline a control */
+  --paper: #111111;        /* primary text and black buttons */
+  --paper-dim: #555555;    /* secondary text */
+  --stroke: #000000;       /* caption stroke */
+  --accent-color: #CD1F35; /* tabloid red: rules, underlines and type; solid fills only in Arc */
+  --radius: 0.25rem;
+
+  --text-display: clamp(3rem, 6.2vw, 6.5rem);
+  --text-title: clamp(2rem, 3.6vw, 3.75rem);
+  --text-heading: clamp(1.375rem, 2vw, 2rem);
+  --text-body: 1rem;
+  --text-small: 0.875rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --focus-ring: #111111;
+  --control-border: #111111;
+  --meme-mat: #E7E8EA;
+  --meme-edge: #BFC1C4;
+  --shadow-overlay: 0 4px 16px rgb(0 0 0 / 12%);
+
+  /* Motion (handoff section 6). lib/motion.ts mirrors these for motion/react. */
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;    /* small state changes: dialogs, photos, expanding text, hover */
+  --duration-settle: 240ms;  /* drawers, popovers, swaps, Arc frames and tab changes */
+  --duration-arrive: 320ms;  /* the signature move: a new Chat answer taking the lead */
+
+  --scrollbar-thumb: var(--line);
   --scrollbar-track: transparent;
 
-  /* Design tokens — monochrome UI, the memes are the only color on
-     screen. Runtime CSS custom properties (not static Tailwind theme
-     values) so they stay swappable/inspectable independent of the
-     build step; the @theme inline block below bridges them into
-     Tailwind's utility-generating namespace. */
-  --ink-0: #0A0A0B;       /* page */
-  --ink-1: #141416;       /* raised surface (cards, sidebar) */
-  --ink-2: #1E1E21;       /* input, hover */
-  --line: #2A2A2F;        /* hairline borders */
-  --paper: #FAFAF7;       /* primary text */
-  --paper-dim: #8E8E94;   /* secondary text */
-  --stroke: #000000;      /* caption stroke */
-  --accent-color: #F54F1B; /* interactive state only — never decoration */
-  --destructive-color: #EF4444;
-
-  /* shadcn semantic slots, mapped onto the tokens above. */
+  /* shadcn's slots. --accent is shadcn's hover surface, not the brand red,
+     which Tailwind reaches through the "brand" color utilities. */
   --background: var(--ink-0);
   --foreground: var(--paper);
-  --card: var(--ink-1);
+  --card: var(--ink-0);
   --card-foreground: var(--paper);
-  --popover: var(--ink-1);
+  --popover: var(--ink-0);
   --popover-foreground: var(--paper);
-  --primary: var(--accent-color);
-  --primary-foreground: var(--ink-0);
-  --secondary: var(--ink-2);
+  --primary: var(--paper);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--ink-1);
   --secondary-foreground: var(--paper);
   --muted: var(--ink-1);
   --muted-foreground: var(--paper-dim);
-  --accent: var(--accent-color);
-  --accent-foreground: var(--ink-0);
-  --destructive: var(--destructive-color);
-  --destructive-foreground: var(--paper);
+  --accent: var(--ink-1);
+  --accent-foreground: var(--paper);
+  --destructive: var(--accent-color); /* text only */
+  --destructive-foreground: #FFFFFF;
   --border: var(--line);
-  --input: var(--line);
-  --ring: var(--accent-color);
-  --radius: 0.75rem;
+  --input: var(--control-border);
+  --ring: var(--focus-ring);
 
   --sidebar: var(--ink-1);
   --sidebar-foreground: var(--paper);
-  --sidebar-primary: var(--accent-color);
-  --sidebar-primary-foreground: var(--ink-0);
-  --sidebar-accent: var(--ink-2);
+  --sidebar-primary: var(--paper);
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: var(--ink-1);
   --sidebar-accent-foreground: var(--paper);
   --sidebar-border: var(--line);
-  --sidebar-ring: var(--accent-color);
-
-  /* ---- Redesign motion/type tokens ----
-     The cream/paper color system that originally lived here was reverted
-     after real-browser review. These survived the reversal since the
-     dark system uses them too. */
-  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-fast: 150ms;
-  --duration-settle: 280ms;
-  --duration-arrive: 320ms;
-
-  --text-display: clamp(1.75rem, 3.5vw, 2.5rem);
+  --sidebar-ring: var(--focus-ring);
 }
 
 @theme inline {
+  /* Hover and focus color changes (transition-colors) ease out, per the
+     motion table, on the same curve as the ease-out class. */
+  --default-transition-timing-function: var(--ease-out);
   --color-ink-0: var(--ink-0);
   --color-ink-1: var(--ink-1);
   --color-ink-2: var(--ink-2);
@@ -72,6 +87,11 @@
   --color-paper: var(--paper);
   --color-paper-dim: var(--paper-dim);
   --color-stroke: var(--stroke);
+  --color-brand: var(--accent-color);
+  --color-meme-mat: var(--meme-mat);
+  --color-meme-edge: var(--meme-edge);
+  --color-control-border: var(--control-border);
+  --color-focus-ring: var(--focus-ring);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -92,10 +112,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 2px);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -106,9 +126,11 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-display: var(--font-display);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --shadow-overlay: var(--shadow-overlay);
+
+  --font-display: var(--font-anton);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-archivo);
 }
 
 /* Meme caption treatment — mirrors backend/image_processing/compositor.py's
@@ -116,7 +138,7 @@
    an 8-directional stroke pass). The one place brand and product share an
    implementation. */
 .caption {
-  font-family: var(--font-display);
+  font-family: var(--font-anton);
   text-transform: uppercase;
   color: #FFFFFF;
   -webkit-text-stroke: 0.08em #000000;
@@ -136,7 +158,13 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+  }
+  /* One focus style everywhere: black, offset so it shows around black
+     buttons and red Arc blocks as well as on white. */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
   body {
     @apply bg-background text-foreground;
@@ -146,129 +174,55 @@
   }
 }
 
+/* The focus ring appears at once. transition-colors also fades
+   outline-color, which would start the ring at a black button's white
+   text color. Unlayered, so it wins over the utility. */
+:focus-visible {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+}
+
+/* The landing page scrolls the whole document under a fixed bottom tab bar
+   on phones, so keyboard focus must stop short of it. */
+html:has([data-fixed-tabs]) {
+  scroll-padding-bottom: calc(3rem + 1px + env(safe-area-inset-bottom) + 1rem);
+}
+
 /* Thin scrollbar */
 .chat-scroll::-webkit-scrollbar        { width: 4px; }
 .chat-scroll::-webkit-scrollbar-track  { background: var(--scrollbar-track); }
 .chat-scroll::-webkit-scrollbar-thumb  { background: var(--scrollbar-thumb); border-radius: 2px; }
 
-/* Meme reveal */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* Tab changes crossfade the page through View Transitions while the
+   masthead and the bottom tabs stay put (handoff section 6). Browsers
+   without View Transitions, and reduced motion, swap at once. */
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--duration-settle);
+  animation-timing-function: var(--ease-settle);
 }
-.meme-reveal { animation: fadeUp 0.3s ease-out forwards; }
-
-/* ---- Chat empty state, v2 ----
-   An earlier cream/paper/poster direction tested badly in the real app.
-   It validated fine in isolated Artifact mockups, but read as an amateur
-   "craft project" swap of one genre for another rather than an
-   improvement, per real-browser review. Pivoted back to dark, grounded
-   in real reference research (21st.dev's AI Chat component category,
-   Aceternity UI): well-regarded chat UIs differentiate through
-   motion/depth polish on a clean dark surface, not decorative texture.
-   Still zero gradients/glow/neon per frontend-tokens' non-negotiables.
-   Depth here is neutral box-shadow, motion is scale/opacity, nothing
-   colored blurs. */
-.headline-poster {
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  font-size: var(--text-display);
-  line-height: 0.95;
-  letter-spacing: -0.01em;
-  color: var(--paper);
+::view-transition-group(site-masthead),
+::view-transition-group(site-tabs) {
+  animation: none;
 }
-.headline-poster .hl {
-  color: var(--accent-color);
+::view-transition-old(site-masthead),
+::view-transition-old(site-tabs) {
+  display: none;
+}
+::view-transition-new(site-masthead),
+::view-transition-new(site-tabs) {
+  animation: none;
 }
 
-.margin-note {
-  font-style: italic;
-  color: var(--paper-dim);
-  display: inline-block;
-}
-
-/* Prompt chips — dark card with real depth (neutral shadow, not a flat
-   border), lifts and gains an accent ring on hover/focus. */
-.prompt-chip {
-  @apply text-[13px] leading-relaxed cursor-pointer select-none text-left;
-  position: relative;
-  overflow: hidden;
-  color: var(--paper-dim);
-  background: var(--ink-1);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 14px 16px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  transition: border-color var(--duration-fast) ease, transform var(--duration-fast) ease,
-    box-shadow var(--duration-fast) ease, color var(--duration-fast) ease,
-    background var(--duration-fast) ease;
-}
-/* Pointer-tracked highlight — a small, sharp-edged radial tint that
-   follows the cursor (JS sets --mx/--my in px via onMouseMove), not a
-   blurred glow: tight falloff, no filter:blur, respects the no-glow rule.
-   Sits behind the chip's own text via z-index on the text not being
-   needed — the chip has no other backgrounds stacked above it. */
-.prompt-chip::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  background: radial-gradient(120px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(255, 77, 28, 0.16), transparent 70%);
-  transition: opacity var(--duration-fast) ease;
-  pointer-events: none;
-}
-.prompt-chip:hover::before {
-  opacity: 1;
-}
-.prompt-chip:hover {
-  border-color: var(--accent-color);
-  color: var(--paper);
-  background: var(--ink-2);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
-}
-.prompt-chip:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--ink-0), 0 0 0 4px var(--accent-color);
-}
-
-/* Elements arriving — a clean settle, no rotation gimmick. */
-@keyframes settleIn {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-.arrive-settle {
-  animation: settleIn var(--duration-arrive) var(--ease-settle) forwards;
-}
+/* Reduced motion: popovers, dialogs and the History drawer appear and go at
+   once. A plain motion-reduce:animate-none loses to the data-open and
+   data-closed animation classes, which are more specific. */
 @media (prefers-reduced-motion: reduce) {
-  .arrive-settle { animation: none; }
-}
-
-/* Thinking indicator — a single breathing orb (scale + opacity only, no
-   color bloom) instead of a flat 3-dot bounce or a glow effect. */
-@keyframes breathe {
-  0%, 100% { transform: scale(0.85); opacity: 0.55; }
-  50%      { transform: scale(1); opacity: 1; }
-}
-.thinking-orb {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--accent-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  animation: breathe 1.6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .thinking-orb { animation: none; opacity: 0.9; }
-}
-
-/* Share / action buttons under memes */
-.action-btn {
-  @apply flex items-center gap-1 text-xs text-gray-500 hover:text-gray-200
-         transition-colors duration-150 px-2 py-1 rounded-lg hover:bg-white/5
-         cursor-pointer border-0 bg-transparent;
-}
-.action-btn-primary {
-  @apply text-accent hover:text-accent/80 hover:bg-accent/10;
+  [data-slot="popover-content"],
+  [data-slot="dialog-content"],
+  [data-slot="dialog-overlay"],
+  [data-slot="sheet-content"],
+  [data-slot="sheet-overlay"] {
+    animation: none !important;
+  }
 }
